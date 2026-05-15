@@ -1,0 +1,613 @@
+import storeData from './data/store.json';
+import { STUDENT_CREDS, DOCTOR_CREDS } from './data/credentials.js';
+
+const EMOTIONS = ['happy','neutral','confused','bored','surprise','sad','angry','fear'];
+const DEPARTMENTS = ['Computer Science','Engineering','Mathematics','Physics','Data Science'];
+const TITLES = ['Professor','Associate Professor','Lecturer','Assistant Professor'];
+const COURSE_DATA = [
+  ['Artificial Intelligence','CS401','Hall A','#3b82f6'],
+  ['Machine Learning','CS402','Hall B','#8b5cf6'],
+  ['Data Science','CS403','Lab 1','#10b981'],
+  ['Computer Vision','CS404','Lab 2','#f59e0b'],
+  ['Deep Learning','CS405','Hall C','#06b6d4'],
+];
+
+function seededRandom(seed){
+  let s=seed;
+  return ()=>{s=(s*16807+0)%2147483647;return(s-1)/2147483646;};
+}
+
+function normalizeStudent(s) {
+  return {
+    id: s.id,
+    name: s.name || '',
+    emoji: s.emoji || '👦',
+    color: s.color || '#3b82f6',
+    dept: s.dept || 'Computer Science',
+    year: s.year || 1,
+    email: s.email || '',
+    phone: s.phone || '',
+    emotion: s.emotion || 'neutral',
+    attention: s.attention || 'moderate',
+    engagement: s.engagement ?? 50,
+    attentionScore: s.attention_score ?? s.attentionScore ?? 50,
+    attendanceRate: s.attendance_rate ?? s.attendanceRate ?? 0,
+    gpa: s.gpa ?? 0,
+    present: s.present ?? false,
+    confidence: s.confidence ?? 0,
+    hasFace: s.has_face ?? s.hasFace ?? false,
+    registeredAt: s.registered_at ?? s.registeredAt ?? '',
+  };
+}
+
+function normalizeDoctor(d) {
+  return {
+    id: d.id,
+    name: d.name || '',
+    emoji: d.emoji || '👨‍🏫',
+    color: d.color || '#3b82f6',
+    dept: d.dept || 'Computer Science',
+    title: d.title || 'Lecturer',
+    email: d.email || '',
+    phone: d.phone || '',
+    courses: d.courses ?? 0,
+    students: d.students ?? 0,
+    engagement: d.engagement ?? 0,
+    hasFace: d.has_face ?? d.hasFace ?? false,
+  };
+}
+
+// Extract numeric ID from a student's email prefix for photo lookup
+// e.g. "231014184.0@university.edu" → "231014184.0"
+function emailToNumericId(email) {
+  if (!email) return null;
+  return email.split('@')[0];
+}
+
+class DataStore {
+  constructor(){
+    this._rng = seededRandom(42);
+    this._initDefaults();
+    this._loadPersisted();
+  }
+
+  _ri(a,b){ return Math.floor(this._rng()*(b-a+1))+a; }
+  _rf(a,b){ return +(this._rng()*(b-a)+a).toFixed(2); }
+  _choice(arr){ return arr[Math.floor(this._rng()*arr.length)]; }
+
+  _initDefaults(){
+    this.students = this._loadStudents();
+    this.doctors  = this._loadDoctors();
+    this.lectures = this._makeLectures();
+    this.courses  = this._makeCourses();
+    this.courseEnrollments = {};
+    this.attendance = {};
+    this.emotions  = [];
+    this.emotionDist = this._makeEmoDist();
+    this.trendData = this._makeTrend();
+    this.alerts   = this._makeAlerts();
+    this.users    = this._makeUsers();
+    this.currentWeek = 1;
+    this.examResults = {};
+    this.chatMessages = {};
+    this._initEnrollments();
+  }
+
+  _loadStudents(){
+    if (!storeData?.students?.length) return this._makeFallbackStudents();
+    // Filter out garbage test entries (no real name or obviously test data)
+    const real = storeData.students.filter(s =>
+      s.id && s.name && s.name.length > 1 &&
+      !['gcghfh','alia waleed','loay nabil','ziad hamam','mahmoud amr',
+        'lily sadek','judy essam'].includes(s.name.toLowerCase())
+    );
+    return real.map(normalizeStudent);
+  }
+
+  _loadDoctors(){
+    // Use just the 4 canonical doctors from CSV credentials (D001-D004)
+    return DOCTOR_CREDS.map((dc, i) => ({
+      id: `D00${i+1}`,
+      name: dc.name,
+      emoji: i % 2 === 0 ? '👨‍🏫' : '👩‍🏫',
+      color: ['#3b82f6','#8b5cf6','#10b981','#f59e0b'][i],
+      dept: dc.dept,
+      title: dc.title,
+      email: dc.email,
+      phone: dc.phone,
+      courses: 5,
+      students: 120,
+      engagement: this._ri(65, 85),
+      hasFace: false,
+    }));
+  }
+
+  _makeFallbackStudents(){
+    const NAMES=[
+      ['Sara Johnson','👩','#3b82f6'],['Ahmed Hassan','👦','#10b981'],
+      ['Nour Ali','👩','#8b5cf6'],['Mohamed Karim','👦','#f59e0b'],
+      ['Layla Ibrahim','👩','#ef4444'],['Omar Salah','👦','#06b6d4'],
+      ['Fatima Zahra','👩','#ec4899'],['Yusuf Ahmad','👦','#10b981'],
+      ['Hana Mostafa','👩','#3b82f6'],['Tariq Nasser','👦','#8b5cf6'],
+      ['Rania Said','👩','#f59e0b'],['Khalid Faris','👦','#ef4444'],
+      ['Dina Wael','👩','#06b6d4'],['Sami Lotfy','👦','#ec4899'],
+      ['Aya Ramadan','👩','#10b981'],
+    ];
+    return NAMES.map(([name,emoji,color],i)=>({
+      id:`S${String(i+1).padStart(3,'0')}`,name,emoji,color,
+      dept:DEPARTMENTS[i%DEPARTMENTS.length],year:(i%4)+1,
+      email:`${name.split(' ')[0].toLowerCase()}@university.edu`,phone:'',
+      emotion:EMOTIONS[i%EMOTIONS.length],attention:['attentive','moderate','distracted'][i%3],
+      engagement:this._ri(40,95),attentionScore:this._ri(35,90),
+      attendanceRate:this._ri(65,100),gpa:+this._rf(2.0,4.0).toFixed(1),
+      present:i<12,confidence:this._rf(0.65,0.97),hasFace:false,registeredAt:'',
+    }));
+  }
+
+  _makeLectures(){
+    const times=['09:00','11:00','13:00','15:00','17:00'];
+    const stats=['active','scheduled','scheduled','ended','ended'];
+    return COURSE_DATA.map(([name,code,room,color],i)=>({
+      id:`L${String(i+1).padStart(3,'0')}`,name,code,room,color,
+      time:times[i],duration:90,status:stats[i],
+      students:this._ri(28,48),present:this._ri(20,40),
+      avgEngagement:this._ri(50,90),avgAttention:this._ri(45,85),
+      dominantEmotion:EMOTIONS[i%EMOTIONS.length],
+      doctor:'Dr. Ahmed Smith',doctorId:'D001',
+    }));
+  }
+
+  _makeCourses(){
+    const doctors=['D001','D002','D003','D004','D001'];
+    const dnames=['Dr. Ahmed Smith','Dr. Laila Hassan','Dr. Khalid Omar','Dr. Sara Nour','Dr. Ahmed Smith'];
+    const times=['09:00','11:00','13:00','15:00','17:00'];
+    return COURSE_DATA.map(([name,code,room,color],i)=>({
+      id:code,name,code,room,color,
+      time:times[i],duration:90,
+      doctorId:doctors[i],doctorName:dnames[i],
+      weeks:Array.from({length:16},(_,k)=>k+1),
+      semester:'Fall 2024',enrolledCount:this._ri(25,45),
+    }));
+  }
+
+  _initEnrollments(){
+    this.courses.forEach((course,i)=>{
+      const cid = course.id;
+      if(!this.courseEnrollments[cid]){
+        const offset=(i*3)%this.students.length;
+        let enrolled = this.students.slice(offset,offset+10).map(s=>s.id);
+        if(enrolled.length<10){
+          enrolled = enrolled.concat(this.students.slice(0,10-enrolled.length).map(s=>s.id));
+        }
+        this.courseEnrollments[cid] = enrolled;
+      }
+    });
+  }
+
+  _makeUsers(){
+    const users = [
+      {username:'admin',password:'admin',role:'admin',name:'System Administrator',email:'admin@university.edu'},
+      {username:'parent',password:'parent',role:'parent',name:'Parent User',email:'parent@university.edu',studentId:this.students[0]?.id||'S001'},
+    ];
+
+    // Doctor accounts
+    DOCTOR_CREDS.forEach((dc, i) => {
+      users.push({
+        username: dc.username,
+        password: dc.password,
+        role: 'doctor',
+        name: dc.name,
+        email: dc.email,
+        doctorId: `D00${i+1}`,
+      });
+    });
+
+    // Student accounts — match username to student record via email prefix
+    STUDENT_CREDS.forEach(sc => {
+      const normalizedId = sc.username.replace(/\.0$/, '');
+      const student = this.students.find(s => {
+        const emailId = (s.email || '').split('@')[0];
+        return emailId === sc.username ||
+               emailId === normalizedId ||
+               emailId.replace(/\.0$/, '') === normalizedId;
+      });
+      users.push({
+        username: sc.username,
+        password: sc.password,
+        role: 'student',
+        name: sc.name || (student?.name ?? sc.username),
+        email: `${sc.username}@university.edu`,
+        studentId: student?.id || '',
+      });
+    });
+
+    return users;
+  }
+
+  _emoColor(e){
+    return {happy:'#10b981',neutral:'#6366f1',confused:'#8b5cf6',bored:'#64748b',
+            surprise:'#f59e0b',sad:'#475569',angry:'#ef4444',fear:'#f97316'}[e]||'#64748b';
+  }
+
+  _makeEmoDist(){
+    const ws=[0.32,0.28,0.14,0.10,0.08,0.05,0.02,0.01];
+    const es=['neutral','happy','confused','bored','surprise','sad','angry','fear'];
+    return es.map((e,i)=>({emotion:e,count:Math.floor(1200*ws[i]),pct:Math.floor(ws[i]*100),color:this._emoColor(e)}));
+  }
+
+  _makeTrend(){
+    return {
+      labels:Array.from({length:16},(_,i)=>`W${i+1}`),
+      engagement:Array.from({length:16},()=>this._ri(45,92)),
+      attention:Array.from({length:16},()=>this._ri(40,88)),
+    };
+  }
+
+  _makeAlerts(){
+    const s0 = this.students[1]?.name || 'Ahmed Hassan';
+    const s1 = this.students[2]?.name || 'Nour Ali';
+    const s2 = this.students[3]?.name || 'Mohamed Karim';
+    return [
+      {type:'warning',msg:'Engagement dropped below 40%',student:s0,lecture:'CS401',severity:'Warning',time:'10:23',details:'Engagement dropped to 32%'},
+      {type:'info',msg:'Student distracted for 15+ minutes',student:s1,lecture:'CS402',severity:'Info',time:'11:15',details:'Attention score below threshold'},
+      {type:'critical',msg:'Student not detected in session',student:s2,lecture:'CS403',severity:'Critical',time:'13:05',details:'Not detected in session'},
+    ];
+  }
+
+  // Returns the URL to display a student's photo, or null if not available
+  getPhotoUrl(student){
+    if (!student?.email) return null;
+    const emailId = student.email.split('@')[0];
+    if (!emailId || emailId.includes('@') || emailId.length < 5) return null;
+    return `/student_photos/${emailId}.jpg`;
+  }
+
+  _loadPersisted(){
+    try {
+      const raw = localStorage.getItem('edusense_store');
+      if(!raw) return;
+      const data = JSON.parse(raw);
+      if(data.examResults) Object.assign(this.examResults, data.examResults);
+      if(data.chatMessages) Object.assign(this.chatMessages, data.chatMessages);
+      if(data.students){
+        const map = {};
+        data.students.forEach(s=>{ map[s.id]=s; });
+        this.students.forEach(s=>{ if(map[s.id]) Object.assign(s,map[s.id]); });
+        data.students.forEach(s=>{ if(!this.students.find(x=>x.id===s.id)) this.students.push(s); });
+      }
+      if(data.doctors){
+        const map = {};
+        data.doctors.forEach(d=>{ map[d.id]=d; });
+        this.doctors.forEach(d=>{ if(map[d.id]) Object.assign(d,map[d.id]); });
+        data.doctors.forEach(d=>{ if(!this.doctors.find(x=>x.id===d.id)) this.doctors.push(d); });
+      }
+      if(data.courses){
+        const map = {};
+        data.courses.forEach(c=>{ map[c.id]=c; });
+        this.courses.forEach(c=>{ if(map[c.id]) Object.assign(c,map[c.id]); });
+        data.courses.forEach(c=>{ if(!this.courses.find(x=>x.id===c.id)) this.courses.push(c); });
+      }
+      if(data.courseEnrollments) Object.assign(this.courseEnrollments, data.courseEnrollments);
+      if(data.attendance) Object.assign(this.attendance, data.attendance);
+    } catch(e){ console.warn('DataStore load error',e); }
+  }
+
+  _persist(){
+    try {
+      localStorage.setItem('edusense_store', JSON.stringify({
+        students: this.students,
+        doctors: this.doctors,
+        courses: this.courses,
+        courseEnrollments: this.courseEnrollments,
+        attendance: this.attendance,
+        examResults: this.examResults,
+        chatMessages: this.chatMessages,
+      }));
+    } catch(e){ console.warn('DataStore persist error',e); }
+  }
+
+  authenticate(username, password){
+    const u = this.users.find(u=>
+      u.username.toLowerCase()===username.toLowerCase().trim() &&
+      u.password===password.trim()
+    );
+    if(!u) return null;
+    const nameParts = (u.name||u.username).split(' ');
+    let photoUrl = null;
+    if (u.role === 'student' && u.studentId) {
+      const s = this.getStudent(u.studentId);
+      if (s) photoUrl = this.getPhotoUrl(s);
+    }
+    return {
+      username:u.username, name:u.name||u.username, role:u.role,
+      email:u.email||'', id:u.studentId||u.doctorId||'ADM',
+      studentId:u.studentId||'', doctorId:u.doctorId||'',
+      initials:nameParts.slice(0,2).map(w=>w[0]?.toUpperCase()||'').join(''),
+      photoUrl,
+    };
+  }
+
+  nextStudentId(){
+    const nums = this.students.map(s=>parseInt(s.id.replace(/\D/g,''))||0);
+    return `S${String(Math.max(0,...nums)+1).padStart(3,'0')}`;
+  }
+
+  addStudent(data){
+    const sid = this.nextStudentId();
+    const colors=['#3b82f6','#10b981','#8b5cf6','#f59e0b','#ef4444','#06b6d4'];
+    const s={id:sid,name:data.name||'New Student',emoji:['👦','👩'][Math.floor(Math.random()*2)],
+      color:colors[Math.floor(Math.random()*colors.length)],dept:data.dept||DEPARTMENTS[0],
+      year:parseInt(data.year)||1,email:data.email||'',phone:data.phone||'',
+      emotion:'neutral',attention:'moderate',engagement:50,attentionScore:50,
+      attendanceRate:0,gpa:0,present:false,confidence:0,hasFace:false,registeredAt:''};
+    this.students.push(s); this._persist(); return s;
+  }
+
+  updateStudent(sid,data){ const s=this.students.find(x=>x.id===sid); if(s){Object.assign(s,data);this._persist();} return s||null; }
+  deleteStudent(sid){ const n=this.students.length; this.students=this.students.filter(x=>x.id!==sid); if(this.students.length<n){this._persist();return true;} return false; }
+  getStudent(sid){ return this.students.find(x=>x.id===sid)||null; }
+
+  nextDoctorId(){
+    const nums = this.doctors.map(d=>parseInt(d.id.slice(1))||0);
+    return `D${String(Math.max(0,...nums)+1).padStart(3,'0')}`;
+  }
+
+  addDoctor(data){
+    const did = this.nextDoctorId();
+    const colors=['#3b82f6','#8b5cf6','#10b981','#f59e0b'];
+    const d={id:did,name:data.name||'New Doctor',emoji:['👨‍🏫','👩‍🏫'][Math.floor(Math.random()*2)],
+      color:colors[Math.floor(Math.random()*colors.length)],dept:data.dept||DEPARTMENTS[0],
+      title:data.title||'Lecturer',email:data.email||'',phone:data.phone||'',
+      courses:0,students:0,engagement:0,hasFace:false};
+    this.doctors.push(d); this._persist(); return d;
+  }
+
+  deleteDoctor(did){ const n=this.doctors.length; this.doctors=this.doctors.filter(x=>x.id!==did); if(this.doctors.length<n){this._persist();return true;} return false; }
+  getDoctor(did){ return this.doctors.find(x=>x.id===did)||null; }
+  getDoctorCourses(doctorId){ return this.courses.filter(c=>c.doctorId===doctorId); }
+
+  addCourse(data){
+    const code=(data.code||`C${String(this.courses.length+1).padStart(3,'0')}`).toUpperCase();
+    const doctor = this.getDoctor(data.doctorId||'');
+    const course={id:code,name:data.name||'New Course',code,room:data.room||'',
+      color:data.color||'#3b82f6',time:data.time||'09:00',duration:parseInt(data.duration)||90,
+      doctorId:data.doctorId||'',doctorName:doctor?doctor.name:'Unassigned',
+      weeks:data.weeks||Array.from({length:16},(_,k)=>k+1),
+      semester:data.semester||'Fall 2024',enrolledCount:0};
+    this.courses.push(course); this.courseEnrollments[code]=[]; this._persist(); return course;
+  }
+
+  updateCourse(courseId,data){
+    const c=this.courses.find(x=>x.id===courseId);
+    if(c){ Object.assign(c,data); if(data.doctorId){const d=this.getDoctor(data.doctorId);c.doctorName=d?d.name:'Unassigned';} this._persist(); }
+    return c||null;
+  }
+
+  deleteCourse(courseId){
+    const n=this.courses.length; this.courses=this.courses.filter(x=>x.id!==courseId);
+    if(this.courses.length<n){delete this.courseEnrollments[courseId];this._persist();return true;} return false;
+  }
+
+  getCourse(id){ return this.courses.find(x=>x.id===id)||null; }
+
+  enrollStudent(courseId,studentId){
+    if(!this.courseEnrollments[courseId]) this.courseEnrollments[courseId]=[];
+    if(!this.courseEnrollments[courseId].includes(studentId)){
+      this.courseEnrollments[courseId].push(studentId);
+      const c=this.getCourse(courseId); if(c) c.enrolledCount=this.courseEnrollments[courseId].length;
+      this._persist(); return true;
+    }
+    return false;
+  }
+
+  unenrollStudent(courseId,studentId){
+    if(this.courseEnrollments[courseId]?.includes(studentId)){
+      this.courseEnrollments[courseId]=this.courseEnrollments[courseId].filter(x=>x!==studentId);
+      const c=this.getCourse(courseId); if(c) c.enrolledCount=this.courseEnrollments[courseId].length;
+      this._persist(); return true;
+    }
+    return false;
+  }
+
+  getEnrolledStudents(courseId){ const ids=this.courseEnrollments[courseId]||[]; return this.students.filter(s=>ids.includes(s.id)); }
+  getUnenrolledStudents(courseId){ const ids=new Set(this.courseEnrollments[courseId]||[]); return this.students.filter(s=>!ids.has(s.id)); }
+  getStudentCourses(studentId){ return Object.entries(this.courseEnrollments).filter(([,ids])=>ids.includes(studentId)).map(([cid])=>this.getCourse(cid)).filter(Boolean); }
+
+  _attKey(courseId,week){ return `${courseId}_W${String(week).padStart(2,'0')}`; }
+
+  markAttendance(courseId,studentId,confidence=1.0,method='manual',week=null){
+    const w=week||this.currentWeek; const key=this._attKey(courseId,w);
+    if(!this.attendance[key]) this.attendance[key]={};
+    if(!this.attendance[key][studentId]){
+      this.attendance[key][studentId]={studentId,courseId,week:w,time:new Date().toTimeString().slice(0,8),date:new Date().toISOString().slice(0,10),method,confidence:+confidence.toFixed(3),status:'present'};
+      this._persist(); return true;
+    }
+    return false;
+  }
+
+  getAttendance(courseId,week=null){
+    if(week!==null) return this.attendance[this._attKey(courseId,week)]||{};
+    const result={};
+    Object.entries(this.attendance).forEach(([key,recs])=>{ if(key.startsWith(`${courseId}_W`)) Object.assign(result,recs); });
+    return result;
+  }
+
+  getStudentAttendance(studentId){ return Object.values(this.attendance).flatMap(recs=>Object.entries(recs).filter(([sid])=>sid===studentId).map(([,rec])=>rec)); }
+  getStudentCourseAttendance(studentId,courseId){ const result={}; for(let w=1;w<=16;w++){const key=this._attKey(courseId,w);if(this.attendance[key]?.[studentId]) result[w]=this.attendance[key][studentId];} return result; }
+
+  addExamResult(studentId,courseId,grade,doctorId){
+    if(!this.examResults[studentId]) this.examResults[studentId]={};
+    this.examResults[studentId][courseId]={grade:+parseFloat(grade).toFixed(1),addedBy:doctorId,date:new Date().toISOString().slice(0,10)};
+    this._persist(); return true;
+  }
+
+  getStudentResults(studentId){ return this.examResults[studentId]||{}; }
+  getCourseResults(courseId){ const out={}; Object.entries(this.examResults).forEach(([sid,courses])=>{ if(courses[courseId]) out[sid]=courses[courseId]; }); return out; }
+  deleteExamResult(studentId,courseId){ if(this.examResults[studentId]?.[courseId]){delete this.examResults[studentId][courseId];if(!Object.keys(this.examResults[studentId]).length)delete this.examResults[studentId];this._persist();return true;} return false; }
+
+  postMessage(courseId,sender,senderId,role,text,type='message'){
+    if(!this.chatMessages[courseId]) this.chatMessages[courseId]=[];
+    const msg={id:`${courseId}_${this.chatMessages[courseId].length+1}`,sender,senderId,role,text:text.trim(),type,timestamp:new Date().toLocaleString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}),reactions:{}};
+    this.chatMessages[courseId].push(msg); this._persist(); return msg;
+  }
+
+  getMessages(courseId){ return this.chatMessages[courseId]||[]; }
+
+  addReaction(courseId,msgId,emoji,senderId){
+    const msgs=this.chatMessages[courseId]||[];
+    const msg=msgs.find(m=>m.id===msgId);
+    if(msg){
+      if(!msg.reactions[emoji]) msg.reactions[emoji]=[];
+      const idx=msg.reactions[emoji].indexOf(senderId);
+      if(idx>=0) msg.reactions[emoji].splice(idx,1); else msg.reactions[emoji].push(senderId);
+      this._persist(); return true;
+    }
+    return false;
+  }
+
+  deleteMessage(courseId,msgId){
+    const before=(this.chatMessages[courseId]||[]).length;
+    if(this.chatMessages[courseId]) this.chatMessages[courseId]=this.chatMessages[courseId].filter(m=>m.id!==msgId);
+    if((this.chatMessages[courseId]||[]).length<before){this._persist();return true;} return false;
+  }
+
+  addUser(data){
+    const existing=this.users.find(u=>u.username===data.username);
+    if(existing) Object.assign(existing,data); else this.users.push(data);
+    this._persist(); return true;
+  }
+
+  getUser(username){ return this.users.find(u=>u.username===username)||null; }
+
+  // ── ABSENCE EXCUSES ──────────────────────────────────────────────────────
+  submitExcuse(data){
+    if(!this.excuses) this.excuses=[];
+    const ex={
+      id:`EX${Date.now()}`,
+      studentId:data.studentId, studentName:data.studentName,
+      courseId:data.courseId, courseName:data.courseName,
+      week:data.week, reason:data.reason,
+      status:'pending', submittedAt:new Date().toISOString(),
+      reviewedAt:null, reviewedBy:null,
+    };
+    this.excuses.push(ex); this._persist(); return ex;
+  }
+
+  updateExcuse(id, status, reviewedBy){
+    if(!this.excuses) this.excuses=[];
+    const ex=this.excuses.find(e=>e.id===id);
+    if(ex){
+      ex.status=status; ex.reviewedAt=new Date().toISOString(); ex.reviewedBy=reviewedBy;
+      if(status==='approved'){
+        this.markAttendance(ex.courseId, ex.studentId, 1.0, 'excused', ex.week);
+        const key=this._attKey(ex.courseId, ex.week);
+        if(this.attendance[key]?.[ex.studentId]) this.attendance[key][ex.studentId].status='excused';
+      }
+      this._persist(); return true;
+    }
+    return false;
+  }
+
+  getExcuses(courseId=null){
+    if(!this.excuses) this.excuses=[];
+    return courseId ? this.excuses.filter(e=>e.courseId===courseId) : this.excuses;
+  }
+
+  getStudentExcuses(studentId){
+    if(!this.excuses) this.excuses=[];
+    return this.excuses.filter(e=>e.studentId===studentId);
+  }
+
+  // ── GRADE WEIGHTS & COMPONENTS ───────────────────────────────────────────
+  setGradeWeights(courseId, weights){
+    if(!this.gradeWeights) this.gradeWeights={};
+    this.gradeWeights[courseId]=weights; this._persist();
+  }
+
+  getGradeWeights(courseId){
+    if(!this.gradeWeights) this.gradeWeights={};
+    return this.gradeWeights[courseId]||{midterm:30,final:50,assignments:15,attendance:5};
+  }
+
+  setGradeComponents(studentId, courseId, components){
+    if(!this.gradeComponents) this.gradeComponents={};
+    if(!this.gradeComponents[studentId]) this.gradeComponents[studentId]={};
+    this.gradeComponents[studentId][courseId]=components;
+    // Auto-calculate final grade
+    const w=this.getGradeWeights(courseId);
+    const c=components;
+    const grade=+(
+      (c.midterm??0)*(w.midterm/100)+
+      (c.final??0)*(w.final/100)+
+      (c.assignments??0)*(w.assignments/100)+
+      (c.attendance??0)*(w.attendance/100)
+    ).toFixed(1);
+    this.addExamResult(studentId, courseId, grade, 'system');
+    this._persist();
+  }
+
+  getGradeComponents(studentId, courseId){
+    if(!this.gradeComponents) this.gradeComponents={};
+    return this.gradeComponents[studentId]?.[courseId]||null;
+  }
+
+  // ── QR ATTENDANCE SESSIONS ────────────────────────────────────────────────
+  createQRSession(courseId, week){
+    if(!this.qrSessions) this.qrSessions={};
+    const token=Math.random().toString(36).slice(2,8).toUpperCase();
+    this.qrSessions[token]={courseId, week, createdAt:new Date().toISOString(), usedBy:[]};
+    this._persist(); return token;
+  }
+
+  useQRToken(token, studentId){
+    if(!this.qrSessions) this.qrSessions={};
+    const s=this.qrSessions[token];
+    if(!s) return {ok:false, error:'Invalid code'};
+    const age=(Date.now()-new Date(s.createdAt).getTime())/60000;
+    if(age>90) return {ok:false, error:'Code expired (valid for 90 min)'};
+    if(s.usedBy.includes(studentId)) return {ok:false, error:'Already checked in'};
+    s.usedBy.push(studentId);
+    this.markAttendance(s.courseId, studentId, 1.0, 'qr', s.week);
+    this._persist();
+    return {ok:true, courseId:s.courseId, week:s.week};
+  }
+
+  // ── SYSTEM ALERTS ─────────────────────────────────────────────────────────
+  addAlert(data){
+    if(!this.systemAlerts) this.systemAlerts=[];
+    const alert={
+      id:`AL${Date.now()}_${Math.random().toString(36).slice(2,5)}`,
+      type:data.type||'info',
+      title:data.title, message:data.message,
+      studentId:data.studentId||null, courseId:data.courseId||null,
+      read:false, createdAt:new Date().toISOString(),
+    };
+    this.systemAlerts.unshift(alert);
+    if(this.systemAlerts.length>100) this.systemAlerts=this.systemAlerts.slice(0,100);
+    this._persist(); return alert;
+  }
+
+  getAlerts(unreadOnly=false){
+    if(!this.systemAlerts) this.systemAlerts=[];
+    return unreadOnly ? this.systemAlerts.filter(a=>!a.read) : this.systemAlerts;
+  }
+
+  markAlertRead(id){
+    if(!this.systemAlerts) this.systemAlerts=[];
+    const a=this.systemAlerts.find(x=>x.id===id);
+    if(a){a.read=true; this._persist(); return true;} return false;
+  }
+
+  markAllAlertsRead(){
+    if(!this.systemAlerts) this.systemAlerts=[];
+    this.systemAlerts.forEach(a=>a.read=true); this._persist();
+  }
+
+  clearAlert(id){
+    if(!this.systemAlerts) this.systemAlerts=[];
+    this.systemAlerts=this.systemAlerts.filter(a=>a.id!==id); this._persist();
+  }
+}
+
+export const store = new DataStore();
+export default store;

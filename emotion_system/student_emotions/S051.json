@@ -1,0 +1,37 @@
+[
+  {
+    "emotion": "angry",
+    "courseId": "CS401",
+    "timestamp": "2026-05-14T08:05:03.107Z"
+  },
+  {
+    "emotion": "neutral",
+    "courseId": "CS401",
+    "timestamp": "2026-05-14T08:11:14.987Z"
+  },
+  {
+    "emotion": "neutral",
+    "courseId": "CS401",
+    "timestamp": "2026-05-14T08:11:16.992Z"
+  },
+  {
+    "emotion": "neutral",
+    "courseId": "CS401",
+    "timestamp": "2026-05-14T08:11:27.598Z"
+  },
+  {
+    "emotion": "neutral",
+    "courseId": "CS401",
+    "timestamp": "2026-05-14T08:11:33.702Z"
+  },
+  {
+    "emotion": "neutral",
+    "courseId": "CS401",
+    "timestamp": "2026-05-14T08:11:36.552Z"
+  },
+  {
+    "emotion": "neutral",
+    "courseId": "CS401",
+    "timestamp": "2026-05-14T08:11:38.773Z"
+  }
+]

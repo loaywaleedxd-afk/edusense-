@@ -1,0 +1,1197 @@
+import { useState } from 'react';
+import Sidebar from '../components/Sidebar';
+import Topbar  from '../components/Topbar';
+import StatCard from '../components/StatCard';
+import Card from '../components/Card';
+import Badge from '../components/Badge';
+import DataTable from '../components/DataTable';
+import { BarChart, LineChart, DonutChart } from '../components/Charts';
+import EmotionBarsWidget from '../components/EmotionBars';
+import AlertItem from '../components/AlertItem';
+import WebcamFeed from '../components/WebcamFeed';
+import store from '../dataStore';
+import { DEPARTMENTS, TITLES } from '../theme';
+
+function letterGrade(g){if(g>=90)return'A+';if(g>=85)return'A';if(g>=80)return'B+';if(g>=75)return'B';if(g>=70)return'C+';if(g>=65)return'C';if(g>=60)return'D+';if(g>=50)return'D';return'F';}
+function gradeColor(g,C){return g>=75?C.green:g>=50?C.amber:C.red;}
+
+function generatePassword(){
+  const chars='ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let p=''; for(let i=0;i<8;i++) p+=chars[Math.floor(Math.random()*chars.length)];
+  return p+'!';
+}
+
+const NAV = [
+  {section:'Overview'},
+  {id:'dashboard',   icon:'📊', label:'Dashboard'},
+  {id:'analytics',   icon:'📉', label:'System Analytics'},
+  {section:'Management'},
+  {id:'students',    icon:'🎓', label:'Students'},
+  {id:'doctors',     icon:'👨‍🏫',label:'Lecturers'},
+  {id:'courses',     icon:'📚', label:'Courses'},
+  {id:'enrollments', icon:'📋', label:'Enrollments'},
+  {id:'parents',     icon:'👨‍👩‍👧',label:'Parents'},
+  {section:'Reports'},
+  {id:'r_reports',   icon:'📊', label:'R Reports'},
+  {id:'settings',    icon:'⚙️', label:'Settings'},
+];
+
+const PAGE_TITLES = {
+  dashboard:'Dashboard', analytics:'System Analytics', students:'Students',
+  doctors:'Lecturers', courses:'Course Management', enrollments:'Enrollment Management',
+  parents:'Parents Management', r_reports:'R Analysis Reports', settings:'Settings',
+};
+
+export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogout }) {
+  const [page, setPage] = useState('dashboard');
+
+  return (
+    <div style={{display:'flex',height:'100%',background:C.bg,overflow:'hidden'}}>
+      <Sidebar theme={C} navItems={NAV} activeId={page} onNav={setPage}/>
+      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
+        <Topbar theme={C} user={user} pageTitle={PAGE_TITLES[page]||page} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout}/>
+        <div className="content-scroll" style={{flex:1,overflowY:'auto',background:C.bg}}>
+          <div className="animate-in" key={page}>
+            {page==='dashboard'   && <AdminDashboard theme={C}/>}
+            {page==='analytics'   && <AdminAnalytics theme={C}/>}
+            {page==='students'    && <AdminStudents theme={C}/>}
+            {page==='doctors'     && <AdminDoctors theme={C}/>}
+            {page==='courses'     && <AdminCourses theme={C}/>}
+            {page==='enrollments' && <AdminEnrollments theme={C}/>}
+            {page==='parents'     && <AdminParents theme={C}/>}
+            {page==='r_reports'   && <AdminRReports theme={C}/>}
+            {page==='settings'    && <AdminSettings theme={C}/>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── DASHBOARD ── */
+function AdminDashboard({ theme: C }) {
+  const depts      = ['Computer Science','Engineering','Mathematics','Physics','Data Science'];
+  const deptShort  = ['CS','Engineering','Math','Physics','Data Sci'];
+  const deptColors = [C.blue,C.purple,C.green,C.amber,C.cyan];
+  const activeLectures = store.lectures.filter(l=>l.status==='active').length;
+  const avgEng = store.students.length ? Math.round(store.students.reduce((a,s)=>a+s.engagement,0)/store.students.length) : 0;
+
+  // Compute avg engagement per dept from real student data (seeded — deterministic)
+  const deptEngData = depts.map((dept, i) => {
+    const deptStudents = store.students.filter(s => s.dept === dept);
+    const val = deptStudents.length
+      ? Math.round(deptStudents.reduce((a,s)=>a+s.engagement,0)/deptStudents.length)
+      : 55 + (i * 7) % 30;
+    return { label: deptShort[i], value: val, color: deptColors[i] };
+  });
+
+  return (
+    <div style={{padding:'8px 20px 20px'}}>
+      <div style={{fontSize:24,fontWeight:700,color:C.text,marginBottom:4}}>System Dashboard</div>
+      <div style={{fontSize:12,color:C.text2,marginBottom:12}}>University-wide overview</div>
+
+      <div style={{display:'flex',gap:12,marginBottom:12}}>
+        <StatCard theme={C} label="Total Students"  value={store.students.length} sub="Enrolled"              icon="🎓" accent="blue"/>
+        <StatCard theme={C} label="Lecturers"        value={store.doctors.length}  sub="Active faculty"        icon="👨‍🏫" accent="purple"/>
+        <StatCard theme={C} label="Active Lectures"  value={activeLectures}        sub="Running right now"     icon="📚" accent="green"/>
+        <StatCard theme={C} label="Avg Engagement"   value={`${avgEng}%`}          sub="Across all students"   icon="🧠" accent="amber"/>
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'3fr 2fr',gap:12,marginBottom:12}}>
+        <Card theme={C} title="Engagement by Department">
+          <div style={{padding:'4px 12px 12px'}}>
+            <BarChart theme={C} data={deptEngData} height={210}/>
+          </div>
+        </Card>
+        <Card theme={C} title="Lectures Now">
+          <div style={{padding:'4px 12px 12px',display:'flex',flexDirection:'column',gap:6}}>
+            {store.lectures.slice(0,3).map((lec,i)=>(
+              <div key={i} style={{background:C.bg3,borderRadius:8,display:'flex',overflow:'hidden'}}>
+                <div style={{width:4,background:lec.color,flexShrink:0}}/>
+                <div style={{padding:'8px 12px',flex:1}}>
+                  <div style={{fontSize:11,fontWeight:700,color:C.text}}>{lec.name}</div>
+                  <div style={{fontSize:10,color:C.text3}}>{lec.room} · {lec.time}</div>
+                </div>
+                <div style={{padding:'8px 12px',display:'flex',alignItems:'center'}}>
+                  <Badge text={lec.status} color={{active:'green',scheduled:'amber',ended:'gray'}[lec.status]||'gray'}/>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+        <Card theme={C} title="System Alerts">
+          <div style={{padding:'4px 12px 12px',display:'flex',flexDirection:'column',gap:8}}>
+            {store.alerts.map((a,i)=><AlertItem key={i} theme={C} alert={a}/>)}
+          </div>
+        </Card>
+        <Card theme={C} title="Emotion Distribution">
+          <div style={{padding:'4px 12px 12px'}}>
+            <EmotionBarsWidget theme={C} data={store.emotionDist.slice(0,6)}/>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+/* ── ANALYTICS ── */
+function AdminAnalytics({ theme: C }) {
+  return (
+    <div style={{padding:'8px 20px 20px'}}>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>System Analytics</div>
+
+      <div style={{display:'flex',gap:12,marginBottom:12}}>
+        <StatCard theme={C} label="System Uptime"    value="99.9%" sub="Last 30 days"     icon="✅" accent="green"/>
+        <StatCard theme={C} label="Sessions Tracked" value="1,240" sub="This semester"    icon="📷" accent="blue"/>
+        <StatCard theme={C} label="Detections Made"  value="48.2K" sub="Total face scans" icon="🔍" accent="purple"/>
+        <StatCard theme={C} label="Reports Generated"value="384"   sub="PDFs exported"    icon="📄" accent="amber"/>
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
+        <Card theme={C} title="Engagement Trend (All Departments)">
+          <div style={{padding:'4px 12px 12px'}}>
+            <LineChart theme={C} series={[
+              {label:'Engagement',data:store.trendData.engagement,color:C.blue},
+              {label:'Attention', data:store.trendData.attention, color:C.green},
+            ]} labels={store.trendData.labels} height={200}/>
+          </div>
+        </Card>
+        <Card theme={C} title="Emotion Distribution">
+          <div style={{padding:'4px 12px 12px',display:'flex',gap:12,alignItems:'center'}}>
+            <DonutChart theme={C} data={store.emotionDist.slice(0,5).map(d=>({label:d.emotion,value:d.count,color:d.color}))} size={150}/>
+            <div>
+              {store.emotionDist.slice(0,5).map((d,i)=>(
+                <div key={i} style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
+                  <span style={{color:d.color,fontSize:12}}>●</span>
+                  <span style={{fontSize:10,color:C.text2}}>{d.emotion} {d.pct}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <Card theme={C} title="Attendance by Course">
+        <div style={{padding:'4px 12px 12px'}}>
+          <BarChart theme={C} data={store.courses.map((c,i)=>{
+            const enrolled = store.getEnrolledStudents(c.id);
+            const val = enrolled.length ? Math.round(enrolled.reduce((a,s)=>a+s.attendanceRate,0)/enrolled.length) : 70 + (i*11)%25;
+            return {label:c.code,value:val,color:c.color};
+          })} height={200}/>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/* ── STUDENTS ── */
+function AdminStudents({ theme: C }) {
+  const [students, setStudents] = useState(store.students);
+  const [search, setSearch] = useState('');
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({name:'',dept:DEPARTMENTS[0],year:1,email:'',phone:''});
+  const [selected, setSelected] = useState(null);
+  const [portfolioStudent, setPortfolioStudent] = useState(null);
+  const [createdAccount, setCreatedAccount] = useState(null);
+  const [, forceUpdate] = useState(0);
+
+  const filtered = students.filter(s=>
+    s.name.toLowerCase().includes(search.toLowerCase())||s.id.toLowerCase().includes(search.toLowerCase())
+  );
+
+  function addStudent() {
+    if(!form.name.trim()) { alert('Name is required'); return; }
+    const s = store.addStudent(form);
+    const firstName = form.name.trim().split(' ')[0].toLowerCase().replace(/[^a-z]/g,'') || 'student';
+    const username = `stu.${firstName}.${s.id.toLowerCase()}`;
+    const password = generatePassword();
+    store.addUser({ name: form.name, username, password, email: form.email, role: 'student', studentId: s.id });
+    setCreatedAccount({ name: form.name, role: 'Student', username, password, email: form.email, id: s.id });
+    setStudents([...store.students]);
+    setShowAdd(false); setForm({name:'',dept:DEPARTMENTS[0],year:1,email:'',phone:''});
+  }
+
+  function deleteSelected() {
+    if(!selected) { alert('Select a student first'); return; }
+    if(!confirm(`Delete ${selected.name}?`)) return;
+    store.deleteStudent(selected.id);
+    setStudents([...store.students]); setSelected(null);
+  }
+
+  return (
+    <div style={{padding:'8px 20px 20px'}}>
+      {portfolioStudent && <StudentPortfolioModal theme={C} student={portfolioStudent} onClose={()=>setPortfolioStudent(null)}/>}
+      {createdAccount && <CredentialsModal theme={C} account={createdAccount} onClose={()=>setCreatedAccount(null)}/>}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+        <div style={{fontSize:22,fontWeight:700,color:C.text}}>Students ({store.students.length})</div>
+        <div style={{display:'flex',gap:8}}>
+          <button onClick={deleteSelected} style={{background:C.red_dim,border:`1px solid ${C.red}`,borderRadius:8,padding:'8px 14px',fontSize:11,color:C.red2,cursor:'pointer'}}>🗑️ Delete Selected</button>
+          <button onClick={()=>setShowAdd(true)} style={{background:C.blue3,border:'none',borderRadius:8,padding:'8px 14px',fontSize:11,fontWeight:700,color:'#fff',cursor:'pointer'}}>+ Add Student</button>
+        </div>
+      </div>
+
+      {/* Add form */}
+      {showAdd && (
+        <div style={{background:C.card,borderRadius:14,border:`1px solid ${C.border}`,padding:20,marginBottom:12}}>
+          <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:12}}>Add New Student</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:12}}>
+            {[['name','Full Name','text'],['email','Email','email'],['phone','Phone','text']].map(([k,ph,t])=>(
+              <div key={k}>
+                <div style={{fontSize:10,color:C.text3,marginBottom:4,textTransform:'uppercase',fontWeight:700}}>{ph}</div>
+                <input value={form[k]||''} onChange={e=>setForm({...form,[k]:e.target.value})} placeholder={ph} type={t}
+                  style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}/>
+              </div>
+            ))}
+            <div>
+              <div style={{fontSize:10,color:C.text3,marginBottom:4,textTransform:'uppercase',fontWeight:700}}>Department</div>
+              <select value={form.dept} onChange={e=>setForm({...form,dept:e.target.value})}
+                style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}>
+                {DEPARTMENTS.map(d=><option key={d}>{d}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{fontSize:10,color:C.text3,marginBottom:4,textTransform:'uppercase',fontWeight:700}}>Year</div>
+              <select value={form.year} onChange={e=>setForm({...form,year:parseInt(e.target.value)})}
+                style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}>
+                {[1,2,3,4].map(y=><option key={y} value={y}>Year {y}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <button onClick={addStudent} style={{background:C.green,border:'none',borderRadius:8,padding:'8px 20px',fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer'}}>✅ Add Student</button>
+            <button onClick={()=>setShowAdd(false)} style={{background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 14px',fontSize:12,color:C.text2,cursor:'pointer'}}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <div style={{marginBottom:12}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search students..."
+          style={{width:'100%',height:38,background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 12px',fontSize:12,color:C.text}}/>
+      </div>
+
+      <Card theme={C} title={`Students (${filtered.length})`}>
+        <div style={{padding:'4px 12px 12px'}}>
+          <DataTable theme={C} columns={[
+            {key:'id',label:'ID',width:70},{key:'name',label:'Name',width:190},
+            {key:'dept',label:'Department',width:140},{key:'year',label:'Year',width:60},
+            {key:'email',label:'Email',width:180},{key:'gpa',label:'GPA',width:60},
+            {key:'attendance',label:'Attendance',width:90},
+          ]} rows={filtered.map(s=>{
+            const photo = s.capturedPhoto || store.getPhotoUrl(s);
+            return {
+              id:s.id,
+              name:(
+                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                  {photo
+                    ? <img src={photo} alt={s.name}
+                        onError={e=>{e.target.style.display='none';e.target.nextSibling.style.display='flex';}}
+                        style={{width:30,height:30,borderRadius:'50%',objectFit:'cover',border:`1px solid ${C.border}`,flexShrink:0}}/>
+                    : null
+                  }
+                  <div style={{width:30,height:30,borderRadius:'50%',background:s.color,display:photo?'none':'flex',alignItems:'center',justifyContent:'center',fontSize:15,flexShrink:0}}>{s.emoji}</div>
+                  <span style={{overflow:'hidden',textOverflow:'ellipsis'}}>{s.name}</span>
+                </div>
+              ),
+              dept:s.dept,year:`Y${s.year}`,email:s.email,gpa:s.gpa,
+              attendance:`${s.attendanceRate}%`,
+            };
+          })} onRowClick={(_,i)=>setSelected(filtered[i])}/>
+        </div>
+      </Card>
+
+      {selected && (
+        <div style={{marginTop:12,background:C.card,borderRadius:14,border:`1px solid ${C.blue}`,padding:16}}>
+          <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:8}}>Selected: {selected.name} ({selected.id})</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+            {/* Actions */}
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              <button onClick={()=>setPortfolioStudent(selected)} style={{background:C.blue_dim,border:`1px solid ${C.blue}`,borderRadius:8,padding:'8px 14px',fontSize:11,fontWeight:700,color:C.blue2,cursor:'pointer'}}>📄 View Portfolio</button>
+              <button onClick={deleteSelected} style={{background:C.red_dim,border:`1px solid ${C.red}`,borderRadius:8,padding:'8px 14px',fontSize:11,color:C.red2,cursor:'pointer'}}>🗑️ Delete Student</button>
+              {selected.capturedPhoto && (
+                <div>
+                  <div style={{fontSize:10,color:C.text3,marginBottom:4}}>Registered Face Photo:</div>
+                  <img src={selected.capturedPhoto} alt="face" style={{width:80,height:80,borderRadius:'50%',objectFit:'cover',border:`2px solid ${C.green}`}}/>
+                </div>
+              )}
+            </div>
+            {/* Face Registration */}
+            <div>
+              <div style={{fontSize:11,fontWeight:700,color:C.text2,marginBottom:8}}>📸 Face Registration</div>
+              <WebcamFeed
+                theme={C}
+                compact
+                mode="🎓 Face Registration"
+                onCapture={async (dataUrl) => {
+                  store.updateStudent(selected.id, { capturedPhoto: dataUrl });
+                  setSelected({...selected, capturedPhoto: dataUrl});
+                  forceUpdate(n=>n+1);
+                  // Register face encoding with Python server
+                  try {
+                    const res = await fetch('http://localhost:8765/register', {
+                      method: 'POST',
+                      headers: {'Content-Type':'application/json'},
+                      body: JSON.stringify({ student_id: selected.id, frame: dataUrl }),
+                    });
+                    const d = await res.json();
+                    if (d.ok) alert(`✅ Face registered for ${selected.name} (${d.registered_total} total)`);
+                    else alert(`⚠️ ${d.error}`);
+                  } catch { alert('⚠️ Python server not running — start face_server.py'); }
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── DOCTORS/LECTURERS ── */
+function AdminDoctors({ theme: C }) {
+  const [doctors, setDoctors] = useState(store.doctors);
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({name:'',dept:DEPARTMENTS[0],title:TITLES[0],email:'',phone:''});
+  const [selected, setSelected] = useState(null);
+  const [createdAccount, setCreatedAccount] = useState(null);
+
+  function addDoctor() {
+    if(!form.name.trim()) { alert('Name is required'); return; }
+    const d = store.addDoctor(form);
+    setDoctors([...store.doctors]); setShowAdd(false);
+    const firstName = form.name.trim().split(' ')[0].toLowerCase().replace(/[^a-z]/g,'') || 'doctor';
+    const username = `dr.${firstName}`;
+    const password = generatePassword();
+    store.addUser({ name: form.name, username, password, email: form.email, role: 'doctor', doctorId: d.id });
+    setCreatedAccount({ name: form.name, role: 'Doctor / Lecturer', username, password, email: form.email, id: d.id });
+    setForm({name:'',dept:DEPARTMENTS[0],title:TITLES[0],email:'',phone:''});
+  }
+
+  function deleteSelected() {
+    if(!selected) { alert('Select a lecturer first'); return; }
+    if(!confirm(`Delete ${selected.name}?`)) return;
+    store.deleteDoctor(selected.id); setDoctors([...store.doctors]); setSelected(null);
+  }
+
+  return (
+    <div style={{padding:'8px 20px 20px'}}>
+      {createdAccount && <CredentialsModal theme={C} account={createdAccount} onClose={()=>setCreatedAccount(null)}/>}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+        <div style={{fontSize:22,fontWeight:700,color:C.text}}>Lecturers ({doctors.length})</div>
+        <div style={{display:'flex',gap:8}}>
+          <button onClick={deleteSelected} style={{background:C.red_dim,border:`1px solid ${C.red}`,borderRadius:8,padding:'8px 14px',fontSize:11,color:C.red2,cursor:'pointer'}}>🗑️ Delete</button>
+          <button onClick={()=>setShowAdd(true)} style={{background:C.blue3,border:'none',borderRadius:8,padding:'8px 14px',fontSize:11,fontWeight:700,color:'#fff',cursor:'pointer'}}>+ Add Lecturer</button>
+        </div>
+      </div>
+
+      {showAdd && (
+        <div style={{background:C.card,borderRadius:14,border:`1px solid ${C.border}`,padding:20,marginBottom:12}}>
+          <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:12}}>Add New Lecturer</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:12}}>
+            {[['name','Full Name'],['email','Email'],['phone','Phone']].map(([k,ph])=>(
+              <div key={k}>
+                <div style={{fontSize:10,color:C.text3,marginBottom:4,textTransform:'uppercase',fontWeight:700}}>{ph}</div>
+                <input value={form[k]||''} onChange={e=>setForm({...form,[k]:e.target.value})} placeholder={ph}
+                  style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}/>
+              </div>
+            ))}
+            <div>
+              <div style={{fontSize:10,color:C.text3,marginBottom:4,textTransform:'uppercase',fontWeight:700}}>Department</div>
+              <select value={form.dept} onChange={e=>setForm({...form,dept:e.target.value})}
+                style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}>
+                {DEPARTMENTS.map(d=><option key={d}>{d}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{fontSize:10,color:C.text3,marginBottom:4,textTransform:'uppercase',fontWeight:700}}>Title</div>
+              <select value={form.title} onChange={e=>setForm({...form,title:e.target.value})}
+                style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}>
+                {TITLES.map(t=><option key={t}>{t}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <button onClick={addDoctor} style={{background:C.green,border:'none',borderRadius:8,padding:'8px 20px',fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer'}}>✅ Add Lecturer</button>
+            <button onClick={()=>setShowAdd(false)} style={{background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 14px',fontSize:12,color:C.text2,cursor:'pointer'}}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:12}}>
+        {doctors.map((d,i)=>(
+          <div key={i} onClick={()=>setSelected(d===selected?null:d)}
+            style={{background:selected?.id===d.id?C.blue_dim:C.card,borderRadius:14,border:`1px solid ${selected?.id===d.id?C.blue:C.border}`,padding:16,cursor:'pointer',transition:'all 0.15s'}}>
+            <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:10}}>
+              <div style={{width:48,height:48,borderRadius:'50%',background:d.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:24}}>{d.emoji}</div>
+              <div>
+                <div style={{fontSize:13,fontWeight:700,color:C.text}}>{d.name}</div>
+                <div style={{fontSize:10,color:C.text3}}>{d.title}</div>
+              </div>
+            </div>
+            <div style={{fontSize:10,color:C.text2,marginBottom:4}}>📧 {d.email}</div>
+            <div style={{fontSize:10,color:C.text2,marginBottom:8}}>🏛️ {d.dept}</div>
+            <div style={{display:'flex',gap:8}}>
+              <div style={{textAlign:'center',flex:1,background:C.bg3,borderRadius:8,padding:'6px'}}>
+                <div style={{fontSize:14,fontWeight:700,color:C.blue}}>{d.courses}</div>
+                <div style={{fontSize:9,color:C.text3}}>Courses</div>
+              </div>
+              <div style={{textAlign:'center',flex:1,background:C.bg3,borderRadius:8,padding:'6px'}}>
+                <div style={{fontSize:14,fontWeight:700,color:C.green}}>{d.students}</div>
+                <div style={{fontSize:9,color:C.text3}}>Students</div>
+              </div>
+              <div style={{textAlign:'center',flex:1,background:C.bg3,borderRadius:8,padding:'6px'}}>
+                <div style={{fontSize:14,fontWeight:700,color:C.amber}}>{d.engagement}%</div>
+                <div style={{fontSize:9,color:C.text3}}>Engagement</div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {selected && (
+        <div style={{marginTop:12,padding:'12px',background:C.card,borderRadius:12,border:`1px solid ${C.blue}`,display:'flex',gap:8}}>
+          <button onClick={deleteSelected} style={{background:C.red_dim,border:`1px solid ${C.red}`,borderRadius:8,padding:'8px 14px',fontSize:11,color:C.red2,cursor:'pointer'}}>🗑️ Delete {selected.name}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── COURSES ── */
+function AdminCourses({ theme: C }) {
+  const [courses, setCourses]       = useState(store.courses);
+  const [showAdd, setShowAdd]       = useState(false);
+  const [weeksOpen, setWeeksOpen]   = useState(null); // courseId with weeks panel open
+  const [form, setForm] = useState({name:'',code:'',room:'',time:'09:00',duration:90,doctorId:'',color:'#3b82f6',semester:'Fall 2024'});
+
+  function addCourse() {
+    if(!form.name.trim()||!form.code.trim()) { alert('Name and code required'); return; }
+    store.addCourse(form); setCourses([...store.courses]); setShowAdd(false);
+    setForm({name:'',code:'',room:'',time:'09:00',duration:90,doctorId:'',color:'#3b82f6',semester:'Fall 2024'});
+  }
+
+  function deleteCourse(id) {
+    if(!confirm('Delete this course?')) return;
+    store.deleteCourse(id); setCourses([...store.courses]);
+    if (weeksOpen === id) setWeeksOpen(null);
+  }
+
+  function toggleWeek(course, w) {
+    const cur = course.weeks || Array.from({length:16},(_,k)=>k+1);
+    const next = cur.includes(w) ? cur.filter(x=>x!==w) : [...cur, w].sort((a,b)=>a-b);
+    store.updateCourse(course.id, { weeks: next });
+    setCourses([...store.courses]);
+  }
+
+  function setAllWeeks(course, all) {
+    const next = all ? Array.from({length:16},(_,k)=>k+1) : [];
+    store.updateCourse(course.id, { weeks: next });
+    setCourses([...store.courses]);
+  }
+
+  return (
+    <div style={{padding:'8px 20px 20px'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+        <div style={{fontSize:22,fontWeight:700,color:C.text}}>Courses ({courses.length})</div>
+        <button onClick={()=>setShowAdd(true)} style={{background:C.blue3,border:'none',borderRadius:8,padding:'8px 14px',fontSize:11,fontWeight:700,color:'#fff',cursor:'pointer'}}>+ Add Course</button>
+      </div>
+
+      {showAdd && (
+        <div style={{background:C.card,borderRadius:14,border:`1px solid ${C.border}`,padding:20,marginBottom:12}}>
+          <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:12}}>Add New Course</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:12}}>
+            {[['name','Course Name'],['code','Course Code'],['room','Room']].map(([k,ph])=>(
+              <div key={k}>
+                <div style={{fontSize:10,color:C.text3,marginBottom:4,textTransform:'uppercase',fontWeight:700}}>{ph}</div>
+                <input value={form[k]} onChange={e=>setForm({...form,[k]:e.target.value})} placeholder={ph}
+                  style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}/>
+              </div>
+            ))}
+            <div>
+              <div style={{fontSize:10,color:C.text3,marginBottom:4,textTransform:'uppercase',fontWeight:700}}>Assign Lecturer</div>
+              <select value={form.doctorId} onChange={e=>setForm({...form,doctorId:e.target.value})}
+                style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}>
+                <option value="">Unassigned</option>
+                {store.doctors.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{fontSize:10,color:C.text3,marginBottom:4,textTransform:'uppercase',fontWeight:700}}>Time</div>
+              <input value={form.time} onChange={e=>setForm({...form,time:e.target.value})} type="time"
+                style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}/>
+            </div>
+            <div>
+              <div style={{fontSize:10,color:C.text3,marginBottom:4,textTransform:'uppercase',fontWeight:700}}>Color</div>
+              <input value={form.color} onChange={e=>setForm({...form,color:e.target.value})} type="color"
+                style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 4px',cursor:'pointer'}}/>
+            </div>
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <button onClick={addCourse} style={{background:C.green,border:'none',borderRadius:8,padding:'8px 20px',fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer'}}>✅ Add Course</button>
+            <button onClick={()=>setShowAdd(false)} style={{background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 14px',fontSize:12,color:C.text2,cursor:'pointer'}}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <div style={{display:'flex',flexDirection:'column',gap:10}}>
+        {courses.map((c,i)=>{
+          const activeWeeks = c.weeks || Array.from({length:16},(_,k)=>k+1);
+          const isOpen = weeksOpen === c.id;
+          return (
+            <div key={i} style={{background:C.card,borderRadius:14,border:`1px solid ${C.border}`,overflow:'hidden'}}>
+              {/* Course row */}
+              <div style={{display:'flex'}}>
+                <div style={{width:6,background:c.color,flexShrink:0}}/>
+                <div style={{padding:'14px 18px',flex:1,display:'flex',alignItems:'center',gap:16}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:14,fontWeight:700,color:C.text}}>{c.name}</div>
+                    <div style={{fontSize:11,color:C.text2,marginTop:2}}>{c.code} · {c.room} · {c.time} · {c.duration} min</div>
+                    <div style={{fontSize:11,color:C.text3}}>👨‍🏫 {c.doctorName} · {c.semester}</div>
+                  </div>
+                  {/* Week count badge */}
+                  <div style={{textAlign:'center'}}>
+                    <div style={{fontSize:20,fontWeight:700,color:c.color}}>{activeWeeks.length}</div>
+                    <div style={{fontSize:9,color:C.text3}}>Weeks</div>
+                  </div>
+                  <div style={{textAlign:'center'}}>
+                    <div style={{fontSize:20,fontWeight:700,color:c.color}}>{c.enrolledCount}</div>
+                    <div style={{fontSize:9,color:C.text3}}>Enrolled</div>
+                  </div>
+                  {/* Weeks edit button */}
+                  <button
+                    onClick={()=>setWeeksOpen(isOpen ? null : c.id)}
+                    style={{background: isOpen ? C.blue3 : C.bg3, border:`1px solid ${isOpen ? C.blue3 : C.border}`, borderRadius:8, padding:'6px 12px', fontSize:11, fontWeight:700, color: isOpen ? '#fff' : C.text2, cursor:'pointer'}}>
+                    📅 Weeks
+                  </button>
+                  <button onClick={()=>deleteCourse(c.id)} style={{background:C.red_dim,border:`1px solid ${C.red}`,borderRadius:8,padding:'6px 10px',fontSize:10,color:C.red2,cursor:'pointer'}}>🗑️</button>
+                </div>
+              </div>
+
+              {/* Weeks checklist panel */}
+              {isOpen && (
+                <div style={{borderTop:`1px solid ${C.border}`,padding:'14px 20px',background:C.bg3}}>
+                  <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+                    <div style={{fontSize:12,fontWeight:700,color:C.text}}>📅 Active Weeks — {activeWeeks.length} / 16 selected</div>
+                    <div style={{flex:1}}/>
+                    <button onClick={()=>setAllWeeks(c, true)}
+                      style={{background:C.green,border:'none',borderRadius:6,padding:'4px 12px',fontSize:11,fontWeight:700,color:'#fff',cursor:'pointer'}}>
+                      ✅ All
+                    </button>
+                    <button onClick={()=>setAllWeeks(c, false)}
+                      style={{background:C.red_dim,border:`1px solid ${C.red}`,borderRadius:6,padding:'4px 12px',fontSize:11,fontWeight:700,color:C.red2,cursor:'pointer'}}>
+                      ✗ None
+                    </button>
+                  </div>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(8,1fr)',gap:6}}>
+                    {Array.from({length:16},(_,k)=>k+1).map(w=>{
+                      const on = activeWeeks.includes(w);
+                      return (
+                        <label key={w} onClick={()=>toggleWeek(c,w)} style={{
+                          display:'flex', alignItems:'center', justifyContent:'center', gap:5,
+                          background: on ? `${c.color}22` : C.card,
+                          border: `2px solid ${on ? c.color : C.border}`,
+                          borderRadius:8, padding:'7px 0', cursor:'pointer',
+                          transition:'all 0.15s', userSelect:'none',
+                        }}>
+                          <input type="checkbox" checked={on} onChange={()=>{}} style={{accentColor:c.color,width:13,height:13,cursor:'pointer'}}/>
+                          <span style={{fontSize:12,fontWeight:700,color: on ? c.color : C.text2}}>W{w}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ── ENROLLMENTS ── */
+function AdminEnrollments({ theme: C }) {
+  const [selCourse, setSelCourse] = useState(store.courses[0]?.id||'');
+  const [, forceUpdate] = useState(0);
+
+  const enrolled   = selCourse ? store.getEnrolledStudents(selCourse) : [];
+  const unenrolled = selCourse ? store.getUnenrolledStudents(selCourse) : [];
+
+  return (
+    <div style={{padding:'8px 20px 20px'}}>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>Enrollment Management</div>
+
+      <div style={{marginBottom:12}}>
+        <select value={selCourse} onChange={e=>setSelCourse(e.target.value)}
+          style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 12px',fontSize:12,color:C.text}}>
+          {store.courses.map(c=><option key={c.id} value={c.id}>{c.name} ({c.code})</option>)}
+        </select>
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+        <Card theme={C} title={`Enrolled (${enrolled.length})`} accentColor={C.green}>
+          <div style={{padding:'4px 12px 12px',display:'flex',flexDirection:'column',gap:6,maxHeight:400,overflowY:'auto'}}>
+            {enrolled.map((s,i)=>{
+              const photo = s.capturedPhoto || store.getPhotoUrl(s);
+              return (
+              <div key={i} style={{display:'flex',alignItems:'center',background:C.bg3,borderRadius:8,padding:'8px 10px',gap:10}}>
+                {photo
+                  ? <img src={photo} alt={s.name} onError={e=>{e.target.style.display='none';e.target.nextSibling.style.display='flex';}}
+                      style={{width:32,height:32,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
+                  : null}
+                <div style={{width:32,height:32,borderRadius:'50%',background:s.color,display:photo?'none':'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>{s.emoji}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:11,fontWeight:700,color:C.text}}>{s.name}</div>
+                  <div style={{fontSize:10,color:C.text3}}>{s.id}</div>
+                </div>
+                <button onClick={()=>{store.unenrollStudent(selCourse,s.id);forceUpdate(n=>n+1);}}
+                  style={{background:C.red_dim,border:`1px solid ${C.red}`,borderRadius:6,padding:'4px 8px',fontSize:10,color:C.red2,cursor:'pointer'}}>Remove</button>
+              </div>
+              );
+            })}
+            {enrolled.length===0&&<div style={{color:C.text3,fontSize:12,textAlign:'center',padding:'20px 0'}}>No enrolled students</div>}
+          </div>
+        </Card>
+
+        <Card theme={C} title={`Available to Enroll (${unenrolled.length})`} accentColor={C.blue}>
+          <div style={{padding:'4px 12px 12px',display:'flex',flexDirection:'column',gap:6,maxHeight:400,overflowY:'auto'}}>
+            {unenrolled.map((s,i)=>{
+              const photo = s.capturedPhoto || store.getPhotoUrl(s);
+              return (
+              <div key={i} style={{display:'flex',alignItems:'center',background:C.bg3,borderRadius:8,padding:'8px 10px',gap:10}}>
+                {photo
+                  ? <img src={photo} alt={s.name} onError={e=>{e.target.style.display='none';e.target.nextSibling.style.display='flex';}}
+                      style={{width:32,height:32,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
+                  : null}
+                <div style={{width:32,height:32,borderRadius:'50%',background:s.color,display:photo?'none':'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>{s.emoji}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:11,fontWeight:700,color:C.text}}>{s.name}</div>
+                  <div style={{fontSize:10,color:C.text3}}>{s.id}</div>
+                </div>
+                <button onClick={()=>{store.enrollStudent(selCourse,s.id);forceUpdate(n=>n+1);}}
+                  style={{background:C.green_dim,border:`1px solid ${C.green}`,borderRadius:6,padding:'4px 8px',fontSize:10,color:C.green2,cursor:'pointer'}}>Enroll</button>
+              </div>
+              );
+            })}
+            {unenrolled.length===0&&<div style={{color:C.text3,fontSize:12,textAlign:'center',padding:'20px 0'}}>All students enrolled</div>}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+/* ── PARENTS ── */
+function AdminParents({ theme: C }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({name:'',username:'',password:'demo123',email:'',studentId:''});
+  const [parents, setParents] = useState(store.users.filter(u=>u.role==='parent'));
+  const [createdAccount, setCreatedAccount] = useState(null);
+  const [, forceUpdate] = useState(0);
+
+  function addParent() {
+    if(!form.name.trim()||!form.username.trim()) { alert('Name and username required'); return; }
+    store.addUser({...form, role:'parent'});
+    setCreatedAccount({ name: form.name, role: 'Parent', username: form.username, password: form.password, email: form.email, id: form.studentId||null });
+    setParents(store.users.filter(u=>u.role==='parent'));
+    setShowAdd(false); setForm({name:'',username:'',password:'demo123',email:'',studentId:''});
+  }
+
+  return (
+    <div style={{padding:'8px 20px 20px'}}>
+      {createdAccount && <CredentialsModal theme={C} account={createdAccount} onClose={()=>setCreatedAccount(null)}/>}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+        <div style={{fontSize:22,fontWeight:700,color:C.text}}>Parents ({parents.length})</div>
+        <button onClick={()=>setShowAdd(true)} style={{background:C.blue3,border:'none',borderRadius:8,padding:'8px 14px',fontSize:11,fontWeight:700,color:'#fff',cursor:'pointer'}}>+ Add Parent</button>
+      </div>
+
+      {showAdd && (
+        <div style={{background:C.card,borderRadius:14,border:`1px solid ${C.border}`,padding:20,marginBottom:12}}>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:12}}>
+            {[['name','Full Name'],['username','Username'],['password','Password'],['email','Email'],['studentId','Linked Student ID']].map(([k,ph])=>(
+              <div key={k}>
+                <div style={{fontSize:10,color:C.text3,marginBottom:4,textTransform:'uppercase',fontWeight:700}}>{ph}</div>
+                <input value={form[k]} onChange={e=>setForm({...form,[k]:e.target.value})} placeholder={ph}
+                  style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}/>
+              </div>
+            ))}
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <button onClick={addParent} style={{background:C.green,border:'none',borderRadius:8,padding:'8px 20px',fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer'}}>✅ Add Parent</button>
+            <button onClick={()=>setShowAdd(false)} style={{background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 14px',fontSize:12,color:C.text2,cursor:'pointer'}}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      <Card theme={C} title={`Parent Accounts (${parents.length})`}>
+        <div style={{padding:'4px 12px 12px'}}>
+          <DataTable theme={C} columns={[
+            {key:'name',label:'Name',width:160},{key:'username',label:'Username',width:120},
+            {key:'email',label:'Email',width:200},{key:'studentId',label:'Linked Student',width:120},
+          ]} rows={parents.map(p=>({name:p.name,username:p.username,email:p.email||'—',studentId:p.studentId||'—'}))}/>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/* ── R REPORTS ── */
+function AdminRReports({ theme: C }) {
+  const [output, setOutput]   = useState('# R output will appear here...');
+  const [running, setRunning] = useState('');
+
+  async function runScript(script) {
+    setRunning(script);
+    setOutput(`# Running ${script}...\n`);
+    try {
+      const res = await fetch('/api/run-r', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ script }),
+      });
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = `# Running ${script}...\n`;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        setOutput(buf);
+      }
+    } catch (e) {
+      setOutput(prev => prev + `\n[Error: ${e.message}]`);
+    } finally {
+      setRunning('');
+    }
+  }
+
+  const scripts = [
+    {
+      id: 'install_packages.R',
+      icon: '📦',
+      title: 'Install Packages',
+      sub: 'install_packages.R',
+      desc: 'Install all R packages · Run once first',
+      color: '#f59e0b',
+    },
+    {
+      id: 'analysis.R',
+      icon: '📊',
+      title: 'Full Analysis',
+      sub: 'analysis.R',
+      desc: 'Emotion distribution · Clustering · Charts',
+      color: '#3b82f6',
+    },
+    {
+      id: 'shiny_dashboard.R',
+      icon: '✨',
+      title: 'Shiny Dashboard',
+      sub: 'shiny_dashboard.R',
+      desc: 'Interactive dashboard · 127.0.0.1:3484',
+      color: '#10b981',
+      url: 'http://127.0.0.1:3484',
+    },
+  ];
+
+  return (
+    <div style={{ padding: '8px 20px 20px' }}>
+      <div style={{ fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 4 }}>R Analysis Reports</div>
+      <div style={{ fontSize: 12, color: C.text2, marginBottom: 12 }}>Run R scripts directly — no need to open R manually</div>
+
+      <div style={{
+        background: '#021a12', border: '1px solid #10b981', borderRadius: 10,
+        padding: '10px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8,
+        fontSize: 12, color: '#10b981',
+      }}>
+        <span style={{ fontSize: 16 }}>✅</span>
+        R detected at <code style={{ fontFamily: 'monospace', background: 'rgba(16,185,129,0.1)', padding: '2px 6px', borderRadius: 4 }}>C:\Program Files\R\R-4.6.0\bin\Rscript.exe</code>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 20 }}>
+        {scripts.map(s => (
+          <div key={s.id} style={{
+            background: C.card, border: `1px solid ${C.border}`, borderRadius: 14,
+            padding: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+          }}>
+            <div style={{ fontSize: 36, opacity: 0.85 }}>{s.icon}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{s.title}</div>
+            <div style={{ fontSize: 10, color: C.text3, fontFamily: 'monospace' }}>{s.sub}</div>
+            <div style={{ fontSize: 11, color: C.text2, textAlign: 'center', lineHeight: 1.5 }}>{s.desc}</div>
+            <button
+              disabled={!!running}
+              onClick={() => runScript(s.id)}
+              style={{
+                width: '100%', height: 40, borderRadius: 8, border: 'none',
+                background: running === s.id ? C.border : s.color,
+                color: '#fff', fontSize: 13, fontWeight: 700, cursor: running ? 'not-allowed' : 'pointer',
+                opacity: running && running !== s.id ? 0.5 : 1,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              }}
+            >
+              {running === s.id ? '⏳ Running…' : '▶ Run'}
+            </button>
+            {s.url && (
+              <a href={s.url} target="_blank" rel="noreferrer" style={{
+                width: '100%', height: 34, borderRadius: 8,
+                border: `1px solid ${s.color}`, background: 'transparent',
+                color: s.color, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                textDecoration: 'none',
+              }}>
+                🔗 Open Dashboard
+              </a>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ background: C.card2, padding: '10px 16px', borderBottom: `1px solid ${C.border}`, fontSize: 12, fontWeight: 700, color: C.text }}>
+          R Script Output
+        </div>
+        <pre style={{
+          margin: 0, padding: 16, fontSize: 11, fontFamily: 'monospace',
+          color: '#86efac', background: '#020d06',
+          minHeight: 180, maxHeight: 400, overflowY: 'auto',
+          whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+          lineHeight: 1.6,
+        }}>
+          {output}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
+/* ── CREDENTIALS MODAL ── */
+function CredentialsModal({ theme: C, account, onClose }) {
+  const [copied, setCopied] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [emailError, setEmailError] = useState('');
+
+  const credText = [
+    'EduSense Account Credentials',
+    '─────────────────────────────',
+    `Name:     ${account.name}`,
+    `Role:     ${account.role}`,
+    `Username: ${account.username}`,
+    `Password: ${account.password}`,
+    `Email:    ${account.email || '—'}`,
+    '',
+    `Login at: ${window.location.origin}`,
+  ].join('\n');
+
+  function copyCredentials() {
+    navigator.clipboard.writeText(credText).then(()=>{ setCopied(true); setTimeout(()=>setCopied(false), 2500); });
+  }
+
+  async function sendEmail() {
+    if (!account.email) { setEmailError('No email address provided for this account.'); return; }
+    setSending(true); setEmailError(''); setSent(false);
+    try {
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: account.email, name: account.name, username: account.username, password: account.password, role: account.role, id: account.id }),
+      });
+      const data = await res.json();
+      if (data.ok) { setSent(true); }
+      else { setEmailError(data.error || 'Failed to send email.'); }
+    } catch(e) {
+      setEmailError(e.message);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',zIndex:2000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
+      onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{background:C.card,borderRadius:16,border:`2px solid ${C.green}`,width:'100%',maxWidth:480,padding:24}}>
+
+        {/* Header */}
+        <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:20}}>
+          <div style={{width:52,height:52,borderRadius:'50%',background:C.green_dim,border:`2px solid ${C.green}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:26}}>✅</div>
+          <div>
+            <div style={{fontSize:17,fontWeight:700,color:C.text}}>Account Created Successfully</div>
+            <div style={{fontSize:11,color:C.text3,marginTop:2}}>Send credentials to {account.name}</div>
+          </div>
+        </div>
+
+        {/* Credential card */}
+        <div style={{background:C.bg3,borderRadius:12,padding:'14px 16px',marginBottom:16,fontFamily:'monospace',fontSize:12}}>
+          {[['Name', account.name, C.text],['Role', account.role, C.blue2],['Username', account.username, C.cyan||C.blue2],['Password', account.password, C.amber],['Email', account.email||'—', C.text2]].map(([k,v,col])=>(
+            <div key={k} style={{display:'flex',gap:12,marginBottom:6,alignItems:'center'}}>
+              <span style={{color:C.text3,width:78,flexShrink:0,fontSize:10,textTransform:'uppercase',fontWeight:700}}>{k}</span>
+              <span style={{color:col,fontWeight:k==='Password'?700:'normal',letterSpacing:k==='Password'?1:0}}>{v}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Warning */}
+        <div style={{background:'#2d1a00',border:`1px solid ${C.amber}`,borderRadius:8,padding:'8px 12px',marginBottom:16,fontSize:11,color:C.amber}}>
+          ⚠️ Save these credentials now — the password cannot be recovered later.
+        </div>
+
+        {/* Email status */}
+        {sent && (
+          <div style={{background:C.green_dim,border:`1px solid ${C.green}`,borderRadius:8,padding:'8px 12px',marginBottom:10,fontSize:12,color:C.green2,textAlign:'center'}}>
+            ✅ Email sent successfully to {account.email}
+          </div>
+        )}
+        {emailError && (
+          <div style={{background:C.red_dim,border:`1px solid ${C.red}`,borderRadius:8,padding:'8px 12px',marginBottom:10,fontSize:11,color:C.red2}}>
+            <div style={{fontWeight:700,marginBottom:4}}>❌ Email sending failed</div>
+            <div style={{marginBottom:6,opacity:0.85}}>{emailError.includes('BadCredentials')||emailError.includes('Invalid login') ? 'Gmail rejected the App Password. Check that 2-Step Verification is ON and the App Password is correct in Google Account → Security → App Passwords.' : emailError}</div>
+            {account.email && (
+              <button onClick={()=>{ const s=encodeURIComponent(`Your EduSense Account`); const b=encodeURIComponent(`Username: ${account.username}\nPassword: ${account.password}`); window.open(`mailto:${account.email}?subject=${s}&body=${b}`); }}
+                style={{background:'transparent',border:`1px solid ${C.red}`,borderRadius:6,padding:'4px 10px',fontSize:10,color:C.red2,cursor:'pointer',marginTop:4}}>
+                📨 Open in Mail App instead
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Action buttons */}
+        <div style={{display:'flex',gap:8,marginBottom:10}}>
+          <button onClick={sendEmail} disabled={sending||sent||!account.email}
+            style={{flex:1,height:42,background:sent?C.green:C.blue3,border:'none',borderRadius:8,fontSize:12,fontWeight:700,color:'#fff',cursor:sending||!account.email?'not-allowed':'pointer',opacity:!account.email?0.5:1,transition:'all 0.2s'}}>
+            {sending ? '⏳ Sending…' : sent ? '✅ Sent!' : '📧 Send Email'}
+          </button>
+          <button onClick={copyCredentials}
+            style={{flex:1,height:42,background:copied?C.green:C.bg3,border:`1px solid ${copied?C.green:C.border}`,borderRadius:8,fontSize:12,fontWeight:700,color:copied?'#fff':C.text2,cursor:'pointer',transition:'all 0.2s'}}>
+            {copied ? '✅ Copied!' : '📋 Copy Credentials'}
+          </button>
+        </div>
+
+        <button onClick={onClose} style={{width:'100%',height:36,background:'transparent',border:`1px solid ${C.border}`,borderRadius:8,fontSize:12,color:C.text3,cursor:'pointer'}}>
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── STUDENT PORTFOLIO MODAL ── */
+function StudentPortfolioModal({ theme: C, student, onClose }) {
+  const [enrolledCourses, setEnrolledCourses] = useState(store.getStudentCourses(student.id));
+  const courses = enrolledCourses;
+  const idHash  = student.id.split('').reduce((a,c)=>a+c.charCodeAt(0),0);
+
+  function withdrawCourse(courseId) {
+    if (!window.confirm(`Withdraw ${student.name} from this course?`)) return;
+    store.unenrollStudent(courseId, student.id);
+    setEnrolledCourses(store.getStudentCourses(student.id));
+  }
+
+  function printPortfolio() {
+    const courseRows = courses.map((c,i) => {
+      const rec = store.getCourseResults(c.id)[student.id];
+      const g   = rec?.grade;
+      const att = ((idHash + i*17) % 30) + 70;
+      return `<tr>
+        <td>${c.name}</td><td>${c.code}</td>
+        <td style="font-weight:700">${g!=null?g+'%':'—'}</td>
+        <td style="font-weight:700">${g!=null?letterGrade(g):'—'}</td>
+        <td>${att}%</td>
+      </tr>`;
+    }).join('');
+
+    const rawPhoto = student.capturedPhoto || store.getPhotoUrl(student);
+    const photoSrc = rawPhoto
+      ? (rawPhoto.startsWith('data:') ? rawPhoto : `${window.location.origin}${rawPhoto}`)
+      : null;
+    const photoHtml = photoSrc
+      ? `<img src="${photoSrc}" alt="${student.name}" style="width:90px;height:90px;border-radius:50%;object-fit:cover;border:3px solid #1e40af;margin-right:20px;flex-shrink:0"/>`
+      : `<div style="width:90px;height:90px;border-radius:50%;background:${student.color||'#1e40af'};display:flex;align-items:center;justify-content:center;font-size:40px;margin-right:20px;flex-shrink:0">${student.emoji||'🎓'}</div>`;
+
+    const win = window.open('','_blank');
+    win.document.write(`<!DOCTYPE html><html><head><title>Portfolio — ${student.name}</title>
+<style>
+  body{font-family:Arial,sans-serif;margin:40px;color:#1e293b}
+  .header{display:flex;align-items:center;margin-bottom:16px}
+  h1{color:#1e40af;margin:0 0 4px;font-size:22px}
+  .sub{color:#64748b;font-size:13px}
+  .stats{display:flex;gap:16px;margin:16px 0}
+  .stat{background:#f1f5f9;border-radius:8px;padding:12px 20px;text-align:center}
+  .sv{font-size:22px;font-weight:700;color:#1e40af}
+  .sl{font-size:11px;color:#64748b;margin-top:4px}
+  table{width:100%;border-collapse:collapse;margin-top:16px}
+  th{background:#1e40af;color:#fff;padding:10px 12px;text-align:left;font-size:12px}
+  td{padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:12px}
+  tr:nth-child(even){background:#f8fafc}
+  .footer{color:#94a3b8;font-size:11px;margin-top:24px;text-align:right}
+  @media print{button{display:none}}
+</style></head><body>
+<div class="header">
+  ${photoHtml}
+  <div>
+    <h1>${student.name} — Academic Portfolio</h1>
+    <div class="sub">${student.id} · ${student.dept} · Year ${student.year}</div>
+    <p style="margin:6px 0 0;font-size:13px;color:#475569">📧 ${student.email||'—'} &nbsp; 📞 ${student.phone||'—'}</p>
+  </div>
+</div>
+<div class="stats">
+  <div class="stat"><div class="sv">${student.gpa}</div><div class="sl">GPA</div></div>
+  <div class="stat"><div class="sv">${student.attendanceRate}%</div><div class="sl">Attendance</div></div>
+  <div class="stat"><div class="sv">${student.engagement}%</div><div class="sl">Engagement</div></div>
+  <div class="stat"><div class="sv">${student.attentionScore}%</div><div class="sl">Attention</div></div>
+</div>
+<h3>Course Grades</h3>
+<table>
+  <thead><tr><th>Course</th><th>Code</th><th>Grade</th><th>Letter</th><th>Attendance</th></tr></thead>
+  <tbody>${courseRows||'<tr><td colspan="5" style="text-align:center;color:#94a3b8">No courses enrolled</td></tr>'}</tbody>
+</table>
+<div class="footer">Generated ${new Date().toLocaleDateString()} · UsenseLab Academic System</div>
+<script>window.onload=()=>window.print();</script>
+</body></html>`);
+    win.document.close();
+  }
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
+      onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{background:C.card,borderRadius:16,border:`1px solid ${C.border}`,width:'100%',maxWidth:720,maxHeight:'88vh',overflowY:'auto',padding:24}}>
+
+        {/* Header */}
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
+          <div style={{display:'flex',alignItems:'center',gap:12}}>
+            {(()=>{
+              const photo = student.capturedPhoto || store.getPhotoUrl(student);
+              return photo
+                ? <img src={photo} alt={student.name}
+                    onError={e=>{e.target.style.display='none';e.target.nextSibling.style.display='flex';}}
+                    style={{width:56,height:56,borderRadius:'50%',objectFit:'cover',border:`2px solid ${C.green}`}}/>
+                : null;
+            })()}
+            <div style={{width:56,height:56,borderRadius:'50%',background:student.color,
+              display:(student.capturedPhoto||store.getPhotoUrl(student))?'none':'flex',
+              alignItems:'center',justifyContent:'center',fontSize:28}}>{student.emoji}</div>
+            <div>
+              <div style={{fontSize:18,fontWeight:700,color:C.text}}>{student.name}</div>
+              <div style={{fontSize:11,color:C.text3}}>{student.id} · {student.dept} · Year {student.year}</div>
+            </div>
+          </div>
+          <div style={{display:'flex',gap:8}}>
+            <button onClick={printPortfolio} style={{background:C.blue3,border:'none',borderRadius:8,padding:'8px 16px',fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer'}}>
+              🖨️ Print / Save PDF
+            </button>
+            <button onClick={onClose} style={{background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 12px',fontSize:12,color:C.text2,cursor:'pointer'}}>✕</button>
+          </div>
+        </div>
+
+        {/* Stats row */}
+        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:14}}>
+          {[['GPA',student.gpa,C.blue],['Attendance',`${student.attendanceRate}%`,C.green],['Engagement',`${student.engagement}%`,C.purple],['Attention',`${student.attentionScore}%`,C.amber]].map(([lbl,val,col])=>(
+            <div key={lbl} style={{background:C.bg3,borderRadius:10,padding:'10px 12px',textAlign:'center'}}>
+              <div style={{fontSize:20,fontWeight:700,color:col}}>{val}</div>
+              <div style={{fontSize:10,color:C.text3,marginTop:2}}>{lbl}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Contact strip */}
+        <div style={{background:C.bg3,borderRadius:10,padding:'8px 14px',marginBottom:14,fontSize:11,color:C.text2,display:'flex',gap:20,flexWrap:'wrap'}}>
+          <span>📧 {student.email||'—'}</span>
+          <span>📞 {student.phone||'—'}</span>
+          <span>😊 {student.emotion}</span>
+        </div>
+
+        {/* Courses table */}
+        <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:8}}>Enrolled Courses & Grades</div>
+        <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+          <thead>
+            <tr style={{background:C.card2}}>
+              {['Course','Code','Grade','Letter','Est. Attendance','Action'].map(h=>(
+                <th key={h} style={{padding:'8px 10px',textAlign:'left',fontSize:10,fontWeight:700,color:C.text2,borderBottom:`1px solid ${C.border}`}}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {courses.length===0
+              ? <tr><td colSpan={6} style={{padding:16,textAlign:'center',color:C.text3}}>No courses enrolled</td></tr>
+              : courses.map((c,i)=>{
+                  const rec = store.getCourseResults(c.id)[student.id];
+                  const g   = rec?.grade;
+                  const att = ((idHash + i*17) % 30) + 70;
+                  const gc  = g!=null ? gradeColor(g,C) : C.text3;
+                  return (
+                    <tr key={i} style={{background:i%2===0?C.bg3:C.card}}>
+                      <td style={{padding:'7px 10px',color:C.text,borderBottom:`1px solid ${C.border}`}}>{c.name}</td>
+                      <td style={{padding:'7px 10px',color:C.text2,borderBottom:`1px solid ${C.border}`}}>{c.code}</td>
+                      <td style={{padding:'7px 10px',fontWeight:700,color:gc,borderBottom:`1px solid ${C.border}`}}>{g!=null?`${g}%`:'—'}</td>
+                      <td style={{padding:'7px 10px',fontWeight:700,color:gc,borderBottom:`1px solid ${C.border}`}}>{g!=null?letterGrade(g):'—'}</td>
+                      <td style={{padding:'7px 10px',color:C.text2,borderBottom:`1px solid ${C.border}`}}>{att}%</td>
+                      <td style={{padding:'7px 10px',borderBottom:`1px solid ${C.border}`}}>
+                        <button onClick={()=>withdrawCourse(c.id)}
+                          style={{background:'#2d1a00',border:`1px solid ${C.amber}`,borderRadius:6,padding:'3px 10px',fontSize:10,color:C.amber,cursor:'pointer',fontWeight:700}}>
+                          Withdraw
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+            }
+          </tbody>
+        </table>
+
+        <div style={{fontSize:10,color:C.text3,textAlign:'right',marginTop:12}}>
+          Generated {new Date().toLocaleDateString()} · UsenseLab Academic System
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── SETTINGS ── */
+function AdminSettings({ theme: C }) {
+  const [settings, setSettings] = useState({
+    faceRecognition: true, emotionDetection: true, autoAttendance: true,
+    emailNotifications: false, weeklyReports: true, parentAccess: true,
+  });
+
+  const toggle = k => setSettings(s=>({...s,[k]:!s[k]}));
+
+  const items = [
+    {key:'faceRecognition',  label:'Face Recognition',     desc:'Enable automatic face detection & recognition'},
+    {key:'emotionDetection', label:'Emotion Detection',    desc:'Real-time emotion analysis during sessions'},
+    {key:'autoAttendance',   label:'Auto Attendance',      desc:'Mark attendance automatically via face recognition'},
+    {key:'emailNotifications',label:'Email Notifications',desc:'Send welcome emails to new registrations'},
+    {key:'weeklyReports',    label:'Weekly Reports',       desc:'Auto-generate weekly summary reports'},
+    {key:'parentAccess',     label:'Parent Portal Access', desc:'Allow parents to view child performance'},
+  ];
+
+  return (
+    <div style={{padding:'8px 20px 20px'}}>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>System Settings</div>
+      <Card theme={C} title="Feature Toggles">
+        <div style={{padding:'4px 18px 18px',display:'flex',flexDirection:'column',gap:0}}>
+          {items.map(({key,label,desc},i)=>(
+            <div key={key} style={{display:'flex',alignItems:'center',padding:'14px 0',borderBottom:i<items.length-1?`1px solid ${C.border}`:'none',gap:16}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:600,color:C.text}}>{label}</div>
+                <div style={{fontSize:11,color:C.text3,marginTop:2}}>{desc}</div>
+              </div>
+              <div
+                onClick={()=>toggle(key)}
+                style={{
+                  width:44,height:24,borderRadius:12,cursor:'pointer',transition:'background 0.2s',
+                  background:settings[key]?C.green:C.bg3,position:'relative',flexShrink:0,
+                }}
+              >
+                <div style={{
+                  width:20,height:20,borderRadius:'50%',background:'#fff',
+                  position:'absolute',top:2,transition:'left 0.2s',
+                  left:settings[key]?22:2,
+                }}/>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}

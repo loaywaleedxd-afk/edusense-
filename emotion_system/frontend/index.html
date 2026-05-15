@@ -1,0 +1,2100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EduSense — Classroom Emotion & Attendance System</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+/* ══════════════════════════════════════
+   BASE & DESIGN TOKENS
+══════════════════════════════════════ */
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#08101f;--bg2:#0c172d;--bg3:#111f3a;--bg4:#172646;
+  --card:#0f1e38;--card2:#142240;
+  --blue:#3b82f6;--blue2:#60a5fa;--blue3:#1d4ed8;--blue4:#dbeafe;
+  --cyan:#06b6d4;--cyan2:#22d3ee;
+  --green:#10b981;--green2:#34d399;--green3:#dcfce7;
+  --amber:#f59e0b;--amber2:#fbbf24;
+  --red:#ef4444;--red2:#f87171;
+  --purple:#8b5cf6;--purple2:#a78bfa;
+  --pink:#ec4899;
+  --text:#f1f5f9;--text2:#94a3b8;--text3:#475569;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);
+  --radius:12px;--radius2:16px;--radius3:22px;
+  --shadow:0 4px 24px rgba(0,0,0,0.4);
+  font-family:'DM Sans',sans-serif;
+}
+body{background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+
+/* ══════════════════════════════════════
+   UTILITIES
+══════════════════════════════════════ */
+.hidden{display:none!important}
+.flex{display:flex}.flex-col{flex-direction:column}
+.items-center{align-items:center}.justify-between{justify-content:space-between}
+.gap-2{gap:8px}.gap-3{gap:12px}.gap-4{gap:16px}.gap-6{gap:24px}
+.text-sm{font-size:.8rem}.text-xs{font-size:.72rem}.text-lg{font-size:1.1rem}
+.font-bold{font-weight:700}.font-medium{font-weight:500}
+.text-muted{color:var(--text2)}.text-green{color:var(--green2)}.text-red{color:var(--red2)}
+.text-amber{color:var(--amber2)}.text-blue{color:var(--blue2)}.text-cyan{color:var(--cyan2)}
+.w-full{width:100%}.mt-2{margin-top:8px}.mt-4{margin-top:16px}.mb-4{margin-bottom:16px}
+.p-4{padding:16px}.p-6{padding:24px}
+.rounded{border-radius:var(--radius)}.rounded-lg{border-radius:var(--radius2)}
+.border{border:1px solid var(--border)}
+.truncate{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.syne{font-family:'Syne',sans-serif}
+.relative{position:relative}.absolute{position:absolute}
+
+/* ══════════════════════════════════════
+   SPLASH / LOGIN
+══════════════════════════════════════ */
+#splash{
+  position:fixed;inset:0;background:var(--bg);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  z-index:999;transition:opacity .5s,visibility .5s;
+}
+#splash.out{opacity:0;visibility:hidden}
+.splash-bg{
+  position:absolute;inset:0;overflow:hidden;pointer-events:none;
+  background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(59,130,246,.15) 0%,transparent 70%),
+             radial-gradient(ellipse 50% 40% at 80% 80%,rgba(139,92,246,.1) 0%,transparent 60%);
+}
+.splash-grid{
+  position:absolute;inset:0;
+  background-image:linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);
+  background-size:48px 48px;
+}
+.logo-mark{
+  font-family:'Syne',sans-serif;font-size:3.6rem;font-weight:800;letter-spacing:-2px;
+  background:linear-gradient(135deg,#60a5fa 0%,#a78bfa 50%,#22d3ee 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  margin-bottom:6px;
+}
+.logo-sub{
+  font-size:.85rem;letter-spacing:4px;text-transform:uppercase;
+  color:var(--text2);margin-bottom:56px;
+}
+.role-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;width:680px;max-width:96vw}
+.role-card{
+  background:var(--card);border:1px solid var(--border);border-radius:var(--radius2);
+  padding:28px 16px;cursor:pointer;transition:all .22s;text-align:center;
+  position:relative;overflow:hidden;
+}
+.role-card::before{
+  content:'';position:absolute;inset:0;opacity:0;transition:opacity .22s;border-radius:inherit;
+}
+.role-card.rc-student::before{background:linear-gradient(135deg,rgba(59,130,246,.15),rgba(34,211,238,.08))}
+.role-card.rc-doctor::before{background:linear-gradient(135deg,rgba(139,92,246,.15),rgba(236,72,153,.08))}
+.role-card.rc-admin::before{background:linear-gradient(135deg,rgba(16,185,129,.15),rgba(245,158,11,.08))}
+.role-card.rc-parent::before{background:linear-gradient(135deg,rgba(245,158,11,.15),rgba(239,68,68,.08))}
+.role-card:hover{transform:translateY(-5px) scale(1.02);border-color:var(--border2)}
+.role-card:hover::before{opacity:1}
+.role-emoji{font-size:2.6rem;margin-bottom:14px;display:block}
+.role-name{font-family:'Syne',sans-serif;font-weight:700;font-size:1rem;margin-bottom:4px}
+.role-desc{font-size:.73rem;color:var(--text2)}
+.login-box{
+  background:var(--card);border:1px solid var(--border2);border-radius:var(--radius3);
+  padding:36px;width:400px;max-width:96vw;position:relative;
+}
+.login-box h2{font-family:'Syne',sans-serif;font-size:1.5rem;font-weight:700;margin-bottom:6px}
+.login-box p{color:var(--text2);font-size:.85rem;margin-bottom:28px}
+.form-group{margin-bottom:18px}
+.form-label{display:block;font-size:.77rem;color:var(--text2);margin-bottom:7px;font-weight:500;letter-spacing:.4px}
+.form-input{
+  width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:10px;
+  padding:11px 15px;color:var(--text);font-size:.9rem;outline:none;
+  transition:border-color .2s;font-family:'DM Sans',sans-serif;
+}
+.form-input:focus{border-color:var(--blue)}
+.btn-login{
+  width:100%;padding:13px;border:none;border-radius:10px;cursor:pointer;
+  background:linear-gradient(135deg,var(--blue3),var(--blue));color:#fff;
+  font-family:'Syne',sans-serif;font-weight:700;font-size:1rem;
+  transition:all .2s;letter-spacing:.3px;
+}
+.btn-login:hover{transform:translateY(-2px);box-shadow:0 10px 28px rgba(59,130,246,.4)}
+.back-link{
+  background:none;border:none;color:var(--text2);cursor:pointer;
+  font-size:.82rem;margin-top:14px;display:block;text-align:center;
+  transition:color .2s;font-family:'DM Sans',sans-serif;
+}
+.back-link:hover{color:var(--text)}
+.demo-hint{
+  margin-top:16px;padding:10px 14px;background:rgba(59,130,246,.08);
+  border:1px solid rgba(59,130,246,.2);border-radius:8px;font-size:.74rem;color:var(--blue2);
+}
+
+/* ══════════════════════════════════════
+   TOPBAR
+══════════════════════════════════════ */
+#topbar{
+  background:rgba(8,16,31,.9);backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--border);height:60px;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 24px;position:sticky;top:0;z-index:50;
+}
+.topbar-logo{
+  font-family:'Syne',sans-serif;font-weight:800;font-size:1.2rem;
+  background:linear-gradient(135deg,#60a5fa,#a78bfa);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  display:flex;align-items:center;gap:8px;
+}
+.topbar-right{display:flex;align-items:center;gap:10px}
+.icon-btn{
+  background:var(--bg3);border:1px solid var(--border);border-radius:9px;
+  width:38px;height:38px;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;color:var(--text2);font-size:1.1rem;transition:all .2s;position:relative;
+}
+.icon-btn:hover{border-color:var(--blue2);color:var(--blue2)}
+.notif-dot{
+  position:absolute;top:5px;right:5px;width:9px;height:9px;
+  background:var(--red);border-radius:50%;border:2px solid var(--bg2);
+}
+.avatar{
+  width:38px;height:38px;border-radius:50%;
+  background:linear-gradient(135deg,var(--blue),var(--purple));
+  display:flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:.9rem;cursor:pointer;border:2px solid transparent;
+  transition:border-color .2s;
+}
+.avatar:hover{border-color:var(--blue)}
+.user-chip{
+  background:var(--bg3);border:1px solid var(--border);border-radius:20px;
+  padding:5px 12px 5px 6px;display:flex;align-items:center;gap:8px;cursor:pointer;
+}
+.user-info .name{font-size:.82rem;font-weight:600}
+.user-info .role-tag{font-size:.68rem;color:var(--text2)}
+
+/* ══════════════════════════════════════
+   SIDEBAR
+══════════════════════════════════════ */
+#sidebar{
+  width:224px;background:var(--bg2);border-right:1px solid var(--border);
+  padding:16px 10px;display:flex;flex-direction:column;gap:2px;
+  position:sticky;top:60px;height:calc(100vh - 60px);overflow-y:auto;flex-shrink:0;
+}
+.sidebar-section{
+  font-size:.67rem;font-weight:600;color:var(--text3);
+  letter-spacing:1.8px;text-transform:uppercase;
+  padding:14px 10px 6px;
+}
+.nav-item{
+  display:flex;align-items:center;gap:10px;padding:9px 12px;
+  border-radius:10px;cursor:pointer;transition:all .18s;
+  color:var(--text2);font-size:.845rem;border:1px solid transparent;
+  position:relative;
+}
+.nav-item:hover{background:var(--bg3);color:var(--text)}
+.nav-item.active{
+  background:linear-gradient(135deg,rgba(59,130,246,.2),rgba(139,92,246,.1));
+  color:var(--blue2);border-color:rgba(59,130,246,.25);
+}
+.nav-icon{width:18px;text-align:center;font-size:1rem}
+.nav-badge{
+  margin-left:auto;background:var(--red);color:#fff;
+  font-size:.6rem;font-weight:700;padding:2px 6px;border-radius:20px;
+}
+.live-dot{
+  display:inline-block;width:7px;height:7px;border-radius:50%;
+  background:var(--red);margin-right:4px;animation:blink 1.2s infinite;
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+
+/* ══════════════════════════════════════
+   MAIN LAYOUT
+══════════════════════════════════════ */
+#app-shell{display:none;flex-direction:column;min-height:100vh}
+.layout{display:flex;flex:1}
+.main{flex:1;padding:26px;overflow-y:auto;min-width:0}
+
+/* ══════════════════════════════════════
+   CARDS & SECTIONS
+══════════════════════════════════════ */
+.card{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius2);padding:20px;
+}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.card-title{font-family:'Syne',sans-serif;font-weight:700;font-size:1rem}
+
+/* Stat cards */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:24px}
+.stat-card{
+  background:var(--card);border:1px solid var(--border);border-radius:var(--radius2);
+  padding:20px;position:relative;overflow:hidden;transition:all .2s;cursor:default;
+}
+.stat-card:hover{border-color:var(--border2);transform:translateY(-2px)}
+.stat-card::after{
+  content:'';position:absolute;bottom:0;left:0;right:0;height:3px;
+  border-radius:0 0 var(--radius2) var(--radius2);
+}
+.stat-card.sc-blue::after{background:linear-gradient(90deg,var(--blue),var(--cyan))}
+.stat-card.sc-green::after{background:linear-gradient(90deg,var(--green),var(--cyan))}
+.stat-card.sc-amber::after{background:linear-gradient(90deg,var(--amber),var(--red))}
+.stat-card.sc-purple::after{background:linear-gradient(90deg,var(--purple),var(--pink))}
+.stat-label{font-size:.73rem;color:var(--text2);letter-spacing:.4px;margin-bottom:8px;font-weight:500}
+.stat-value{font-family:'Syne',sans-serif;font-size:2.1rem;font-weight:700;line-height:1}
+.stat-sub{font-size:.72rem;color:var(--text2);margin-top:6px}
+.stat-icon{position:absolute;top:16px;right:16px;font-size:1.5rem;opacity:.3}
+
+/* Grids */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.grid-2-1{display:grid;grid-template-columns:2fr 1fr;gap:16px}
+.grid-1-2{display:grid;grid-template-columns:1fr 2fr;gap:16px}
+
+/* ══════════════════════════════════════
+   WEBCAM / FACE DETECTION
+══════════════════════════════════════ */
+.cam-wrap{
+  position:relative;background:#000;border-radius:var(--radius2);
+  overflow:hidden;border:2px solid var(--border2);
+}
+.cam-wrap video,#cam-canvas-overlay{border-radius:var(--radius2)}
+#cam-canvas-overlay{position:absolute;inset:0;pointer-events:none}
+.cam-status-bar{
+  position:absolute;top:12px;left:12px;display:flex;align-items:center;gap:8px;
+}
+.cam-pill{
+  background:rgba(0,0,0,.7);border:1px solid;border-radius:20px;
+  padding:4px 11px;font-size:.7rem;display:flex;align-items:center;gap:5px;
+}
+.cam-pill.live{border-color:var(--green);color:var(--green2)}
+.cam-pill.count{border-color:var(--cyan);color:var(--cyan2)}
+.cam-time{
+  position:absolute;top:12px;right:12px;background:rgba(0,0,0,.7);
+  border:1px solid var(--border);border-radius:20px;padding:4px 11px;
+  font-size:.7rem;color:var(--text2);
+}
+.face-overlay{
+  position:absolute;border:2px solid;border-radius:6px;
+  animation:facePulse 2s ease-in-out infinite;pointer-events:none;
+}
+.face-overlay.attentive{border-color:var(--green2)}
+.face-overlay.moderate{border-color:var(--amber2)}
+.face-overlay.distracted{border-color:var(--red2)}
+@keyframes facePulse{
+  0%,100%{box-shadow:0 0 0 0 currentColor}
+  50%{box-shadow:0 0 0 6px transparent}
+}
+.face-label{
+  position:absolute;top:-26px;left:0;background:currentColor;color:#fff;
+  font-size:.6rem;font-weight:700;padding:2px 8px;border-radius:4px;white-space:nowrap;
+}
+.face-score{
+  position:absolute;bottom:-22px;left:0;font-size:.6rem;font-weight:600;
+  white-space:nowrap;
+}
+
+/* ══════════════════════════════════════
+   STUDENT GRID (face thumbnails)
+══════════════════════════════════════ */
+.student-face-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px;margin-top:14px}
+.face-thumb{
+  background:var(--bg3);border-radius:10px;padding:10px 6px;text-align:center;
+  border:1.5px solid var(--border);transition:all .2s;cursor:pointer;
+  position:relative;overflow:hidden;
+}
+.face-thumb:hover{transform:scale(1.05)}
+.face-thumb.ft-attentive{border-color:rgba(52,211,153,.5)}
+.face-thumb.ft-moderate{border-color:rgba(245,158,11,.5)}
+.face-thumb.ft-distracted{border-color:rgba(239,68,68,.5)}
+.face-thumb.ft-absent{opacity:.4;border-color:var(--border)}
+.face-avatar{
+  width:46px;height:46px;border-radius:50%;margin:0 auto 7px;
+  display:flex;align-items:center;justify-content:center;font-size:1.5rem;
+  position:relative;
+}
+.ft-present-dot{
+  position:absolute;bottom:2px;right:2px;width:11px;height:11px;border-radius:50%;
+  border:2px solid var(--bg3);
+}
+.face-thumb.ft-attentive .ft-present-dot{background:var(--green)}
+.face-thumb.ft-moderate  .ft-present-dot{background:var(--amber)}
+.face-thumb.ft-distracted .ft-present-dot{background:var(--red)}
+.face-thumb.ft-absent    .ft-present-dot{background:var(--text3)}
+.ft-name{font-size:.63rem;font-weight:500;truncate}
+.ft-emotion{font-size:.58rem;color:var(--text2);margin-top:3px}
+
+/* ══════════════════════════════════════
+   BADGES & CHIPS
+══════════════════════════════════════ */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:.7rem;font-weight:600}
+.badge-green{background:rgba(16,185,129,.15);color:var(--green2);border:1px solid rgba(16,185,129,.3)}
+.badge-red{background:rgba(239,68,68,.15);color:var(--red2);border:1px solid rgba(239,68,68,.3)}
+.badge-amber{background:rgba(245,158,11,.15);color:var(--amber2);border:1px solid rgba(245,158,11,.3)}
+.badge-blue{background:rgba(59,130,246,.15);color:var(--blue2);border:1px solid rgba(59,130,246,.3)}
+.badge-purple{background:rgba(139,92,246,.15);color:var(--purple2);border:1px solid rgba(139,92,246,.3)}
+.badge-cyan{background:rgba(6,182,212,.15);color:var(--cyan2);border:1px solid rgba(6,182,212,.3)}
+
+/* ══════════════════════════════════════
+   TABLE
+══════════════════════════════════════ */
+.tbl-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse}
+thead{background:var(--bg3)}
+th{padding:11px 14px;font-size:.73rem;font-weight:600;color:var(--text2);text-align:left;letter-spacing:.4px;white-space:nowrap}
+td{padding:11px 14px;font-size:.82rem;border-top:1px solid var(--border);color:var(--text)}
+tr:hover td{background:rgba(255,255,255,.02)}
+
+/* ══════════════════════════════════════
+   PROGRESS & METERS
+══════════════════════════════════════ */
+.progress-bar{background:var(--bg3);border-radius:20px;height:7px;overflow:hidden}
+.progress-fill{height:100%;border-radius:20px;transition:width .6s ease}
+.pf-blue{background:linear-gradient(90deg,var(--blue),var(--cyan))}
+.pf-green{background:linear-gradient(90deg,var(--green),var(--cyan))}
+.pf-amber{background:linear-gradient(90deg,var(--amber),var(--red))}
+.pf-purple{background:linear-gradient(90deg,var(--purple),var(--pink))}
+
+/* ══════════════════════════════════════
+   BUTTONS
+══════════════════════════════════════ */
+.btn{
+  display:inline-flex;align-items:center;gap:6px;padding:9px 18px;
+  border-radius:10px;border:none;font-family:'DM Sans',sans-serif;
+  font-size:.84rem;font-weight:500;cursor:pointer;transition:all .2s;
+}
+.btn-primary{background:linear-gradient(135deg,var(--blue3),var(--blue));color:#fff}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 8px 22px rgba(59,130,246,.35)}
+.btn-outline{background:transparent;border:1px solid var(--border2);color:var(--text2)}
+.btn-outline:hover{border-color:var(--blue);color:var(--blue2)}
+.btn-danger{background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:var(--red2)}
+.btn-success{background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.3);color:var(--green2)}
+.btn-sm{padding:6px 12px;font-size:.76rem;border-radius:8px}
+.btn-icon{padding:7px;border-radius:8px}
+
+/* ══════════════════════════════════════
+   ALERTS / NOTIFICATIONS
+══════════════════════════════════════ */
+.alert{border-radius:var(--radius);padding:12px 15px;display:flex;align-items:flex-start;gap:10px;font-size:.82rem;margin-bottom:8px}
+.alert-red{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);color:var(--red2)}
+.alert-amber{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.25);color:var(--amber2)}
+.alert-green{background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.25);color:var(--green2)}
+.alert-blue{background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);color:var(--blue2)}
+
+/* ══════════════════════════════════════
+   TABS
+══════════════════════════════════════ */
+.tabs{display:flex;gap:4px;background:var(--bg3);border-radius:10px;padding:4px;margin-bottom:20px}
+.tab{
+  flex:1;padding:8px 14px;border-radius:8px;border:none;background:none;
+  color:var(--text2);font-size:.82rem;font-family:'DM Sans',sans-serif;
+  cursor:pointer;transition:all .2s;font-weight:500;
+}
+.tab.active{background:var(--card);color:var(--text);box-shadow:0 1px 6px rgba(0,0,0,.4)}
+.tab:hover:not(.active){color:var(--text)}
+
+/* ══════════════════════════════════════
+   EMOTION CHART MINI
+══════════════════════════════════════ */
+.emotion-bars{display:flex;flex-direction:column;gap:10px}
+.emo-row{display:flex;align-items:center;gap:10px}
+.emo-name{width:72px;font-size:.76rem;color:var(--text2);text-transform:capitalize}
+.emo-bar-wrap{flex:1;background:var(--bg3);border-radius:20px;height:7px;overflow:hidden}
+.emo-bar{height:100%;border-radius:20px;transition:width .7s ease}
+.emo-pct{font-size:.72rem;color:var(--text2);width:36px;text-align:right}
+
+/* ══════════════════════════════════════
+   SCHEDULE
+══════════════════════════════════════ */
+.schedule-item{
+  background:var(--bg3);border-left:3px solid;border-radius:0 10px 10px 0;
+  padding:12px 14px;margin-bottom:10px;cursor:pointer;transition:all .2s;
+}
+.schedule-item:hover{transform:translateX(4px)}
+.schedule-item.sched-blue{border-color:var(--blue)}
+.schedule-item.sched-green{border-color:var(--green)}
+.schedule-item.sched-purple{border-color:var(--purple)}
+.schedule-item.sched-amber{border-color:var(--amber)}
+.sched-time{font-size:.68rem;color:var(--text2);margin-bottom:3px}
+.sched-course{font-size:.88rem;font-weight:500}
+.sched-room{font-size:.7rem;color:var(--text3);margin-top:2px}
+
+/* ══════════════════════════════════════
+   ATTENTION RING
+══════════════════════════════════════ */
+.attention-ring-wrap{display:flex;align-items:center;justify-content:center;position:relative}
+.ring-center{position:absolute;text-align:center;pointer-events:none}
+.ring-pct{font-family:'Syne',sans-serif;font-size:1.4rem;font-weight:700;line-height:1}
+.ring-lbl{font-size:.65rem;color:var(--text2)}
+
+/* ══════════════════════════════════════
+   PAGE HEADER
+══════════════════════════════════════ */
+.page-header{margin-bottom:24px}
+.page-header h2{font-family:'Syne',sans-serif;font-size:1.6rem;font-weight:700;letter-spacing:-.5px}
+.page-header p{color:var(--text2);font-size:.875rem;margin-top:4px}
+
+/* ══════════════════════════════════════
+   NOTIFICATION PANEL
+══════════════════════════════════════ */
+#notif-panel{
+  position:fixed;top:68px;right:16px;width:340px;
+  background:var(--card);border:1px solid var(--border2);border-radius:var(--radius2);
+  z-index:200;box-shadow:var(--shadow);max-height:480px;overflow:hidden;
+  display:flex;flex-direction:column;opacity:0;transform:translateY(-10px);
+  transition:all .2s;pointer-events:none;
+}
+#notif-panel.open{opacity:1;transform:translateY(0);pointer-events:all}
+.notif-hdr{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.notif-list{overflow-y:auto;flex:1}
+.notif-item{padding:13px 16px;border-bottom:1px solid var(--border);display:flex;gap:10px;cursor:pointer;transition:background .15s}
+.notif-item:hover{background:var(--bg3)}
+.notif-icon-wrap{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0}
+.ni-red{background:rgba(239,68,68,.15)}
+.ni-amber{background:rgba(245,158,11,.15)}
+.ni-green{background:rgba(16,185,129,.15)}
+.ni-blue{background:rgba(59,130,246,.15)}
+.notif-title{font-size:.82rem;font-weight:500}
+.notif-desc{font-size:.72rem;color:var(--text2);margin-top:2px}
+.notif-time{font-size:.65rem;color:var(--text3);margin-top:4px}
+
+/* ══════════════════════════════════════
+   MODAL
+══════════════════════════════════════ */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:300;
+  display:flex;align-items:center;justify-content:center;backdrop-filter:blur(5px);
+  opacity:0;pointer-events:none;transition:opacity .2s;
+}
+.modal-overlay.open{opacity:1;pointer-events:all}
+.modal{
+  background:var(--card);border:1px solid var(--border2);border-radius:var(--radius3);
+  padding:28px;width:500px;max-width:95vw;position:relative;
+  transform:scale(.95);transition:transform .2s;
+}
+.modal-overlay.open .modal{transform:scale(1)}
+.modal h3{font-family:'Syne',sans-serif;font-size:1.2rem;margin-bottom:6px}
+.modal p.sub{color:var(--text2);font-size:.84rem;margin-bottom:22px}
+.modal-close{
+  position:absolute;top:18px;right:18px;background:var(--bg3);border:1px solid var(--border);
+  border-radius:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;color:var(--text2);transition:all .2s;font-size:1.1rem;
+}
+.modal-close:hover{border-color:var(--red);color:var(--red2)}
+
+/* ══════════════════════════════════════
+   TOOLTIP
+══════════════════════════════════════ */
+[title]{cursor:help}
+
+/* ══════════════════════════════════════
+   SCROLLBAR
+══════════════════════════════════════ */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:10px}
+
+/* ══════════════════════════════════════
+   ANIMATION
+══════════════════════════════════════ */
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeIn .3s ease forwards}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinning{animation:spin 1s linear infinite;display:inline-block}
+
+/* ══════════════════════════════════════
+   RESPONSIVE
+══════════════════════════════════════ */
+@media(max-width:900px){
+  .grid-2,.grid-3,.grid-2-1,.grid-1-2{grid-template-columns:1fr}
+  #sidebar{width:200px}
+  .role-grid{grid-template-columns:1fr 1fr}
+}
+@media(max-width:640px){
+  #sidebar{display:none}
+  .main{padding:16px}
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════
+     SPLASH / LOGIN SCREEN
+══════════════════════════════════════════ -->
+<div id="splash">
+  <div class="splash-bg"></div>
+  <div class="splash-grid"></div>
+
+  <!-- Role selection -->
+  <div id="role-select-screen">
+    <div class="logo-mark" style="text-align:center">EduSense</div>
+    <div class="logo-sub" style="text-align:center">Classroom Emotion &amp; Attendance AI System</div>
+    <div class="role-grid" id="role-grid">
+      <div class="role-card rc-student" onclick="selectRole('student')">
+        <span class="role-emoji">🎓</span>
+        <div class="role-name">Student</div>
+        <div class="role-desc">View attendance, emotions &amp; performance</div>
+      </div>
+      <div class="role-card rc-doctor" onclick="selectRole('doctor')">
+        <span class="role-emoji">👨‍🏫</span>
+        <div class="role-name">Doctor / Lecturer</div>
+        <div class="role-desc">Manage lectures, monitor live sessions</div>
+      </div>
+      <div class="role-card rc-admin" onclick="selectRole('admin')">
+        <span class="role-emoji">🏛️</span>
+        <div class="role-name">Admin</div>
+        <div class="role-desc">System management &amp; reports</div>
+      </div>
+      <div class="role-card rc-parent" onclick="selectRole('parent')">
+        <span class="role-emoji">👨‍👩‍👧</span>
+        <div class="role-name">Parent</div>
+        <div class="role-desc">Monitor child performance &amp; attendance</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Login form -->
+  <div id="login-screen" class="hidden">
+    <div class="login-box fade-in">
+      <span id="login-emoji" style="font-size:2.2rem;display:block;margin-bottom:12px">🎓</span>
+      <h2 id="login-title">Student Login</h2>
+      <p id="login-desc">Access your personalized academic dashboard</p>
+      <div class="form-group">
+        <label class="form-label">Username</label>
+        <input class="form-input" id="login-username" type="text" placeholder="Enter your username" value="s001">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password</label>
+        <input class="form-input" id="login-password" type="password" placeholder="••••••••" value="demo123">
+      </div>
+      <button class="btn-login" onclick="doLogin()">Sign In →</button>
+      <div class="demo-hint">
+        <strong>Demo Credentials:</strong><br>
+        Student: <code>s001</code> · Doctor: <code>dr.smith</code> · Admin: <code>admin</code><br>
+        Password: <code>demo123</code> (any)
+      </div>
+      <button class="back-link" onclick="backToRoles()">← Choose different role</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MAIN APP SHELL
+══════════════════════════════════════════ -->
+<div id="app-shell">
+
+  <!-- Topbar -->
+  <div id="topbar">
+    <div class="topbar-logo">
+      <span>⚡</span> EduSense
+    </div>
+    <div class="topbar-right">
+      <div class="icon-btn" id="notif-btn" onclick="toggleNotifs()">
+        🔔
+        <div class="notif-dot"></div>
+      </div>
+      <div class="user-chip" onclick="logout()">
+        <div class="avatar" id="user-avatar">?</div>
+        <div class="user-info">
+          <div class="name" id="user-name-display">User</div>
+          <div class="role-tag" id="user-role-display">Role</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Panel -->
+  <div id="notif-panel">
+    <div class="notif-hdr">
+      <span style="font-family:'Syne',sans-serif;font-weight:700;font-size:.95rem">Notifications</span>
+      <button class="btn btn-outline btn-sm" onclick="toggleNotifs()">×</button>
+    </div>
+    <div class="notif-list" id="notif-list"></div>
+  </div>
+
+  <!-- Layout -->
+  <div class="layout">
+    <!-- Sidebar -->
+    <div id="sidebar">
+      <div id="sidebar-nav"></div>
+    </div>
+    <!-- Main content -->
+    <div class="main" id="main-content"></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MODALS
+══════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+  <div class="modal" id="modal-content">
+    <div class="modal-close" onclick="closeModal()">×</div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════
+const STATE = {
+  role: null,
+  user: null,
+  currentPage: null,
+  lectureActive: false,
+  camStream: null,
+  camInterval: null,
+  charts: {},
+  students: generateStudents(),
+  lectures: generateLectures(),
+  emotionData: generateEmotionData(),
+}
+
+// ════════════════════════════════════════
+// DATA GENERATORS (Simulated)
+// ════════════════════════════════════════
+function generateStudents() {
+  const names = ['Sara Johnson','Ahmed Hassan','Nour Ali','Mohamed Karim','Layla Ibrahim',
+    'Omar Salah','Fatima Zahra','Yusuf Ahmad','Hana Mostafa','Tariq Nasser',
+    'Rania Said','Khalid Faris','Dina Wael','Sami Lotfy','Aya Ramadan']
+  const depts = ['Computer Science','Engineering','Mathematics','Physics','Data Science']
+  const emots = ['happy','neutral','confused','bored','surprise','sad']
+  const atts  = ['attentive','moderate','distracted','absent']
+  return names.map((n,i)=>({
+    id: `S${String(i+1).padStart(3,'0')}`,
+    name: n,
+    dept: depts[i%depts.length],
+    year: (i%4)+1,
+    emotion: emots[i%emots.length],
+    attention: atts[i%atts.length],
+    engagement: Math.round(35+Math.random()*55),
+    attention_score: Math.round(30+Math.random()*65),
+    attendance_rate: Math.round(60+Math.random()*40),
+    gpa: (2.0+Math.random()*2).toFixed(1),
+    present: i<12,
+    confidence: +(0.65+Math.random()*0.33).toFixed(2),
+    emoji: ['👧','👦','👩','👨'][i%4],
+    avatar_color: ['#3b82f6','#10b981','#8b5cf6','#f59e0b','#ef4444'][i%5],
+  }))
+}
+
+function generateLectures() {
+  const courses = [
+    {name:'Artificial Intelligence',code:'CS401',room:'Hall A',color:'sched-blue'},
+    {name:'Machine Learning',code:'CS402',room:'Hall B',color:'sched-purple'},
+    {name:'Data Science',code:'CS403',room:'Lab 1',color:'sched-green'},
+    {name:'Computer Vision',code:'CS404',room:'Lab 2',color:'sched-amber'},
+    {name:'Deep Learning',code:'CS405',room:'Hall C',color:'sched-blue'},
+  ]
+  const times = ['09:00','11:00','13:00','15:00','17:00']
+  return courses.map((c,i)=>({
+    id: `L${String(i+1).padStart(3,'0')}`,
+    ...c,
+    time: times[i],
+    duration: 90,
+    status: i===0?'active':i<3?'scheduled':'ended',
+    students: 28+Math.round(Math.random()*20),
+    present: 20+Math.round(Math.random()*15),
+    avg_engagement: Math.round(50+Math.random()*45),
+    avg_attention: Math.round(45+Math.random()*50),
+    dominant_emotion: ['neutral','happy','confused','bored'][i%4],
+    doctor: 'Dr. Ahmed Smith',
+  }))
+}
+
+function generateEmotionData() {
+  const emotions = ['happy','neutral','confused','bored','surprise','sad','angry']
+  const weights  = [0.28,0.32,0.14,0.10,0.08,0.05,0.03]
+  const total = 1200
+  return emotions.map((e,i)=>({
+    emotion: e,
+    count: Math.round(total*weights[i]),
+    pct: Math.round(weights[i]*100),
+    color: {happy:'#10b981',neutral:'#6366f1',confused:'#8b5cf6',
+             bored:'#94a3b8',surprise:'#f59e0b',sad:'#64748b',angry:'#ef4444'}[e]
+  }))
+}
+
+function rnd(a,b){return Math.round(a+Math.random()*(b-a))}
+function choice(arr){return arr[Math.floor(Math.random()*arr.length)]}
+
+// ════════════════════════════════════════
+// SPLASH / AUTH
+// ════════════════════════════════════════
+const roleConfig = {
+  student:{emoji:'🎓',title:'Student Login',desc:'Access your academic dashboard'},
+  doctor: {emoji:'👨‍🏫',title:'Lecturer Login',desc:'Manage lectures and monitor engagement'},
+  admin:  {emoji:'🏛️',title:'Admin Login',desc:'Full system access and reporting'},
+  parent: {emoji:'👨‍👩‍👧',title:'Parent Login',desc:'Monitor your child\'s progress'},
+}
+
+function selectRole(role){
+  STATE.role = role
+  const cfg = roleConfig[role]
+  document.getElementById('login-emoji').textContent = cfg.emoji
+  document.getElementById('login-title').textContent  = cfg.title
+  document.getElementById('login-desc').textContent   = cfg.desc
+  const demos = {student:'s001',doctor:'dr.smith',admin:'admin',parent:'parent1'}
+  document.getElementById('login-username').value = demos[role]||role
+  document.getElementById('role-select-screen').classList.add('hidden')
+  document.getElementById('login-screen').classList.remove('hidden')
+}
+
+function backToRoles(){
+  document.getElementById('login-screen').classList.add('hidden')
+  document.getElementById('role-select-screen').classList.remove('hidden')
+}
+
+function doLogin(){
+  const u = document.getElementById('login-username').value.trim()
+  const p = document.getElementById('login-password').value.trim()
+  if(!u||!p){alert('Please enter credentials');return}
+
+  const userMap = {
+    's001':    {name:'Sara Johnson',    role:'student',initials:'SJ'},
+    'dr.smith':{name:'Dr. Ahmed Smith', role:'doctor', initials:'AS'},
+    'admin':   {name:'System Admin',    role:'admin',  initials:'SA'},
+    'parent1': {name:'David Johnson',   role:'parent', initials:'DJ'},
+  }
+  const userInfo = userMap[u.toLowerCase()] || {name:u,role:STATE.role||'student',initials:u.slice(0,2).toUpperCase()}
+
+  STATE.user = userInfo
+  STATE.role = userInfo.role
+
+  // Update topbar
+  document.getElementById('user-avatar').textContent        = userInfo.initials
+  document.getElementById('user-name-display').textContent  = userInfo.name
+  document.getElementById('user-role-display').textContent  = userInfo.role.charAt(0).toUpperCase()+userInfo.role.slice(1)
+
+  // Hide splash, show app
+  document.getElementById('splash').classList.add('out')
+  setTimeout(()=>document.getElementById('splash').classList.add('hidden'),600)
+  document.getElementById('app-shell').style.display='flex'
+  document.getElementById('app-shell').style.flexDirection='column'
+
+  // Build sidebar & load first page
+  buildSidebar()
+  populateNotifs()
+}
+
+function logout(){
+  document.getElementById('splash').classList.remove('hidden','out')
+  document.getElementById('app-shell').style.display='none'
+  document.getElementById('login-screen').classList.add('hidden')
+  document.getElementById('role-select-screen').classList.remove('hidden')
+  stopCamera()
+  STATE.role=null;STATE.user=null;STATE.currentPage=null
+}
+
+// ════════════════════════════════════════
+// SIDEBAR
+// ════════════════════════════════════════
+const navConfig = {
+  student:[
+    {id:'s-dashboard',icon:'📊',label:'Dashboard',page:renderStudentDashboard},
+    {id:'s-attendance',icon:'✅',label:'My Attendance',page:renderStudentAttendance},
+    {id:'s-emotions',icon:'😊',label:'My Emotions',page:renderStudentEmotions},
+    {id:'s-schedule',icon:'📅',label:'Schedule',page:renderStudentSchedule},
+    {id:'s-grades',icon:'📈',label:'Performance',page:renderStudentPerformance},
+  ],
+  doctor:[
+    {id:'d-dashboard',icon:'📊',label:'Dashboard',page:renderDoctorDashboard},
+    {id:'d-live',icon:'🔴',label:'Live Session',live:true,page:renderDoctorLive},
+    {id:'d-lectures',icon:'📚',label:'My Lectures',page:renderDoctorLectures},
+    {id:'d-students',icon:'👥',label:'Students',page:renderDoctorStudents},
+    {id:'d-analytics',icon:'📉',label:'Analytics',page:renderDoctorAnalytics},
+    {id:'d-alerts',icon:'🔔',label:'Alerts',badge:'3',page:renderDoctorAlerts},
+  ],
+  admin:[
+    {id:'a-dashboard',icon:'📊',label:'Dashboard',page:renderAdminDashboard},
+    {id:'a-students',icon:'🎓',label:'Students',page:renderAdminStudents},
+    {id:'a-doctors',icon:'👨‍🏫',label:'Lecturers',page:renderAdminDoctors},
+    {id:'a-lectures',icon:'📚',label:'Lectures',page:renderAdminLectures},
+    {id:'a-analytics',icon:'📉',label:'System Analytics',page:renderAdminAnalytics},
+    {id:'a-reports',icon:'📋',label:'R Reports',page:renderAdminReports},
+    {id:'a-settings',icon:'⚙️',label:'Settings',page:renderAdminSettings},
+  ],
+  parent:[
+    {id:'p-dashboard',icon:'📊',label:'Dashboard',page:renderParentDashboard},
+    {id:'p-attendance',icon:'✅',label:'Attendance',page:renderParentAttendance},
+    {id:'p-emotions',icon:'😊',label:'Emotion Report',page:renderParentEmotions},
+  ],
+}
+
+function buildSidebar(){
+  const nav = navConfig[STATE.role]||[]
+  const el  = document.getElementById('sidebar-nav')
+  el.innerHTML = `<div class="sidebar-section">Navigation</div>` +
+    nav.map(n=>`
+      <div class="nav-item" id="nav-${n.id}" onclick="navTo('${n.id}')">
+        <span class="nav-icon">${n.live?`<span class="live-dot"></span>`:''}${n.icon}</span>
+        <span>${n.label}</span>
+        ${n.badge?`<span class="nav-badge">${n.badge}</span>`:''}
+      </div>
+    `).join('')
+  // Load first page
+  navTo(nav[0].id)
+}
+
+function navTo(id){
+  const nav = navConfig[STATE.role]||[]
+  const item = nav.find(n=>n.id===id)
+  if(!item) return
+  document.querySelectorAll('.nav-item').forEach(e=>e.classList.remove('active'))
+  const el = document.getElementById('nav-'+id)
+  if(el) el.classList.add('active')
+  STATE.currentPage = id
+  destroyCharts()
+  if(id!=='d-live') stopCamera()
+  item.page()
+}
+
+function destroyCharts(){
+  Object.values(STATE.charts).forEach(c=>{try{c.destroy()}catch(e){}})
+  STATE.charts={}
+}
+
+// ════════════════════════════════════════
+// ─── STUDENT PAGES ────────────────────
+// ════════════════════════════════════════
+function renderStudentDashboard(){
+  const stu = STATE.students[0]
+  document.getElementById('main-content').innerHTML = `
+  <div class="page-header fade-in">
+    <h2>Welcome back, ${STATE.user.name.split(' ')[0]} 👋</h2>
+    <p>Here's your academic overview for this semester</p>
+  </div>
+
+  <div class="stats-grid fade-in">
+    <div class="stat-card sc-green">
+      <div class="stat-icon">✅</div>
+      <div class="stat-label">Attendance Rate</div>
+      <div class="stat-value">${stu.attendance_rate}%</div>
+      <div class="stat-sub">12 of 14 lectures</div>
+    </div>
+    <div class="stat-card sc-blue">
+      <div class="stat-icon">🧠</div>
+      <div class="stat-label">Avg Engagement</div>
+      <div class="stat-value">${stu.engagement}%</div>
+      <div class="stat-sub">Above class average</div>
+    </div>
+    <div class="stat-card sc-purple">
+      <div class="stat-icon">👁️</div>
+      <div class="stat-label">Avg Attention</div>
+      <div class="stat-value">${stu.attention_score}%</div>
+      <div class="stat-sub">Good focus level</div>
+    </div>
+    <div class="stat-card sc-amber">
+      <div class="stat-icon">📈</div>
+      <div class="stat-label">GPA</div>
+      <div class="stat-value">${stu.gpa}</div>
+      <div class="stat-sub">Current semester</div>
+    </div>
+  </div>
+
+  <div class="grid-2-1">
+    <div class="card fade-in">
+      <div class="card-header">
+        <span class="card-title">Engagement Trend</span>
+        <span class="badge badge-blue">Last 14 Lectures</span>
+      </div>
+      <canvas id="chart-stu-trend" height="160"></canvas>
+    </div>
+    <div class="card fade-in">
+      <div class="card-header">
+        <span class="card-title">Emotion Distribution</span>
+      </div>
+      <canvas id="chart-stu-emo" height="160"></canvas>
+    </div>
+  </div>
+
+  <div class="grid-2 mt-4">
+    <div class="card fade-in">
+      <div class="card-header">
+        <span class="card-title">Today's Schedule</span>
+      </div>
+      ${STATE.lectures.slice(0,3).map(l=>`
+        <div class="schedule-item ${l.color}">
+          <div class="sched-time">${l.time} · ${l.duration} min</div>
+          <div class="sched-course">${l.name}</div>
+          <div class="sched-room">${l.room} · ${l.doctor}</div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="card fade-in">
+      <div class="card-header">
+        <span class="card-title">Emotion Log Today</span>
+      </div>
+      <div class="emotion-bars">
+        ${STATE.emotionData.map(e=>`
+          <div class="emo-row">
+            <span class="emo-name">${e.emotion}</span>
+            <div class="emo-bar-wrap">
+              <div class="emo-bar" style="width:${e.pct}%;background:${e.color}"></div>
+            </div>
+            <span class="emo-pct">${e.pct}%</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  </div>
+  `
+  requestAnimationFrame(()=>{
+    // Trend chart
+    const trendCtx = document.getElementById('chart-stu-trend')
+    if(trendCtx){
+      const labels = Array.from({length:14},(_, i)=>`L${i+1}`)
+      const eng  = labels.map(()=>rnd(45,95))
+      const att  = labels.map(()=>rnd(40,90))
+      STATE.charts['stu-trend'] = new Chart(trendCtx,{
+        type:'line',data:{labels,datasets:[
+          {label:'Engagement',data:eng,borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.1)',tension:.4,fill:true,pointRadius:3},
+          {label:'Attention', data:att,borderColor:'#10b981',backgroundColor:'rgba(16,185,129,.08)',tension:.4,fill:true,pointRadius:3},
+        ]},
+        options:{...chartDefaults(),scales:{y:{...yAxis(),max:100}}}
+      })
+    }
+    // Emotion donut
+    const emoCtx = document.getElementById('chart-stu-emo')
+    if(emoCtx){
+      const d = STATE.emotionData
+      STATE.charts['stu-emo'] = new Chart(emoCtx,{
+        type:'doughnut',
+        data:{labels:d.map(e=>e.emotion),datasets:[{data:d.map(e=>e.count),backgroundColor:d.map(e=>e.color),borderWidth:0,hoverOffset:8}]},
+        options:{plugins:{legend:{position:'right',labels:{color:'#94a3b8',font:{size:12}}}},cutout:'65%',animation:{duration:800}}
+      })
+    }
+  })
+}
+
+function renderStudentAttendance(){
+  document.getElementById('main-content').innerHTML = `
+  <div class="page-header fade-in">
+    <h2>My Attendance</h2>
+    <p>Track your presence across all lectures this semester</p>
+  </div>
+  <div class="stats-grid fade-in">
+    <div class="stat-card sc-green"><div class="stat-icon">✅</div><div class="stat-label">Total Present</div><div class="stat-value">12</div><div class="stat-sub">out of 14 lectures</div></div>
+    <div class="stat-card sc-red" style="--accent:var(--red)"><div class="stat-icon">❌</div><div class="stat-label">Absent</div><div class="stat-value" style="color:var(--red2)">2</div><div class="stat-sub">Missed lectures</div></div>
+    <div class="stat-card sc-blue"><div class="stat-icon">📊</div><div class="stat-label">Rate</div><div class="stat-value">85.7%</div><div class="stat-sub">Good standing</div></div>
+    <div class="stat-card sc-amber"><div class="stat-icon">⏱️</div><div class="stat-label">Avg Duration</div><div class="stat-value">87 min</div><div class="stat-sub">per lecture</div></div>
+  </div>
+  <div class="card fade-in">
+    <div class="card-header"><span class="card-title">Attendance Record</span></div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Lecture</th><th>Course</th><th>Date</th><th>Check-In</th><th>Duration</th><th>Method</th><th>Status</th></tr></thead>
+        <tbody>
+          ${STATE.lectures.map((l,i)=>`
+            <tr>
+              <td><strong>${l.id}</strong></td>
+              <td>${l.name} <span class="text-muted text-xs">(${l.code})</span></td>
+              <td>2025-01-${15+i}</td>
+              <td>${l.time}</td>
+              <td>${rnd(75,90)} min</td>
+              <td><span class="badge badge-blue">👤 Face Recog.</span></td>
+              <td>${i<4?'<span class="badge badge-green">✓ Present</span>':'<span class="badge badge-red">✗ Absent</span>'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  `
+}
+
+function renderStudentEmotions(){
+  document.getElementById('main-content').innerHTML = `
+  <div class="page-header fade-in">
+    <h2>My Emotion Profile</h2>
+    <p>AI-detected emotions across all your lectures</p>
+  </div>
+  <div class="grid-2 fade-in">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Emotion Distribution</span></div>
+      <canvas id="chart-emo-bar" height="200"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Engagement by Lecture</span></div>
+      <canvas id="chart-emo-eng" height="200"></canvas>
+    </div>
+  </div>
+  <div class="card fade-in mt-4">
+    <div class="card-header">
+      <span class="card-title">Emotion Log</span>
+      <span class="badge badge-blue">Last 50 detections</span>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Time</th><th>Lecture</th><th>Emotion</th><th>Confidence</th><th>Engagement</th><th>Attention</th></tr></thead>
+        <tbody>
+          ${Array.from({length:15},(_, i)=>`
+            <tr>
+              <td class="text-muted">10:${String(5+i*3).padStart(2,'0')}</td>
+              <td>${STATE.lectures[i%5].id} — ${STATE.lectures[i%5].name}</td>
+              <td>${emoChip(STATE.emotionData[i%7].emotion,STATE.emotionData[i%7].color)}</td>
+              <td><div style="display:flex;align-items:center;gap:8px">
+                <div class="progress-bar" style="flex:1"><div class="progress-fill pf-blue" style="width:${rnd(65,97)}%"></div></div>
+                <span class="text-xs">${rnd(65,97)}%</span>
+              </div></td>
+              <td><span style="color:${rnd(40,90)>60?'var(--green2)':'var(--amber2)'}">${rnd(40,90)}%</span></td>
+              <td><span style="color:${rnd(40,85)>55?'var(--cyan2)':'var(--text2)'}">${rnd(40,85)}%</span></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  `
+  requestAnimationFrame(()=>{
+    const barCtx = document.getElementById('chart-emo-bar')
+    if(barCtx){
+      STATE.charts['emo-bar']=new Chart(barCtx,{type:'bar',
+        data:{labels:STATE.emotionData.map(e=>e.emotion),datasets:[{data:STATE.emotionData.map(e=>e.count),backgroundColor:STATE.emotionData.map(e=>e.color+'cc'),borderColor:STATE.emotionData.map(e=>e.color),borderWidth:1,borderRadius:6}]},
+        options:{...chartDefaults(),plugins:{legend:{display:false}},scales:{y:{...yAxis()}}}})
+    }
+    const engCtx = document.getElementById('chart-emo-eng')
+    if(engCtx){
+      const ls = STATE.lectures.map(l=>l.id)
+      STATE.charts['emo-eng']=new Chart(engCtx,{type:'bar',
+        data:{labels:ls,datasets:[
+          {label:'Engagement',data:STATE.lectures.map(l=>l.avg_engagement),backgroundColor:'rgba(59,130,246,.7)',borderRadius:6},
+          {label:'Attention', data:STATE.lectures.map(l=>l.avg_attention), backgroundColor:'rgba(16,185,129,.7)',borderRadius:6},
+        ]},
+        options:{...chartDefaults(),scales:{y:{...yAxis(),max:100}}}})
+    }
+  })
+}
+
+function renderStudentSchedule(){
+  document.getElementById('main-content').innerHTML = `
+  <div class="page-header fade-in"><h2>My Schedule</h2><p>This week's lectures</p></div>
+  <div class="card fade-in">
+    <div class="card-header"><span class="card-title">Weekly Timetable</span></div>
+    <div style="display:grid;grid-template-columns:80px repeat(5,1fr);gap:8px">
+      ${['','Sun','Mon','Tue','Wed','Thu'].map(d=>`<div style="text-align:center;font-size:.78rem;font-weight:600;color:var(--text2);padding:8px">${d}</div>`).join('')}
+      ${['09:00','11:00','13:00','15:00','17:00'].map(t=>`
+        <div style="font-size:.72rem;color:var(--text3);padding:6px 0">${t}</div>
+        ${STATE.lectures.map((l,i)=>`
+          <div style="background:${i===0?'rgba(59,130,246,.15)':i===1?'rgba(139,92,246,.15)':i===2?'rgba(16,185,129,.15)':'transparent'};
+               border:1px solid ${i<3?'var(--border2)':'var(--border)'};border-radius:8px;padding:8px;min-height:60px;cursor:pointer"
+               onclick="showLectureDetail('${l.id}')">
+            ${i<3&&t===l.time?`<div style="font-size:.7rem;font-weight:600">${l.code}</div><div style="font-size:.65rem;color:var(--text2)">${l.room}</div>`:''}
+          </div>
+        `).join('')}
+      `).join('')}
+    </div>
+  </div>
+  `
+}
+
+function renderStudentPerformance(){
+  document.getElementById('main-content').innerHTML = `
+  <div class="page-header fade-in"><h2>Performance Analytics</h2><p>Your academic metrics and trends</p></div>
+  <div class="stats-grid fade-in">
+    <div class="stat-card sc-blue"><div class="stat-icon">📈</div><div class="stat-label">GPA</div><div class="stat-value">3.4</div><div class="stat-sub">↑ 0.2 from last semester</div></div>
+    <div class="stat-card sc-green"><div class="stat-icon">🧠</div><div class="stat-label">Avg Engagement</div><div class="stat-value">72%</div><div class="stat-sub">Top 30% of class</div></div>
+    <div class="stat-card sc-purple"><div class="stat-icon">🎯</div><div class="stat-label">Courses Passed</div><div class="stat-value">4/5</div><div class="stat-sub">Current semester</div></div>
+    <div class="stat-card sc-amber"><div class="stat-icon">🏆</div><div class="stat-label">Class Rank</div><div class="stat-value">#7</div><div class="stat-sub">Out of 48 students</div></div>
+  </div>
+  <div class="card fade-in">
+    <div class="card-header"><span class="card-title">Performance per Course</span></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Course</th><th>Attendance</th><th>Engagement</th><th>Attention</th><th>Grade</th></tr></thead>
+      <tbody>${STATE.lectures.map(l=>{
+        const att=rnd(70,100),eng=rnd(55,95),att2=rnd(50,90)
+        const g=['A','B+','A-','B','A'][rnd(0,4)]
+        return `<tr>
+          <td><strong>${l.name}</strong> <span class="text-muted text-xs">${l.code}</span></td>
+          <td><div style="display:flex;align-items:center;gap:8px"><div class="progress-bar" style="flex:1"><div class="progress-fill pf-green" style="width:${att}%"></div></div><span class="text-xs">${att}%</span></div></td>
+          <td><div style="display:flex;align-items:center;gap:8px"><div class="progress-bar" style="flex:1"><div class="progress-fill pf-blue" style="width:${eng}%"></div></div><span class="text-xs">${eng}%</span></div></td>
+          <td><div style="display:flex;align-items:center;gap:8px"><div class="progress-bar" style="flex:1"><div class="progress-fill pf-purple" style="width:${att2}%"></div></div><span class="text-xs">${att2}%</span></div></td>
+          <td><span class="badge badge-${g.startsWith('A')?'green':'blue'}">${g}</span></td>
+        </tr>`}).join('')}
+      </tbody>
+    </table></div>
+  </div>
+  `
+}
+
+// ════════════════════════════════════════
+// ─── DOCTOR PAGES ─────────────────────
+// ════════════════════════════════════════
+function renderDoctorDashboard(){
+  document.getElementById('main-content').innerHTML = `
+  <div class="page-header fade-in">
+    <h2>Lecturer Dashboard</h2>
+    <p>${STATE.user.name} · Computer Science Department</p>
+  </div>
+  <div class="stats-grid fade-in">
+    <div class="stat-card sc-blue"><div class="stat-icon">📚</div><div class="stat-label">Active Lectures</div><div class="stat-value">1</div><div class="stat-sub">5 scheduled today</div></div>
+    <div class="stat-card sc-green"><div class="stat-icon">👥</div><div class="stat-label">Total Students</div><div class="stat-value">142</div><div class="stat-sub">Across 5 courses</div></div>
+    <div class="stat-card sc-purple"><div class="stat-icon">🧠</div><div class="stat-label">Avg Engagement</div><div class="stat-value">68%</div><div class="stat-sub">↑ 5% from last week</div></div>
+    <div class="stat-card sc-amber"><div class="stat-icon">🔔</div><div class="stat-label">Active Alerts</div><div class="stat-value">3</div><div class="stat-sub">Require attention</div></div>
+  </div>
+  <div class="grid-2-1 fade-in">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Engagement Overview — All Lectures</span>
+        <button class="btn btn-primary btn-sm" onclick="navTo('d-live')">🔴 Start Live Session</button>
+      </div>
+      <canvas id="chart-doc-overview" height="180"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Lecture Status</span></div>
+      ${STATE.lectures.map(l=>`
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+          <span style="width:36px;height:36px;border-radius:8px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:.9rem">📚</span>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:.82rem;font-weight:500" class="truncate">${l.name}</div>
+            <div style="font-size:.7rem;color:var(--text2)">${l.id} · ${l.time}</div>
+          </div>
+          <span class="badge ${l.status==='active'?'badge-green':l.status==='ended'?'badge-blue':'badge-amber'}">${l.status}</span>
+        </div>
+      `).join('')}
+    </div>
+  </div>
+  <div class="card fade-in mt-4">
+    <div class="card-header"><span class="card-title">Recent Alerts</span><span class="badge badge-red">3 unread</span></div>
+    <div class="alert alert-red">🚨 <strong>S003 (Nour Ali)</strong> — Disengaged for over 12 minutes in AI lecture (L001)</div>
+    <div class="alert alert-amber">⚠️ <strong>S007 (Fatima Zahra)</strong> — Attention score dropped below 30% in ML lecture</div>
+    <div class="alert alert-blue">ℹ️ Class engagement in <strong>L002</strong> dropped 15% in the last 10 minutes — consider a break</div>
+  </div>
+  `
+  requestAnimationFrame(()=>{
+    const ctx = document.getElementById('chart-doc-overview')
+    if(ctx){
+      STATE.charts['doc-overview']=new Chart(ctx,{type:'bar',
+        data:{labels:STATE.lectures.map(l=>l.id),datasets:[
+          {label:'Avg Engagement (%)',data:STATE.lectures.map(l=>l.avg_engagement),backgroundColor:'rgba(59,130,246,.75)',borderRadius:6},
+          {label:'Avg Attention (%)', data:STATE.lectures.map(l=>l.avg_attention), backgroundColor:'rgba(16,185,129,.75)',borderRadius:6},
+        ]},
+        options:{...chartDefaults(),scales:{y:{...yAxis(),max:100}}}})
+    }
+  })
+}
+
+function renderDoctorLive(){
+  document.getElementById('main-content').innerHTML = `
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px" class="fade-in">
+    <div>
+      <h2 style="font-family:'Syne',sans-serif;font-size:1.5rem;font-weight:700">🔴 Live Session Monitor</h2>
+      <p style="color:var(--text2);font-size:.85rem">CS401 — Artificial Intelligence · Hall A</p>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-success" id="cam-toggle-btn" onclick="toggleCamera()">📷 Start Camera</button>
+      <button class="btn btn-danger" onclick="endSession()">⏹ End Session</button>
+    </div>
+  </div>
+
+  <div class="grid-2-1 fade-in">
+    <!-- Camera / Face Detection -->
+    <div class="card" style="padding:14px">
+      <div class="card-header"><span class="card-title">Face Detection Feed</span><span id="cam-face-count" class="badge badge-cyan">0 faces</span></div>
+      <div class="cam-wrap" id="cam-wrap" style="min-height:260px">
+        <div id="cam-placeholder" style="min-height:260px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px">
+          <div style="font-size:3rem">📷</div>
+          <div style="color:var(--text2)">Camera not started</div>
+          <button class="btn btn-primary" onclick="toggleCamera()">Enable Face Recognition</button>
+        </div>
+        <video id="cam-video" class="hidden" style="width:100%;border-radius:12px" autoplay playsinline muted></video>
+        <canvas id="cam-canvas-overlay" class="hidden" style="width:100%;position:absolute;top:0;left:0"></canvas>
+      </div>
+
+      <!-- Student thumbnails -->
+      <div style="margin-top:12px">
+        <div style="font-size:.78rem;color:var(--text2);font-weight:600;margin-bottom:8px">DETECTED STUDENTS</div>
+        <div class="student-face-grid" id="student-face-grid">
+          ${STATE.students.slice(0,12).map(s=>`
+            <div class="face-thumb ft-${s.attention}" onclick="showStudentDetail('${s.id}')">
+              <div class="face-avatar" style="background:${s.avatar_color}22">
+                ${s.emoji}
+                <div class="ft-present-dot"></div>
+              </div>
+              <div class="ft-name">${s.name.split(' ')[0]}</div>
+              <div class="ft-emotion">${emoIcon(s.emotion)} ${s.emotion}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Stats -->
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card" style="padding:16px">
+        <div class="card-title mb-4">Live Metrics</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          ${[
+            {label:'Present',val:'12',icon:'👥',color:'var(--green2)'},
+            {label:'Absent', val:'3', icon:'❌',color:'var(--red2)'},
+            {label:'Attentive',val:'8',icon:'🧠',color:'var(--blue2)'},
+            {label:'Distracted',val:'4',icon:'😴',color:'var(--amber2)'},
+          ].map(m=>`
+            <div style="background:var(--bg3);border-radius:10px;padding:12px;text-align:center">
+              <div style="font-size:1.4rem">${m.icon}</div>
+              <div style="font-family:'Syne',sans-serif;font-size:1.5rem;font-weight:700;color:${m.color}">${m.val}</div>
+              <div style="font-size:.7rem;color:var(--text2)">${m.label}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <!-- Attention Ring -->
+      <div class="card" style="padding:16px;text-align:center">
+        <div class="card-title mb-4">Class Attention Score</div>
+        <div class="attention-ring-wrap">
+          <svg width="130" height="130" style="transform:rotate(-90deg)">
+            <circle cx="65" cy="65" r="54" fill="none" stroke="var(--bg3)" stroke-width="10"/>
+            <circle id="att-ring" cx="65" cy="65" r="54" fill="none" stroke="url(#ringGrad)" stroke-width="10"
+              stroke-linecap="round" stroke-dasharray="339.3" stroke-dashoffset="${339.3*(1-0.67)}" style="transition:stroke-dashoffset 1s ease"/>
+            <defs><linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#3b82f6"/>
+              <stop offset="100%" stop-color="#22d3ee"/>
+            </linearGradient></defs>
+          </svg>
+          <div class="ring-center">
+            <div class="ring-pct" id="ring-pct-val">67%</div>
+            <div class="ring-lbl">Attention</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Emotion Chart -->
+      <div class="card" style="padding:16px">
+        <div class="card-title mb-4">Live Emotions</div>
+        <canvas id="chart-live-emo" height="120"></canvas>
+      </div>
+    </div>
+  </div>
+  `
+  requestAnimationFrame(()=>{
+    const ctx = document.getElementById('chart-live-emo')
+    if(ctx){
+      const d = STATE.emotionData.slice(0,5)
+      STATE.charts['live-emo']=new Chart(ctx,{type:'doughnut',
+        data:{labels:d.map(e=>e.emotion),datasets:[{data:d.map(e=>e.count),backgroundColor:d.map(e=>e.color),borderWidth:0,hoverOffset:6}]},
+        options:{plugins:{legend:{position:'right',labels:{color:'#94a3b8',font:{size:11}}}},cutout:'60%',animation:{duration:600}}})
+    }
+    // Start live update simulation
+    STATE.liveInterval = setInterval(()=>updateLiveStats(), 3000)
+  })
+}
+
+function updateLiveStats(){
+  const pct = rnd(55,85)
+  const ring = document.getElementById('att-ring')
+  const pctEl = document.getElementById('ring-pct-val')
+  const faceCount = document.getElementById('cam-face-count')
+  if(ring) ring.setAttribute('stroke-dashoffset', 339.3*(1-pct/100))
+  if(pctEl) pctEl.textContent = pct+'%'
+  if(faceCount) faceCount.textContent = rnd(10,15)+' faces'
+  // Randomly update one student emotion
+  if(STATE.charts['live-emo']){
+    STATE.charts['live-emo'].data.datasets[0].data = STATE.emotionData.slice(0,5).map(()=>rnd(5,40))
+    STATE.charts['live-emo'].update('none')
+  }
+}
+
+async function toggleCamera(){
+  const btn = document.getElementById('cam-toggle-btn')
+  const video = document.getElementById('cam-video')
+  const placeholder = document.getElementById('cam-placeholder')
+  if(STATE.camStream){
+    stopCamera()
+    btn.textContent='📷 Start Camera'
+    btn.className='btn btn-success'
+    video.classList.add('hidden')
+    if(placeholder) placeholder.style.display='flex'
+    return
+  }
+  try{
+    STATE.camStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false})
+    video.srcObject = STATE.camStream
+    video.classList.remove('hidden')
+    if(placeholder) placeholder.style.display='none'
+    btn.textContent='⏹ Stop Camera'
+    btn.className='btn btn-danger'
+    simulateFaceDetection()
+  }catch(e){
+    alert('Camera access denied or unavailable.\nThe system will run in simulation mode.')
+    if(placeholder) placeholder.style.display='none'
+    video.classList.add('hidden')
+    simulateFaceDetection()
+  }
+}
+
+function stopCamera(){
+  if(STATE.camStream){
+    STATE.camStream.getTracks().forEach(t=>t.stop())
+    STATE.camStream=null
+  }
+  if(STATE.liveInterval){clearInterval(STATE.liveInterval);STATE.liveInterval=null}
+}
+
+function simulateFaceDetection(){
+  // Simulate periodic updates to student grid
+  const grid = document.getElementById('student-face-grid')
+  if(!grid) return
+  STATE.camInterval = setInterval(()=>{
+    const idx = rnd(0,11)
+    const emotions = ['happy','neutral','confused','bored','surprise']
+    const atts = ['attentive','moderate','distracted']
+    STATE.students[idx].emotion = choice(emotions)
+    STATE.students[idx].attention = choice(atts)
+    const thumbs = grid.querySelectorAll('.face-thumb')
+    if(thumbs[idx]){
+      thumbs[idx].className = `face-thumb ft-${STATE.students[idx].attention}`
+      thumbs[idx].querySelector('.ft-emotion').innerHTML = `${emoIcon(STATE.students[idx].emotion)} ${STATE.students[idx].emotion}`
+    }
+  },2000)
+}
+
+function endSession(){
+  stopCamera()
+  if(STATE.camInterval){clearInterval(STATE.camInterval);STATE.camInterval=null}
+  alert('Session ended. Attendance and emotion data saved.')
+  navTo('d-dashboard')
+}
+
+function renderDoctorLectures(){
+  document.getElementById('main-content').innerHTML = `
+  <div class="page-header fade-in"><h2>My Lectures</h2><p>Manage and monitor all your courses</p></div>
+  <div style="display:flex;gap:10px;margin-bottom:20px">
+    <button class="btn btn-primary" onclick="openModal('add-lecture')">+ New Lecture</button>
+    <input type="text" class="form-input" style="width:240px;padding:9px 14px" placeholder="🔍 Search lectures...">
+  </div>
+  <div class="card fade-in">
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>ID</th><th>Course</th><th>Room</th><th>Time</th><th>Students</th><th>Engagement</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody>
+        ${STATE.lectures.map(l=>`
+          <tr>
+            <td><strong>${l.id}</strong></td>
+            <td>${l.name} <span class="text-muted text-xs">(${l.code})</span></td>
+            <td>${l.room}</td>
+            <td>${l.time}</td>
+            <td>${l.present}/${l.students}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px;min-width:120px">
+                <div class="progress-bar" style="flex:1"><div class="progress-fill pf-blue" style="width:${l.avg_engagement}%"></div></div>
+                <span class="text-xs">${l.avg_engagement}%</span>
+              </div>
+            </td>
+            <td><span class="badge ${l.status==='active'?'badge-green':l.status==='ended'?'badge-purple':'badge-amber'}">${l.status}</span></td>
+            <td>
+              <div style="display:flex;gap:6px">
+                <button class="btn btn-outline btn-sm" onclick="navTo('d-live')">🔴 Live</button>
+                <button class="btn btn-outline btn-sm" onclick="showLectureDetail('${l.id}')">📊</button>
+              </div>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table></div>
+  </div>
+  `
+}
+
+function renderDoctorStudents(){
+  document.getElementById('main-content').innerHTML = `
+  <div class="page-header fade-in"><h2>Student Roster</h2><p>All enrolled students and their engagement metrics</p></div>
+  <div style="display:flex;gap:10px;margin-bottom:20px">
+    <input type="text" class="form-input" style="width:260px;padding:9px 14px" placeholder="🔍 Search by name or ID...">
+    <select class="form-input" style="width:180px;padding:9px 14px">
+      <option>All Courses</option>
+      ${STATE.lectures.map(l=>`<option>${l.name}</option>`).join('')}
+    </select>
+  </div>
+  <div class="student-face-grid fade-in" style="grid-template-columns:repeat(auto-fill,minmax(110px,1fr))">
+    ${STATE.students.map(s=>`
+      <div class="face-thumb ft-${s.present?s.attention:'absent'}" onclick="showStudentDetail('${s.id}')">
+        <div class="face-avatar" style="background:${s.avatar_color}22">
+          ${s.emoji}
+          <div class="ft-present-dot"></div>
+        </div>
+        <div class="ft-name">${s.name.split(' ')[0]}</div>
+        <div class="ft-emotion text-xs" style="color:var(--text2)">${s.id}</div>
+        <div class="ft-emotion">${emoIcon(s.emotion)} ${s.emotion}</div>
+        <div style="margin-top:5px">
+          <div class="progress-bar"><div class="progress-fill pf-blue" style="width:${s.engagement}%"></div></div>
+        </div>
+      </div>
+    `).join('')}
+  </div>
+  `
+}
+
+function renderDoctorAnalytics(){
+  document.getElementById('main-content').innerHTML = `
+  <div class="page-header fade-in"><h2>Analytics</h2><p>Statistical analysis of student engagement and emotions</p></div>
+  <div class="tabs fade-in">
+    <button class="tab active" onclick="switchTab(this,'tab-overview')">Overview</button>
+    <button class="tab" onclick="switchTab(this,'tab-trends')">Trends</button>
+    <button class="tab" onclick="switchTab(this,'tab-clusters')">Clustering</button>
+    <button class="tab" onclick="switchTab(this,'tab-compare')">Comparison</button>
+  </div>
+  <div id="tab-overview" class="fade-in">
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Emotion Distribution</span></div>
+        <canvas id="chart-ana-emo" height="220"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Engagement Heatmap by Lecture</span></div>
+        <canvas id="chart-ana-heat" height="220"></canvas>
+      </div>
+    </div>
+    <div class="card mt-4">
+      <div class="card-header"><span class="card-title">Per-Lecture Engagement Summary</span></div>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>Lecture</th><th>Course</th><th>Students</th><th>Engagement</th><th>Attention</th><th>Dominant Emotion</th></tr></thead>
+        <tbody>
+          ${STATE.lectures.map(l=>`
+            <tr>
+              <td><strong>${l.id}</strong></td>
+              <td>${l.name}</td>
+              <td>${l.present}/${l.students}</td>
+              <td><div class="flex items-center gap-2"><div class="progress-bar" style="flex:1"><div class="progress-fill pf-blue" style="width:${l.avg_engagement}%"></div></div><span class="text-xs">${l.avg_engagement}%</span></div></td>
+              <td><div class="flex items-center gap-2"><div class="progress-bar" style="flex:1"><div class="progress-fill pf-green" style="width:${l.avg_attention}%"></div></div><span class="text-xs">${l.avg_attention}%</span></div></td>
+              <td>${emoChip(l.dominant_emotion,STATE.emotionData.find(e=>e.emotion===l.dominant_emotion)?.color||'#64748b')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+  <div id="tab-trends" class="hidden fade-in">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Engagement Trend Over Time</span></div>
+      <canvas id="chart-trend-time" height="200"></canvas>
+    </div>
+  </div>
+  <div id="tab-clusters" class="hidden fade-in">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Student Engagement Clusters (K-Means)</span>
+        <span class="badge badge-purple">3 Clusters</span>
+      </div>
+      <canvas id="chart-clusters" height="280"></canvas>
+      <div class="grid-3 mt-4">
+        ${[
+          {label:'High Engagement',count:5,color:'var(--green2)',desc:'Consistently attentive, positive emotions'},
+          {label:'Moderate',count:7,color:'var(--amber2)',desc:'Variable attention, mixed emotions'},
+          {label:'Low Engagement',count:3,color:'var(--red2)',desc:'Frequently distracted or absent'},
+        ].map(c=>`
+          <div style="background:var(--bg3);border-radius:10px;padding:14px;border-left:3px solid ${c.color}">
+            <div style="font-size:.85rem;font-weight:600;color:${c.color}">${c.label}</div>
+            <div style="font-size:1.4rem;font-weight:700;margin:4px 0">${c.count} students</div>
+            <div style="font-size:.75rem;color:var(--text2)">${c.desc}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  </div>
+  <div id="tab-compare" class="hidden fade-in">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Lecture-to-Lecture Comparison</span></div>
+      <canvas id="chart-compare" height="220"></canvas>
+    </div>
+  </div>
+  `
+  requestAnimationFrame(()=>{
+    // Emotion chart
+    const emoCtx = document.getElementById('chart-ana-emo')
+    if(emoCtx){
+      const d = STATE.emotionData
+      STATE.charts['ana-emo']=new Chart(emoCtx,{type:'pie',
+        data:{labels:d.map(e=>e.emotion),datasets:[{data:d.map(e=>e.count),backgroundColor:d.map(e=>e.color),borderWidth:2,borderColor:'#0f1e38'}]},
+        options:{plugins:{legend:{position:'right',labels:{color:'#94a3b8'}}},animation:{duration:800}}})
+    }
+    // Heat chart (stacked bars per lecture)
+    const heatCtx = document.getElementById('chart-ana-heat')
+    if(heatCtx){
+      const emotionSubset = STATE.emotionData.slice(0,4)
+      STATE.charts['ana-heat']=new Chart(heatCtx,{type:'bar',
+        data:{labels:STATE.lectures.map(l=>l.id),datasets:emotionSubset.map(e=>({
+          label:e.emotion,data:STATE.lectures.map(()=>rnd(5,30)),
+          backgroundColor:e.color+'cc',borderRadius:4,
+        }))},
+        options:{...chartDefaults(),scales:{x:{stacked:true},y:{stacked:true,...yAxis()}}}})
+    }
+  })
+}
+
+function renderDoctorAlerts(){
+  document.getElementById('main-content').innerHTML = `
+  <div class="page-header fade-in"><h2>Alerts</h2><p>Real-time student engagement alerts</p></div>
+  <div class="alert alert-red fade-in">🚨 <div>
+    <strong>CRITICAL — S003 Nour Ali</strong> — Disengaged for 12+ minutes<br>
+    <span class="text-xs">AI Lecture (L001) · 09:23 today · Engagement: 14%</span>
+  </div></div>
+  <div class="alert alert-amber fade-in">⚠️ <div>
+    <strong>WARNING — S007 Fatima Zahra</strong> — Attention dropped below 30%<br>
+    <span class="text-xs">ML Lecture (L002) · 11:45 today</span>
+  </div></div>
+  <div class="alert alert-amber fade-in">⚠️ <div>
+    <strong>CLASS ALERT — L002</strong> — Avg engagement fell 15% in 10 min<br>
+    <span class="text-xs">Consider a break or activity change · 11:52 today</span>
+  </div></div>
+  <div class="alert alert-green fade-in">✅ <div>
+    <strong>IMPROVEMENT — L001</strong> — Engagement recovered to 72% after 10-min break<br>
+    <span class="text-xs">10:15 today</span>
+  </div></div>
+  <div class="card fade-in mt-4">
+    <div class="card-header"><span class="card-title">Alert History</span></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Time</th><th>Type</th><th>Lecture</th><th>Student</th><th>Details</th><th>Severity</th></tr></thead>
+      <tbody>
+        ${Array.from({length:10},(_, i)=>`
+          <tr>
+            <td class="text-muted text-sm">${rnd(9,17)}:${String(rnd(0,59)).padStart(2,'0')}</td>
+            <td>${['Low Engagement','Distracted','Absent','Recovery'][i%4]}</td>
+            <td>${STATE.lectures[i%5].id}</td>
+            <td>${STATE.students[i].name}</td>
+            <td class="text-muted text-sm">Engagement: ${rnd(10,40)}%</td>
+            <td><span class="badge ${i%3===0?'badge-red':i%3===1?'badge-amber':'badge-green'}">${i%3===0?'Critical':i%3===1?'Warning':'Info'}</span></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table></div>
+  </div>
+  `
+}
+
+// ════════════════════════════════════════
+// ─── ADMIN PAGES ──────────────────────
+// ════════════════════════════════════════
+function renderAdminDashboard(){
+  document.getElementById('main-content').innerHTML = `
+  <div class="page-header fade-in"><h2>System Dashboard</h2><p>University-wide overview</p></div>
+  <div class="stats-grid fade-in">
+    <div class="stat-card sc-blue"><div class="stat-icon">🎓</div><div class="stat-label">Total Students</div><div class="stat-value">1,248</div><div class="stat-sub">Enrolled this semester</div></div>
+    <div class="stat-card sc-purple"><div class="stat-icon">👨‍🏫</div><div class="stat-label">Lecturers</div><div class="stat-value">87</div><div class="stat-sub">Active faculty</div></div>
+    <div class="stat-card sc-green"><div class="stat-icon">📚</div><div class="stat-label">Active Lectures</div><div class="stat-value">24</div><div class="stat-sub">Running right now</div></div>
+    <div class="stat-card sc-amber"><div class="stat-icon">🧠</div><div class="stat-label">System Avg Engagement</div><div class="stat-value">65%</div><div class="stat-sub">↑ 3.2% this week</div></div>
+  </div>
+  <div class="grid-2 fade-in">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Department Engagement Comparison</span></div>
+      <canvas id="chart-admin-dept" height="200"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">System Usage Today</span></div>
+      <canvas id="chart-admin-usage" height="200"></canvas>
+    </div>
+  </div>
+  <div class="card fade-in mt-4">
+    <div class="card-header"><span class="card-title">Live Active Lectures</span></div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Lecture</th><th>Lecturer</th><th>Room</th><th>Students</th><th>Engagement</th><th>Status</th></tr></thead>
+      <tbody>
+        ${STATE.lectures.filter(l=>l.status!=='ended').map(l=>`
+          <tr>
+            <td><strong>${l.id}</strong> — ${l.name}</td>
+            <td>${l.doctor}</td>
+            <td>${l.room}</td>
+            <td>${l.present}/${l.students}</td>
+            <td><div class="flex items-center gap-2"><div class="progress-bar" style="flex:1"><div class="progress-fill pf-blue" style="width:${l.avg_engagement}%"></div></div>${l.avg_engagement}%</div></td>
+            <td><span class="badge ${l.status==='active'?'badge-green':'badge-amber'}">${l.status}</span></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table></div>
+  </div>
+  `
+  requestAnimationFrame(()=>{
+    const deptCtx = document.getElementById('chart-admin-dept')
+    if(deptCtx){
+      const depts=['CS','Engineering','Math','Physics','Data Science']
+      STATE.charts['admin-dept']=new Chart(deptCtx,{type:'bar',
+        data:{labels:depts,datasets:[{label:'Avg Engagement %',data:depts.map(()=>rnd(55,85)),backgroundColor:['#3b82f6','#8b5cf6','#10b981','#f59e0b','#06b6d4'].map(c=>c+'cc'),borderRadius:6}]},
+        options:{...chartDefaults(),plugins:{legend:{display:false}},scales:{y:{...yAxis(),max:100}}}})
+    }
+    const usageCtx = document.getElementById('chart-admin-usage')
+    if(usageCtx){
+      const hours = Array.from({length:10},(_, i)=>`${8+i}:00`)
+      STATE.charts['admin-usage']=new Chart(usageCtx,{type:'line',
+        data:{labels:hours,datasets:[
+          {label:'Active Students',data:hours.map(()=>rnd(80,300)),borderColor:'#3b82f6',fill:true,backgroundColor:'rgba(59,130,246,.1)',tension:.4},
+          {label:'Active Lectures',data:hours.map(()=>rnd(5,24)),borderColor:'#10b981',fill:true,backgroundColor:'rgba(16,185,129,.08)',tension:.4,yAxisID:'y2'},
+        ]},
+        options:{...chartDefaults(),scales:{y:{...yAxis()},y2:{position:'right',grid:{display:false},ticks:{color:'#94a3b8'}}}}})
+    }
+  })
+}
+
+function renderAdminStudents(){
+  document.getElementById('main-content').innerHTML = `
+  <div class="page-header fade-in"><h2>Student Management</h2><p>All registered students</p></div>
+  <div style="display:flex;gap:10px;margin-bottom:20px">
+    <button class="btn btn-primary" onclick="openModal('add-student')">+ Add Student</button>
+    <input type="text" class="form-input" style="width:260px;padding:9px 14px" placeholder="🔍 Search...">
+    <select class="form-input" style="width:200px;padding:9px 14px"><option>All Departments</option><option>Computer Science</option><option>Engineering</option></select>
+    <button class="btn btn-outline">📥 Export CSV</button>
+  </div>
+  <div class="card fade-in">
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>ID</th><th>Name</th><th>Department</th><th>Year</th><th>Attendance</th><th>Engagement</th><th>Last Emotion</th><th>Actions</th></tr></thead>
+      <tbody>
+        ${STATE.students.map(s=>`
+          <tr>
+            <td class="text-muted">${s.id}</td>
+            <td><div class="flex items-center gap-2"><div style="width:28px;height:28px;border-radius:50%;background:${s.avatar_color}22;display:flex;align-items:center;justify-content:center">${s.emoji}</div>${s.name}</div></td>
+            <td>${s.dept}</td>
+            <td>Year ${s.year}</td>
+            <td><span class="${s.attendance_rate>=80?'text-green':s.attendance_rate>=60?'text-amber':'text-red'}">${s.attendance_rate}%</span></td>
+            <td><div class="progress-bar" style="width:80px;display:inline-block;vertical-align:middle"><div class="progress-fill pf-blue" style="width:${s.engagement}%"></div></div></td>
+            <td>${emoChip(s.emotion,STATE.emotionData.find(e=>e.emotion===s.emotion)?.color||'#64748b')}</td>
+            <td><div class="flex gap-2">
+              <button class="btn btn-outline btn-sm" onclick="showStudentDetail('${s.id}')">👁</button>
+              <button class="btn btn-danger btn-sm">🗑</button>
+            </div></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table></div>
+  </div>
+  `
+}
+
+function renderAdminDoctors(){
+  const docData = [
+    {id:'D001',name:'Dr. Ahmed Smith',dept:'Computer Science',title:'Associate Professor',courses:5,students:142,engagement:72},
+    {id:'D002',name:'Dr. Laila Hassan',dept:'Mathematics',title:'Professor',courses:3,students:98,engagement:68},
+    {id:'D003',name:'Dr. Khalid Omar',dept:'Engineering',title:'Lecturer',courses:4,students:120,engagement:75},
+    {id:'D004',name:'Dr. Sara Nour',dept:'Physics',title:'Associate Professor',courses:2,students:56,engagement:81},
+  ]
+  document.getElementById('main-content').innerHTML = `
+  <div class="page-header fade-in"><h2>Lecturer Management</h2></div>
+  <div style="display:flex;gap:10px;margin-bottom:20px">
+    <button class="btn btn-primary">+ Add Lecturer</button>
+    <input type="text" class="form-input" style="width:260px;padding:9px 14px" placeholder="🔍 Search...">
+  </div>
+  <div class="card fade-in">
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>ID</th><th>Name</th><th>Department</th><th>Title</th><th>Courses</th><th>Students</th><th>Avg Engagement</th><th>Actions</th></tr></thead>
+      <tbody>
+        ${docData.map(d=>`
+          <tr>
+            <td class="text-muted">${d.id}</td>
+            <td><strong>${d.name}</strong></td>
+            <td>${d.dept}</td>
+            <td>${d.title}</td>
+            <td>${d.courses}</td>
+            <td>${d.students}</td>
+            <td>
+              <div class="flex items-center gap-2">
+                <div class="progress-bar" style="flex:1;max-width:80px"><div class="progress-fill pf-blue" style="width:${d.engagement}%"></div></div>
+                <span class="text-xs">${d.engagement}%</span>
+              </div>
+            </td>
+            <td><button class="btn btn-outline btn-sm">👁 View</button></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table></div>
+  </div>
+  `
+}
+
+function renderAdminLectures(){renderDoctorLectures()}
+
+function renderAdminAnalytics(){
+  document.getElementById('main-content').innerHTML = `
+  <div class="page-header fade-in"><h2>System Analytics</h2><p>University-wide engagement statistics</p></div>
+  <div class="grid-2 fade-in">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Emotion Distribution (All Lectures)</span></div>
+      <canvas id="chart-sys-emo" height="220"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Engagement by Department</span></div>
+      <canvas id="chart-sys-dept" height="220"></canvas>
+    </div>
+  </div>
+  <div class="card fade-in mt-4">
+    <div class="card-header"><span class="card-title">Weekly Attendance Trend</span></div>
+    <canvas id="chart-sys-trend" height="160"></canvas>
+  </div>
+  `
+  requestAnimationFrame(()=>{
+    const emoCtx = document.getElementById('chart-sys-emo')
+    if(emoCtx){
+      const d = STATE.emotionData
+      STATE.charts['sys-emo']=new Chart(emoCtx,{type:'bar',
+        data:{labels:d.map(e=>e.emotion),datasets:[{data:d.map(e=>e.count*10),backgroundColor:d.map(e=>e.color+'cc'),borderRadius:6}]},
+        options:{...chartDefaults(),plugins:{legend:{display:false}},scales:{y:{...yAxis()}}}})
+    }
+    const deptCtx = document.getElementById('chart-sys-dept')
+    if(deptCtx){
+      const depts=['CS','Eng','Math','Physics','Data Sci']
+      STATE.charts['sys-dept']=new Chart(deptCtx,{type:'radar',
+        data:{labels:depts,datasets:[
+          {label:'Engagement',data:depts.map(()=>rnd(55,85)),borderColor:'#3b82f6',backgroundColor:'rgba(59,130,246,.15)',pointBackgroundColor:'#3b82f6'},
+          {label:'Attention', data:depts.map(()=>rnd(50,80)),borderColor:'#10b981',backgroundColor:'rgba(16,185,129,.1)',pointBackgroundColor:'#10b981'},
+        ]},
+        options:{scales:{r:{ticks:{color:'#475569',backdropColor:'transparent'},grid:{color:'rgba(255,255,255,.07)'},pointLabels:{color:'#94a3b8'}}},plugins:{legend:{labels:{color:'#94a3b8'}}},animation:{duration:800}}})
+    }
+    const trendCtx = document.getElementById('chart-sys-trend')
+    if(trendCtx){
+      const days=['Mon','Tue','Wed','Thu','Sun','Mon','Tue']
+      STATE.charts['sys-trend']=new Chart(trendCtx,{type:'line',
+        data:{labels:days,datasets:[
+          {label:'Attendance',data:days.map(()=>rnd(70,95)),borderColor:'#3b82f6',fill:true,backgroundColor:'rgba(59,130,246,.1)',tension:.4},
+        ]},
+        options:{...chartDefaults(),scales:{y:{...yAxis(),max:100}}}})
+    }
+  })
+}
+
+function renderAdminReports(){
+  document.getElementById('main-content').innerHTML = `
+  <div class="page-header fade-in"><h2>R Analysis Reports</h2><p>Statistical analysis powered by R + ggplot2</p></div>
+  <div class="alert alert-blue fade-in">ℹ️ Reports are generated by running the R analysis script. Ensure R + required packages are installed on the server.</div>
+  <div class="grid-2 fade-in">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Available R Scripts</span></div>
+      ${[
+        {name:'Full Analysis',file:'analysis.R',desc:'Emotion distribution, clustering, engagement scoring'},
+        {name:'Shiny Dashboard',file:'shiny_dashboard.R',desc:'Interactive R Shiny web dashboard'},
+        {name:'Cluster Report',file:'clustering.R',desc:'K-means student & lecture clustering'},
+        {name:'Trend Analysis',file:'trends.R',desc:'Time-series emotional trends'},
+      ].map(r=>`
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)">
+          <div style="width:36px;height:36px;border-radius:8px;background:rgba(59,130,246,.15);display:flex;align-items:center;justify-content:center;font-size:1.1rem">📊</div>
+          <div style="flex:1">
+            <div style="font-weight:500;font-size:.9rem">${r.name}</div>
+            <div style="font-size:.73rem;color:var(--text2)">${r.file} · ${r.desc}</div>
+          </div>
+          <button class="btn btn-outline btn-sm" onclick="runRReport('${r.file}')">▶ Run</button>
+        </div>
+      `).join('')}
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Run Commands</span></div>
+      <div style="background:var(--bg);border-radius:10px;padding:16px;font-family:monospace;font-size:.8rem;color:var(--green2);line-height:2">
+        <div style="color:var(--text3)"># Start Python Backend</div>
+        <div>$ uvicorn main:app --reload --port 8000</div>
+        <br>
+        <div style="color:var(--text3)"># Run R Full Analysis</div>
+        <div>$ Rscript analysis.R data.csv results.json</div>
+        <br>
+        <div style="color:var(--text3)"># Launch Shiny Dashboard</div>
+        <div>$ Rscript -e "shiny::runApp('shiny_dashboard.R',port=3001)"</div>
+        <br>
+        <div style="color:var(--text3)"># Install R Packages</div>
+        <div>$ Rscript -e "install.packages(c('dplyr','ggplot2','shiny','plotly','DT','jsonlite','lubridate','cluster','httr'))"</div>
+      </div>
+    </div>
+  </div>
+  <div class="card fade-in mt-4" id="r-output-card" style="display:none">
+    <div class="card-header"><span class="card-title">R Output</span></div>
+    <div id="r-output" style="font-family:monospace;font-size:.82rem;background:var(--bg);padding:16px;border-radius:10px;color:var(--green2);white-space:pre-wrap"></div>
+  </div>
+  `
+}
+
+function runRReport(file){
+  const card = document.getElementById('r-output-card')
+  const out  = document.getElementById('r-output')
+  card.style.display='block'
+  out.textContent='⟳ Running '+file+'...\n'
+  setTimeout(()=>{
+    out.textContent=`✅ ${file} completed\n\nSummary:\n  Total records:   1,200\n  Students:        15\n  Lectures:        5\n  Avg Engagement:  68.4%\n  Avg Attention:   63.1%\n\nEmotion Distribution:\n  neutral:  32% (384 records)\n  happy:    28% (336 records)\n  confused: 14% (168 records)\n  bored:    10% (120 records)\n  ...\n\nK-Means Clusters:\n  Cluster 1 (High):  5 students, avg eng 82%\n  Cluster 2 (Mid):   7 students, avg eng 61%\n  Cluster 3 (Low):   3 students, avg eng 38%\n\n📊 Charts saved: charts/emotion_distribution.png\n📊 Charts saved: charts/engagement_by_lecture.png\n📊 Charts saved: charts/student_clusters.png\n\n✅ Results written to: analysis_results.json`
+  },1800)
+}
+
+function renderAdminSettings(){
+  document.getElementById('main-content').innerHTML = `
+  <div class="page-header fade-in"><h2>System Settings</h2></div>
+  <div class="grid-2 fade-in">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Face Recognition</span></div>
+      ${settingToggle('Enable face detection','fr-det',true)}
+      ${settingToggle('Auto-mark attendance on recognition','fr-att',true)}
+      ${settingToggle('Save face encodings','fr-enc',true)}
+      ${settingToggle('Alert on unrecognized face','fr-unk',false)}
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Emotion Analysis</span></div>
+      ${settingToggle('Real-time emotion detection','em-rt',true)}
+      ${settingToggle('Send low-engagement alerts','em-al',true)}
+      ${settingToggle('Store emotion history','em-hi',true)}
+      <div style="margin-top:12px">
+        <label class="form-label">Engagement Alert Threshold</label>
+        <input type="range" min="10" max="60" value="35" style="width:100%;margin-top:6px">
+        <div style="display:flex;justify-content:space-between;font-size:.72rem;color:var(--text2)"><span>10%</span><span>35%</span><span>60%</span></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Data & Reporting</span></div>
+      ${settingToggle('Auto-export CSV after lecture','dt-csv',false)}
+      ${settingToggle('Run R analysis after lecture','dt-r',true)}
+      ${settingToggle('Generate PDF reports','dt-pdf',false)}
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">API Configuration</span></div>
+      <div class="form-group">
+        <label class="form-label">Backend API URL</label>
+        <input class="form-input" value="http://localhost:8000/api" readonly>
+      </div>
+      <div class="form-group">
+        <label class="form-label">R Analysis Endpoint</label>
+        <input class="form-input" value="http://localhost:3001" readonly>
+      </div>
+      <button class="btn btn-primary w-full mt-2">Test Connection</button>
+    </div>
+  </div>
+  `
+}
+
+// ════════════════════════════════════════
+// ─── PARENT PAGES ─────────────────────
+// ════════════════════════════════════════
+function renderParentDashboard(){
+  const s = STATE.students[0]
+  document.getElementById('main-content').innerHTML = `
+  <div class="page-header fade-in"><h2>Parent Dashboard</h2><p>Monitoring: ${s.name}</p></div>
+  <div class="stats-grid fade-in">
+    <div class="stat-card sc-green"><div class="stat-icon">✅</div><div class="stat-label">Attendance</div><div class="stat-value">${s.attendance_rate}%</div></div>
+    <div class="stat-card sc-blue"><div class="stat-icon">🧠</div><div class="stat-label">Engagement</div><div class="stat-value">${s.engagement}%</div></div>
+    <div class="stat-card sc-amber"><div class="stat-icon">😊</div><div class="stat-label">Dominant Emotion</div><div class="stat-value" style="font-size:1.4rem">${s.emotion}</div></div>
+    <div class="stat-card sc-purple"><div class="stat-icon">📈</div><div class="stat-label">GPA</div><div class="stat-value">${s.gpa}</div></div>
+  </div>
+  <div class="alert alert-green fade-in">✅ <strong>${s.name}</strong> attended all lectures this week with good engagement levels.</div>
+  <div class="card fade-in"><div class="card-header"><span class="card-title">Weekly Summary</span></div>
+    ${STATE.lectures.slice(0,3).map(l=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div><div style="font-weight:500">${l.name}</div><div style="font-size:.73rem;color:var(--text2)">${l.time} · ${l.room}</div></div>
+        <div style="display:flex;gap:10px">
+          <span class="badge badge-green">✓ Present</span>
+          <span class="badge badge-blue">${rnd(55,90)}% engaged</span>
+        </div>
+      </div>
+    `).join('')}
+  </div>
+  `
+}
+function renderParentAttendance(){renderStudentAttendance()}
+function renderParentEmotions(){renderStudentEmotions()}
+
+// ════════════════════════════════════════
+// HELPERS & UTILITIES
+// ════════════════════════════════════════
+const emoIcons = {happy:'😊',neutral:'😐',confused:'😕',bored:'😴',surprise:'😮',sad:'😢',angry:'😠',disgust:'🤢',fear:'😨'}
+function emoIcon(e){return emoIcons[e]||'😐'}
+function emoChip(emotion, color){
+  return `<span style="background:${color}22;color:${color};border:1px solid ${color}44;
+    padding:3px 10px;border-radius:20px;font-size:.7rem;font-weight:600;display:inline-flex;align-items:center;gap:4px">
+    ${emoIcon(emotion)} ${emotion}
+  </span>`
+}
+
+function settingToggle(label, id, checked){
+  return `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
+    <span style="font-size:.87rem">${label}</span>
+    <label style="position:relative;width:40px;height:22px;display:block;cursor:pointer">
+      <input type="checkbox" ${checked?'checked':''} style="opacity:0;width:0;height:0">
+      <span style="position:absolute;inset:0;background:${checked?'var(--blue)':'var(--bg3)'};border-radius:20px;transition:background .3s;border:1px solid var(--border2)"></span>
+      <span style="position:absolute;top:3px;left:${checked?'20':'3'}px;width:16px;height:16px;background:#fff;border-radius:50%;transition:left .3s"></span>
+    </label>
+  </div>`
+}
+
+// Chart defaults
+function chartDefaults(){
+  return {
+    responsive:true,
+    maintainAspectRatio:false,
+    plugins:{
+      legend:{labels:{color:'#94a3b8',font:{size:12}}},
+      tooltip:{backgroundColor:'rgba(15,30,56,.95)',titleColor:'#f1f5f9',bodyColor:'#94a3b8',borderColor:'rgba(255,255,255,.1)',borderWidth:1}
+    },
+    animation:{duration:600}
+  }
+}
+function yAxis(){
+  return {grid:{color:'rgba(255,255,255,.05)'},ticks:{color:'#94a3b8'},border:{color:'rgba(255,255,255,.07)'}}
+}
+
+function switchTab(btn, tabId){
+  const tabs = btn.closest('.tabs').querySelectorAll('.tab')
+  tabs.forEach(t=>t.classList.remove('active'))
+  btn.classList.add('active')
+  // Find all sibling tab-panes (siblings of the tabs div)
+  const parent = btn.closest('.tabs').parentElement
+  parent.querySelectorAll('[id^="tab-"]').forEach(el=>{
+    el.classList.toggle('hidden', el.id!==tabId)
+    el.classList.toggle('fade-in', el.id===tabId)
+  })
+  // Re-render charts for that tab
+  requestAnimationFrame(()=>{
+    if(tabId==='tab-trends'){
+      const ctx = document.getElementById('chart-trend-time')
+      if(ctx&&!STATE.charts['trend-time']){
+        const labels = Array.from({length:10},(_, i)=>`Week ${i+1}`)
+        STATE.charts['trend-time']=new Chart(ctx,{type:'line',
+          data:{labels,datasets:STATE.lectures.map(l=>({
+            label:l.id,data:labels.map(()=>rnd(40,90)),borderColor:['#3b82f6','#8b5cf6','#10b981','#f59e0b','#06b6d4'][STATE.lectures.indexOf(l)],fill:false,tension:.4,
+          }))},
+          options:{...chartDefaults(),scales:{y:{...yAxis(),max:100}}}})
+      }
+    }
+    if(tabId==='tab-clusters'){
+      const ctx = document.getElementById('chart-clusters')
+      if(ctx&&!STATE.charts['clusters']){
+        const clusterColors = ['#10b981','#f59e0b','#ef4444']
+        const datasets = [
+          {label:'High Eng',data:STATE.students.slice(0,5).map(s=>({x:s.engagement,y:s.attention_score})),backgroundColor:clusterColors[0]+'cc',pointRadius:8},
+          {label:'Moderate', data:STATE.students.slice(5,10).map(s=>({x:s.engagement,y:s.attention_score})),backgroundColor:clusterColors[1]+'cc',pointRadius:8},
+          {label:'Low Eng',  data:STATE.students.slice(10,15).map(s=>({x:s.engagement,y:s.attention_score})),backgroundColor:clusterColors[2]+'cc',pointRadius:8},
+        ]
+        STATE.charts['clusters']=new Chart(ctx,{type:'scatter',data:{datasets},
+          options:{...chartDefaults(),scales:{x:{...yAxis(),title:{display:true,text:'Engagement %',color:'#94a3b8'}},y:{...yAxis(),title:{display:true,text:'Attention %',color:'#94a3b8'}}}}})
+      }
+    }
+    if(tabId==='tab-compare'){
+      const ctx = document.getElementById('chart-compare')
+      if(ctx&&!STATE.charts['compare']){
+        const metrics=['Engagement','Attention','Attendance','Emotion Score']
+        STATE.charts['compare']=new Chart(ctx,{type:'bar',
+          data:{labels:metrics,datasets:STATE.lectures.slice(0,3).map((l,i)=>({
+            label:l.id,data:metrics.map(()=>rnd(45,95)),
+            backgroundColor:['rgba(59,130,246,.75)','rgba(139,92,246,.75)','rgba(16,185,129,.75)'][i],borderRadius:5,
+          }))},
+          options:{...chartDefaults(),scales:{y:{...yAxis(),max:100}}}})
+      }
+    }
+  })
+}
+
+// Detail modals
+function showStudentDetail(id){
+  const s = STATE.students.find(st=>st.id===id)||STATE.students[0]
+  document.getElementById('modal-body').innerHTML = `
+    <h3>${s.emoji} ${s.name}</h3>
+    <p class="sub">${s.id} · ${s.dept} · Year ${s.year}</p>
+    <div class="grid-2" style="gap:10px;margin-bottom:16px">
+      <div style="background:var(--bg3);border-radius:10px;padding:14px;text-align:center">
+        <div style="font-size:.75rem;color:var(--text2)">Engagement</div>
+        <div style="font-family:'Syne',sans-serif;font-size:1.6rem;font-weight:700;color:var(--blue2)">${s.engagement}%</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:10px;padding:14px;text-align:center">
+        <div style="font-size:.75rem;color:var(--text2)">Attention</div>
+        <div style="font-family:'Syne',sans-serif;font-size:1.6rem;font-weight:700;color:var(--cyan2)">${s.attention_score}%</div>
+      </div>
+    </div>
+    <div style="margin-bottom:12px">
+      <div class="form-label">Current Emotion</div>
+      ${emoChip(s.emotion,STATE.emotionData.find(e=>e.emotion===s.emotion)?.color||'#64748b')}
+    </div>
+    <div>
+      <div class="form-label">Attendance Rate</div>
+      <div class="progress-bar"><div class="progress-fill pf-green" style="width:${s.attendance_rate}%"></div></div>
+      <div class="text-xs text-muted mt-2">${s.attendance_rate}%</div>
+    </div>
+    <div class="flex gap-2 mt-4">
+      <button class="btn btn-primary btn-sm">📧 Send Message</button>
+      <button class="btn btn-outline btn-sm">📊 Full Report</button>
+    </div>
+  `
+  openModal()
+}
+
+function showLectureDetail(id){
+  const l = STATE.lectures.find(lec=>lec.id===id)||STATE.lectures[0]
+  document.getElementById('modal-body').innerHTML = `
+    <h3>📚 ${l.name}</h3>
+    <p class="sub">${l.id} · ${l.code} · ${l.room}</p>
+    <div class="grid-2" style="gap:10px;margin-bottom:16px">
+      <div style="background:var(--bg3);border-radius:10px;padding:12px">
+        <div class="text-xs text-muted">Students Present</div>
+        <div style="font-family:'Syne',sans-serif;font-size:1.4rem;font-weight:700">${l.present}/${l.students}</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:10px;padding:12px">
+        <div class="text-xs text-muted">Avg Engagement</div>
+        <div style="font-family:'Syne',sans-serif;font-size:1.4rem;font-weight:700;color:var(--blue2)">${l.avg_engagement}%</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <span class="badge badge-${l.status==='active'?'green':l.status==='ended'?'purple':'amber'}">${l.status}</span>
+      <span class="badge badge-blue">${l.time} · ${l.duration} min</span>
+    </div>
+    <button class="btn btn-primary" onclick="navTo('d-live');closeModal()">🔴 Open Live Monitor</button>
+  `
+  openModal()
+}
+
+// Modal
+function openModal(type){
+  if(type==='add-lecture'){
+    document.getElementById('modal-body').innerHTML = `
+      <h3>+ New Lecture</h3>
+      <p class="sub">Create a new lecture session</p>
+      <div class="form-group"><label class="form-label">Course Name</label><input class="form-input" placeholder="e.g. Machine Learning"></div>
+      <div class="form-group"><label class="form-label">Course Code</label><input class="form-input" placeholder="e.g. CS402"></div>
+      <div class="grid-2" style="gap:10px">
+        <div class="form-group"><label class="form-label">Room</label><input class="form-input" placeholder="Hall A"></div>
+        <div class="form-group"><label class="form-label">Time</label><input class="form-input" type="time" value="09:00"></div>
+      </div>
+      <button class="btn btn-primary w-full">Create Lecture</button>
+    `
+  }else if(type==='add-student'){
+    document.getElementById('modal-body').innerHTML = `
+      <h3>+ Add Student</h3>
+      <p class="sub">Register a new student in the system</p>
+      <div class="grid-2" style="gap:10px">
+        <div class="form-group"><label class="form-label">Full Name</label><input class="form-input" placeholder="Full name"></div>
+        <div class="form-group"><label class="form-label">Student ID</label><input class="form-input" placeholder="S016"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Department</label>
+        <select class="form-input"><option>Computer Science</option><option>Engineering</option><option>Mathematics</option></select>
+      </div>
+      <div class="form-group"><label class="form-label">Email</label><input class="form-input" type="email" placeholder="student@university.edu"></div>
+      <div style="background:var(--bg3);border-radius:10px;padding:16px;text-align:center;margin-bottom:16px;border:2px dashed var(--border2)">
+        📷 <strong>Face Registration</strong><br>
+        <span class="text-sm text-muted">Click to capture face for recognition system</span>
+      </div>
+      <button class="btn btn-primary w-full">Register Student</button>
+    `
+  }
+  document.getElementById('modal-overlay').classList.add('open')
+}
+
+function closeModal(e){
+  if(e&&e.target!==document.getElementById('modal-overlay')) return
+  document.getElementById('modal-overlay').classList.remove('open')
+}
+
+// Notifications
+function toggleNotifs(){
+  document.getElementById('notif-panel').classList.toggle('open')
+}
+function populateNotifs(){
+  const notifs = [
+    {icon:'🚨',cls:'ni-red',title:'Low Engagement Alert',desc:'S003 disengaged in L001',time:'2 min ago'},
+    {icon:'⚠️',cls:'ni-amber',title:'Attention Warning',desc:'Class attention dropped 15%',time:'8 min ago'},
+    {icon:'✅',cls:'ni-green',title:'Attendance Marked',desc:'12 students recognized in L001',time:'15 min ago'},
+    {icon:'📊',cls:'ni-blue',title:'R Analysis Complete',desc:'Weekly report generated',time:'1 hour ago'},
+    {icon:'🎓',cls:'ni-green',title:'New Student Enrolled',desc:'S016 — Sara Khalid',time:'2 hours ago'},
+  ]
+  document.getElementById('notif-list').innerHTML = notifs.map(n=>`
+    <div class="notif-item">
+      <div class="notif-icon-wrap ${n.cls}">${n.icon}</div>
+      <div class="notif-text">
+        <div class="notif-title">${n.title}</div>
+        <div class="notif-desc">${n.desc}</div>
+        <div class="notif-time">${n.time}</div>
+      </div>
+    </div>
+  `).join('')
+  document.addEventListener('click', e=>{
+    const panel = document.getElementById('notif-panel')
+    const btn   = document.getElementById('notif-btn')
+    if(panel&&btn&&!panel.contains(e.target)&&!btn.contains(e.target)){
+      panel.classList.remove('open')
+    }
+  })
+}
+
+// Close modal on overlay click
+document.getElementById('modal-overlay').addEventListener('click',closeModal)
+</script>
+</body>
+</html>

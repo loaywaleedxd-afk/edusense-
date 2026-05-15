@@ -1,0 +1,17 @@
+[
+  {
+    "emotion": "happy",
+    "courseId": "CS401",
+    "timestamp": "2026-05-14T08:07:03.114Z"
+  },
+  {
+    "emotion": "neutral",
+    "courseId": "CS401",
+    "timestamp": "2026-05-14T08:11:22.642Z"
+  },
+  {
+    "emotion": "neutral",
+    "courseId": "CS401",
+    "timestamp": "2026-05-14T08:11:40.709Z"
+  }
+]

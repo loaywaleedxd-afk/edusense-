@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+.venv/
+venv/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Sensitive credentials
+emotion_system/student_credentials.csv
+emotion_system/student_credentials.xlsx
+emotion_system/doctors_credentials.csv
+emotion_system/credentials_template.csv
+
+# Database (contains live data)
+emotion_system/backend/emotion_system.db
+
+# Claude internal
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs / temp
+*.log
+*.tmp
+demo_frames/
+make_video.py
+make_docx.py
+
+# R session data
+.RData
+.Rhistory
+emotion_system/r_analysis/.Rhistory
+
+# VS Code
+.vscode/
+
+# Large binary snapshots
+emotion_system/snapshot_*.jpg
+emotion_system/f snapshot_*.jpg

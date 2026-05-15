@@ -1,0 +1,27 @@
+[
+  {
+    "emotion": "angry",
+    "courseId": "CS401",
+    "timestamp": "2026-05-14T08:04:03.109Z"
+  },
+  {
+    "emotion": "surprised",
+    "courseId": "CS401",
+    "timestamp": "2026-05-14T08:07:33.116Z"
+  },
+  {
+    "emotion": "neutral",
+    "courseId": "CS401",
+    "timestamp": "2026-05-14T08:11:25.110Z"
+  },
+  {
+    "emotion": "neutral",
+    "courseId": "CS401",
+    "timestamp": "2026-05-14T08:11:29.414Z"
+  },
+  {
+    "emotion": "neutral",
+    "courseId": "CS401",
+    "timestamp": "2026-05-14T08:11:30.018Z"
+  }
+]
