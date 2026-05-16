@@ -1056,23 +1056,17 @@ function CredentialsModal({ theme: C, account, onClose }) {
     navigator.clipboard.writeText(credText).then(()=>{ setCopied(true); setTimeout(()=>setCopied(false), 2500); });
   }
 
-  async function sendEmail() {
+  function sendEmail() {
     if (!account.email) { setEmailError('No email address provided for this account.'); return; }
-    setSending(true); setEmailError(''); setSent(false);
-    try {
-      const res = await fetch('/api/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: account.email, name: account.name, username: account.username, password: account.password, role: account.role, id: account.id }),
-      });
-      const data = await res.json();
-      if (data.ok) { setSent(true); }
-      else { setEmailError(data.error || 'Failed to send email.'); }
-    } catch(e) {
-      setEmailError(e.message);
-    } finally {
-      setSending(false);
-    }
+    const subject = encodeURIComponent('Your EduSense Account Credentials');
+    const body = encodeURIComponent(
+      `Dear ${account.name},\n\nYour EduSense account has been created. Here are your login credentials:\n\n` +
+      `Username: ${account.username}\nPassword: ${account.password}\nRole: ${account.role}\n\n` +
+      `Login at: ${window.location.origin}\n\n` +
+      `Please change your password after your first login.\n\nBest regards,\nEduSense Admin`
+    );
+    window.open(`mailto:${account.email}?subject=${subject}&body=${body}`, '_blank');
+    setSent(true);
   }
 
   return (
