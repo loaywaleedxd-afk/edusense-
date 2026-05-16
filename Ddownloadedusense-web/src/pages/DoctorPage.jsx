@@ -532,11 +532,39 @@ async function sendEmailAlert(studentEmail, studentName, studentId, attendanceRa
   }
 }
 
+async function sendWithdrawalEmail(studentEmail, studentName, studentId, courseName, doctorName) {
+  try {
+    const date = new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+    const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        service_id:  'service_it50w6l',
+        template_id: 'template_dxys6ih',
+        user_id:     '3nrjXvpxGXf0G01Xj',
+        template_params: {
+          to_email:        studentEmail,
+          to_name:         studentName,
+          student_id:      studentId,
+          attendance_rate: `Withdrawn from: ${courseName} on ${date}`,
+          doctor_name:     doctorName,
+          login_url:       window.location.origin,
+        }
+      })
+    });
+    return { success: res.ok };
+  } catch { return { success: false }; }
+}
+
 function DocStudents({ theme: C, myCourses, doctor }) {
   const [selCourse, setSelCourse] = useState('all');
   const [search, setSearch] = useState('');
   const [portfolioStudent, setPortfolioStudent] = useState(null);
   const [emailStatus, setEmailStatus] = useState({});
+  const [withdrawTarget, setWithdrawTarget] = useState(null);
+  const [withdrawCourse, setWithdrawCourse] = useState('');
+  const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawDone, setWithdrawDone] = useState({});
 
   const allStudents = selCourse==='all'
     ? [...new Map(myCourses.flatMap(c=>store.getEnrolledStudents(c.id)).map(s=>[s.id,s])).values()]
@@ -544,6 +572,17 @@ function DocStudents({ theme: C, myCourses, doctor }) {
 
   const atRisk = allStudents.filter(s => s.attendanceRate < 75);
   const filtered = allStudents.filter(s=>s.name.toLowerCase().includes(search.toLowerCase())||s.id.toLowerCase().includes(search.toLowerCase()));
+
+  async function handleWithdraw() {
+    if (!withdrawTarget || !withdrawCourse) return;
+    setWithdrawing(true);
+    store.unenrollStudent(withdrawCourse, withdrawTarget.id);
+    const course = myCourses.find(c => c.id === withdrawCourse);
+    await sendWithdrawalEmail(withdrawTarget.email, withdrawTarget.name, withdrawTarget.id, course?.name || withdrawCourse, doctor?.name || 'Lecturer');
+    setWithdrawDone(p => ({ ...p, [withdrawTarget.id + withdrawCourse]: true }));
+    setWithdrawing(false);
+    setWithdrawTarget(null);
+  }
 
   async function handleSendEmail(stu) {
     if (!stu.email) { alert(`No email address on file for ${stu.name}`); return; }
@@ -555,6 +594,41 @@ function DocStudents({ theme: C, myCourses, doctor }) {
   return (
     <div style={{padding:'8px 20px 20px'}}>
       {portfolioStudent && <StudentPortfolioModal theme={C} student={portfolioStudent} onClose={()=>setPortfolioStudent(null)}/>}
+
+      {/* Withdrawal confirmation modal */}
+      {withdrawTarget && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',zIndex:2000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+          <div style={{background:C.card,borderRadius:16,border:`1px solid ${C.border}`,padding:28,maxWidth:440,width:'100%'}}>
+            <div style={{fontSize:18,fontWeight:700,color:C.text,marginBottom:4}}>🚫 Withdraw Student</div>
+            <div style={{fontSize:12,color:C.text3,marginBottom:20}}>The student will be unenrolled and notified by email automatically.</div>
+            <div style={{background:C.bg3,borderRadius:10,padding:'12px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:10}}>
+              <div style={{width:40,height:40,borderRadius:'50%',background:withdrawTarget.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>{withdrawTarget.emoji}</div>
+              <div>
+                <div style={{fontSize:14,fontWeight:700,color:C.text}}>{withdrawTarget.name}</div>
+                <div style={{fontSize:11,color:C.text3}}>{withdrawTarget.id} · {withdrawTarget.email}</div>
+              </div>
+            </div>
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:11,color:C.text3,marginBottom:6,fontWeight:700,textTransform:'uppercase'}}>Withdraw from Course</div>
+              <select value={withdrawCourse} onChange={e=>setWithdrawCourse(e.target.value)}
+                style={{width:'100%',height:38,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:13,color:C.text}}>
+                <option value="">— Select course —</option>
+                {myCourses.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={handleWithdraw} disabled={!withdrawCourse||withdrawing}
+                style={{flex:1,background:'linear-gradient(135deg,#ef4444,#dc2626)',border:'none',borderRadius:8,padding:'10px',fontSize:13,fontWeight:700,color:'#fff',cursor:withdrawCourse&&!withdrawing?'pointer':'default',opacity:withdrawCourse?1:0.5}}>
+                {withdrawing ? '⏳ Processing...' : '✅ Confirm Withdrawal & Send Email'}
+              </button>
+              <button onClick={()=>setWithdrawTarget(null)}
+                style={{background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'10px 16px',fontSize:13,color:C.text2,cursor:'pointer'}}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* At-Risk Students Alert Section */}
       {atRisk.length > 0 && (
@@ -605,33 +679,35 @@ function DocStudents({ theme: C, myCourses, doctor }) {
         </select>
       </div>
 
-      <Card theme={C} title={`Students (${filtered.length}) — click a row to view portfolio`}>
+      <Card theme={C} title={`Students (${filtered.length})`}>
         <div style={{padding:'4px 12px 12px'}}>
           <DataTable theme={C} columns={[
-            {key:'id',label:'ID',width:60},{key:'name',label:'Name',width:200},
-            {key:'dept',label:'Department',width:140},{key:'year',label:'Year',width:60},
-            {key:'emotion',label:'Emotion',width:100},{key:'engagement',label:'Engagement',width:100},
-            {key:'attendance',label:'Attendance',width:100},{key:'gpa',label:'GPA',width:60},
+            {key:'id',label:'ID',width:60},{key:'name',label:'Name',width:180},
+            {key:'dept',label:'Department',width:130},{key:'year',label:'Year',width:55},
+            {key:'emotion',label:'Emotion',width:90},{key:'engagement',label:'Engagement',width:90},
+            {key:'attendance',label:'Attendance',width:90},{key:'gpa',label:'GPA',width:55},
+            {key:'action',label:'',width:100},
           ]} rows={filtered.map(s=>({
             id:s.id,
             name:(()=>{
               const photo = s.capturedPhoto || store.getPhotoUrl(s);
               return (
                 <div style={{display:'flex',alignItems:'center',gap:8}}>
-                  {photo
-                    ? <img src={photo} alt={s.name}
-                        onError={e=>{e.target.style.display='none';e.target.nextSibling.style.display='flex';}}
-                        style={{width:30,height:30,borderRadius:'50%',objectFit:'cover',border:`1px solid ${C.border}`,flexShrink:0}}/>
-                    : null
-                  }
+                  {photo ? <img src={photo} alt={s.name} onError={e=>{e.target.style.display='none';e.target.nextSibling.style.display='flex';}} style={{width:30,height:30,borderRadius:'50%',objectFit:'cover',border:`1px solid ${C.border}`,flexShrink:0}}/> : null}
                   <div style={{width:30,height:30,borderRadius:'50%',background:s.color,display:photo?'none':'flex',alignItems:'center',justifyContent:'center',fontSize:15,flexShrink:0}}>{s.emoji}</div>
                   <span style={{overflow:'hidden',textOverflow:'ellipsis'}}>{s.name}</span>
                 </div>
               );
             })(),
-            dept:s.dept,year:`Year ${s.year}`,
+            dept:s.dept, year:`Year ${s.year}`,
             emotion:`${EMOTION_ICONS[s.emotion]||'😐'} ${s.emotion}`,
-            engagement:`${s.engagement}%`,attendance:`${s.attendanceRate}%`,gpa:s.gpa,
+            engagement:`${s.engagement}%`, attendance:`${s.attendanceRate}%`, gpa:s.gpa,
+            action:(
+              <button onClick={e=>{e.stopPropagation();setWithdrawTarget(s);setWithdrawCourse(myCourses[0]?.id||'');}}
+                style={{background:'rgba(239,68,68,0.15)',border:'1px solid rgba(239,68,68,0.4)',borderRadius:6,padding:'4px 10px',fontSize:11,fontWeight:700,color:'#ef4444',cursor:'pointer',whiteSpace:'nowrap'}}>
+                🚫 Withdraw
+              </button>
+            ),
           }))} onRowClick={(_,i)=>setPortfolioStudent(filtered[i])}/>
         </div>
       </Card>
