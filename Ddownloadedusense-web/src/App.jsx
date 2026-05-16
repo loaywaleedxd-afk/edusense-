@@ -5,6 +5,7 @@ import StudentPage from './pages/StudentPage';
 import DoctorPage  from './pages/DoctorPage';
 import AdminPage   from './pages/AdminPage';
 import ParentPage  from './pages/ParentPage';
+import ChatWidget  from './components/ChatWidget';
 
 export default function App() {
   const [isDark, setIsDark] = useState(true);
@@ -33,6 +34,7 @@ export default function App() {
       ) : (
         <AdminPage {...commonProps} />
       )}
+      {user && <ChatWidget user={user} />}
     </div>
   );
 }
