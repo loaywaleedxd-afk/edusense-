@@ -1008,10 +1008,13 @@ Only include weeks with difficulty score >= 30. Return only the JSON array, no o
         max_tokens: 1200, temperature: 0.4
       })
     });
-    const data = await res.json();
+    const raw = await res.text();
+    let data;
+    try { data = JSON.parse(raw); } catch { return null; }
     const text = data.choices?.[0]?.message?.content || '';
     const match = text.match(/\[[\s\S]*\]/);
-    return match ? JSON.parse(match[0]) : null;
+    if (!match) return null;
+    try { return JSON.parse(match[0]); } catch { return null; }
   } catch { return null; }
 }
 

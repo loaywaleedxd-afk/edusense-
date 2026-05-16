@@ -82,7 +82,9 @@ export default function ChatWidget({ user }) {
           temperature: 0.7
         })
       });
-      const data = await res.json();
+      const raw = await res.text();
+      let data;
+      try { data = JSON.parse(raw); } catch { throw new Error('API returned an unexpected response. Please try again.'); }
       if (data.error) {
         setMessages(prev => [...prev, { role: 'model', text: `Error: ${data.error.message}` }]);
       } else {
