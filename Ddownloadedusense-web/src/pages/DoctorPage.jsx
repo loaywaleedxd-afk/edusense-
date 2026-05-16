@@ -546,14 +546,15 @@ async function sendWithdrawalEmail(studentEmail, studentName, studentId, courseN
           to_email:        studentEmail,
           to_name:         studentName,
           student_id:      studentId,
-          attendance_rate: `Withdrawn from: ${courseName} on ${date}`,
+          attendance_rate: `Withdrawn from ${courseName} on ${date}`,
           doctor_name:     doctorName,
           login_url:       window.location.origin,
         }
       })
     });
-    return { success: res.ok };
-  } catch { return { success: false }; }
+    const body = await res.text();
+    return { success: res.ok && body === 'OK', error: body };
+  } catch(e) { return { success: false, error: e.message }; }
 }
 
 function DocStudents({ theme: C, myCourses, doctor }) {
@@ -582,7 +583,7 @@ function DocStudents({ theme: C, myCourses, doctor }) {
     const course = myCourses.find(c => c.id === withdrawCourse);
     const result = await sendWithdrawalEmail(withdrawTarget.email, withdrawTarget.name, withdrawTarget.id, course?.name || withdrawCourse, doctor?.name || 'Lecturer');
     setWithdrawDone(p => ({ ...p, [withdrawTarget.id + withdrawCourse]: true }));
-    setWithdrawResult({ name: withdrawTarget.name, email: withdrawTarget.email, course: course?.name, ok: result.success });
+    setWithdrawResult({ name: withdrawTarget.name, email: withdrawTarget.email, course: course?.name, ok: result.success, error: result.error });
     setWithdrawing(false);
     setWithdrawTarget(null);
   }
@@ -641,7 +642,7 @@ function DocStudents({ theme: C, myCourses, doctor }) {
           </div>
           <div style={{fontSize:12,color:'rgba(255,255,255,0.8)'}}>
             {withdrawResult.name} removed from {withdrawResult.course}.<br/>
-            {withdrawResult.ok ? `Email sent to ${withdrawResult.email}` : `Could not send to ${withdrawResult.email} — check the address.`}
+            {withdrawResult.ok ? `Email sent to ${withdrawResult.email}` : `Email failed: ${withdrawResult.error || 'Unknown error'}`}
           </div>
           <button onClick={()=>setWithdrawResult(null)} style={{marginTop:10,background:'rgba(255,255,255,0.15)',border:'none',borderRadius:6,padding:'4px 12px',fontSize:11,color:'#fff',cursor:'pointer'}}>Dismiss</button>
         </div>
