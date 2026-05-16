@@ -61,14 +61,17 @@ export default function ChatWidget({ user }) {
       const systemText = SYSTEM_PROMPT +
         (user ? `\n\nCurrent user: ${user.name}, Role: ${user.role}` : '');
 
+      // Prepend system context as first user turn for maximum model compatibility
+      const contextTurn = { role: 'user', parts: [{ text: `[System context]: ${systemText}\n\nAcknowledge briefly.` }] };
+      const contextAck = { role: 'model', parts: [{ text: 'Understood. I am EduSense AI Assistant, ready to help.' }] };
+
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${API_KEY}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            system_instruction: { parts: [{ text: systemText }] },
-            contents
+            contents: [contextTurn, contextAck, ...contents]
           })
         }
       );
