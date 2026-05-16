@@ -507,22 +507,22 @@ function DocLectures({ theme: C, myCourses }) {
 }
 
 /* ── STUDENTS ── */
-async function sendEmailAlert(studentEmail, studentName, attendanceRate, doctorName) {
+async function sendEmailAlert(studentEmail, studentName, studentId, attendanceRate, doctorName) {
   try {
     const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         service_id:  'service_it50w6l',
-        template_id: 'template_n1v9mtb',
+        template_id: 'template_dxys6ih',
         user_id:     '3nrjXvpxGXf0G01Xj',
         template_params: {
-          to_email:  studentEmail,
-          to_name:   studentName,
-          username:  '—',
-          password:  '—',
-          role:      `Attendance Alert: Your attendance is ${attendanceRate}%. Please attend more lectures to avoid failing. Contact ${doctorName} for help.`,
-          login_url: window.location.origin,
+          to_email:        studentEmail,
+          to_name:         studentName,
+          student_id:      studentId,
+          attendance_rate: attendanceRate,
+          doctor_name:     doctorName,
+          login_url:       window.location.origin,
         }
       })
     });
@@ -548,7 +548,7 @@ function DocStudents({ theme: C, myCourses, doctor }) {
   async function handleSendEmail(stu) {
     if (!stu.email) { alert(`No email address on file for ${stu.name}`); return; }
     setEmailStatus(p => ({ ...p, [stu.id]: 'sending' }));
-    const result = await sendEmailAlert(stu.email, stu.name, stu.attendanceRate, doctor?.name || 'Lecturer');
+    const result = await sendEmailAlert(stu.email, stu.name, stu.id, stu.attendanceRate, doctor?.name || 'Lecturer');
     setEmailStatus(p => ({ ...p, [stu.id]: result.success ? 'sent' : 'failed' }));
   }
 
