@@ -565,6 +565,7 @@ function DocStudents({ theme: C, myCourses, doctor }) {
   const [withdrawCourse, setWithdrawCourse] = useState('');
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawDone, setWithdrawDone] = useState({});
+  const [withdrawResult, setWithdrawResult] = useState(null);
 
   const allStudents = selCourse==='all'
     ? [...new Map(myCourses.flatMap(c=>store.getEnrolledStudents(c.id)).map(s=>[s.id,s])).values()]
@@ -575,11 +576,13 @@ function DocStudents({ theme: C, myCourses, doctor }) {
 
   async function handleWithdraw() {
     if (!withdrawTarget || !withdrawCourse) return;
+    if (!withdrawTarget.email) { alert(`No email on file for ${withdrawTarget.name}. Cannot send notification.`); return; }
     setWithdrawing(true);
     store.unenrollStudent(withdrawCourse, withdrawTarget.id);
     const course = myCourses.find(c => c.id === withdrawCourse);
-    await sendWithdrawalEmail(withdrawTarget.email, withdrawTarget.name, withdrawTarget.id, course?.name || withdrawCourse, doctor?.name || 'Lecturer');
+    const result = await sendWithdrawalEmail(withdrawTarget.email, withdrawTarget.name, withdrawTarget.id, course?.name || withdrawCourse, doctor?.name || 'Lecturer');
     setWithdrawDone(p => ({ ...p, [withdrawTarget.id + withdrawCourse]: true }));
+    setWithdrawResult({ name: withdrawTarget.name, email: withdrawTarget.email, course: course?.name, ok: result.success });
     setWithdrawing(false);
     setWithdrawTarget(null);
   }
@@ -627,6 +630,20 @@ function DocStudents({ theme: C, myCourses, doctor }) {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Withdrawal result toast */}
+      {withdrawResult && (
+        <div style={{position:'fixed',top:24,right:24,zIndex:3000,background:withdrawResult.ok ? '#166534' : '#7f1d1d',border:`1px solid ${withdrawResult.ok ? '#22c55e' : '#ef4444'}`,borderRadius:12,padding:'14px 20px',maxWidth:360,boxShadow:'0 8px 32px rgba(0,0,0,0.4)'}}>
+          <div style={{fontSize:14,fontWeight:700,color:'#fff',marginBottom:4}}>
+            {withdrawResult.ok ? '✅ Withdrawal Complete' : '⚠️ Withdrawn — Email Failed'}
+          </div>
+          <div style={{fontSize:12,color:'rgba(255,255,255,0.8)'}}>
+            {withdrawResult.name} removed from {withdrawResult.course}.<br/>
+            {withdrawResult.ok ? `Email sent to ${withdrawResult.email}` : `Could not send to ${withdrawResult.email} — check the address.`}
+          </div>
+          <button onClick={()=>setWithdrawResult(null)} style={{marginTop:10,background:'rgba(255,255,255,0.15)',border:'none',borderRadius:6,padding:'4px 12px',fontSize:11,color:'#fff',cursor:'pointer'}}>Dismiss</button>
         </div>
       )}
 
