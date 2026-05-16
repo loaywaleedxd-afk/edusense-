@@ -234,7 +234,7 @@ export default function ChatWidget({ user }) {
                 border: '1px solid rgba(239,68,68,0.3)',
                 color: '#fca5a5', fontSize: 12, textAlign: 'center'
               }}>
-                API key not configured.<br />Add VITE_GEMINI_API_KEY to Hostinger environment variables.
+                API key not configured.<br />Add VITE_GROQ_API_KEY to Hostinger environment variables.
               </div>
             )}
             <div ref={bottomRef} />
