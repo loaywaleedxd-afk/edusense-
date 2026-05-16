@@ -33,7 +33,7 @@ export default function ChatWidget({ user }) {
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
-  const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+  const API_KEY = import.meta.env.VITE_GROQ_API_KEY;
 
   useEffect(() => {
     if (open) {
@@ -61,23 +61,32 @@ export default function ChatWidget({ user }) {
       const systemText = SYSTEM_PROMPT +
         (user ? `\n\nCurrent user: ${user.name}, Role: ${user.role}` : '');
 
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            system_instruction: { parts: [{ text: systemText }] },
-            contents
-          })
-        }
-      );
+      const history = contents.map(m => ({
+        role: m.role === 'model' ? 'assistant' : 'user',
+        content: m.parts[0].text
+      }));
+
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${API_KEY}`
+        },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b-instant',
+          messages: [
+            { role: 'system', content: systemText },
+            ...history
+          ],
+          max_tokens: 500,
+          temperature: 0.7
+        })
+      });
       const data = await res.json();
       if (data.error) {
         setMessages(prev => [...prev, { role: 'model', text: `Error: ${data.error.message}` }]);
       } else {
-        const reply = data.candidates?.[0]?.content?.parts?.[0]?.text ||
-          "Sorry, I couldn't get a response.";
+        const reply = data.choices?.[0]?.message?.content || "Sorry, I couldn't get a response.";
         setMessages(prev => [...prev, { role: 'model', text: reply }]);
       }
     } catch (err) {
@@ -161,7 +170,7 @@ export default function ChatWidget({ user }) {
             }}>🤖</div>
             <div>
               <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>EduSense Assistant</div>
-              <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 11 }}>Powered by Google Gemini • Free</div>
+              <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 11 }}>Powered by Groq AI • Free</div>
             </div>
             <div style={{
               marginLeft: 'auto',
