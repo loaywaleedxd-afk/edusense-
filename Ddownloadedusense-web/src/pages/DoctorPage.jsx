@@ -24,6 +24,7 @@ const NAV = [
   {id:'grades',    icon:'📝', label:'Exam Results'},
   {id:'chat',      icon:'💬', label:'Community'},
   {id:'analytics', icon:'📊', label:'Analytics'},
+  {id:'detector',  icon:'🎯', label:'Topic Detector'},
   {id:'alerts',    icon:'🔔', label:'Alerts', badge:()=>store.getAlerts(true).length||0},
   {id:'moodle',    icon:'🌐', label:'Moodle'},
   {id:'ranalysis', icon:'📈', label:'R Analysis'},
@@ -32,8 +33,8 @@ const NAV = [
 const PAGE_TITLES = {
   dashboard:'Dashboard', live:'Live Session', attendance:'Attendance',
   lectures:'My Lectures', students:'Students', grades:'Exam Results',
-  chat:'Community Chat', analytics:'Analytics', alerts:'Alerts', moodle:'Moodle',
-  ranalysis:'R Analysis Reports',
+  chat:'Community Chat', analytics:'Analytics', detector:'AI Topic Detector',
+  alerts:'Alerts', moodle:'Moodle', ranalysis:'R Analysis Reports',
 };
 
 function letterGrade(g){if(g>=90)return'A+';if(g>=85)return'A';if(g>=80)return'B+';if(g>=75)return'B';if(g>=70)return'C+';if(g>=65)return'C';if(g>=60)return'D+';if(g>=50)return'D';return'F';}
@@ -59,6 +60,7 @@ export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLog
             {page==='grades'     && <DocGrades theme={C} user={user} doctor={doctor} myCourses={myCourses}/>}
             {page==='chat'       && <DocChat theme={C} user={user} doctor={doctor} myCourses={myCourses}/>}
             {page==='analytics'  && <DocAnalytics theme={C}/>}
+            {page==='detector'   && <DocTopicDetector theme={C} doctor={doctor} myCourses={myCourses}/>}
             {page==='alerts'     && <DocAlerts theme={C}/>}
             {page==='moodle'     && <DocMoodle theme={C}/>}
             {page==='ranalysis'  && <DocRAnalysis theme={C}/>}
@@ -919,6 +921,236 @@ function DocChat({ theme: C, user, doctor, myCourses }) {
 }
 
 /* ── ANALYTICS ── */
+/* ── seeded PRNG for deterministic per-week emotion simulation ── */
+function seededRand(seed) {
+  let s = seed;
+  return () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; };
+}
+
+const EMOTIONS = ['happy','neutral','focused','confused','bored','angry','surprised'];
+const HARD_EMOTIONS = new Set(['confused','bored','angry']);
+
+function buildWeeklyEmotionData(course) {
+  const students = store.getEnrolledStudents(course.id);
+  const weeks = 14;
+  return Array.from({length: weeks}, (_, wi) => {
+    const week = wi + 1;
+    const rand = seededRand(course.id.split('').reduce((a,c)=>a+c.charCodeAt(0),0) * 31 + week * 7);
+    const present = students.filter(() => rand() > 0.15);
+    const emotions = present.map(s => {
+      const r = rand();
+      // Inject a harder week every 3-4 weeks (deterministic)
+      const hardWeek = (week % 4 === 0 || week % 7 === 0);
+      if (hardWeek) {
+        if (r < 0.35) return 'confused';
+        if (r < 0.55) return 'bored';
+        if (r < 0.65) return 'neutral';
+        if (r < 0.80) return 'focused';
+        return 'happy';
+      }
+      if (r < 0.15) return 'confused';
+      if (r < 0.25) return 'bored';
+      if (r < 0.50) return 'focused';
+      if (r < 0.75) return 'happy';
+      return 'neutral';
+    });
+    const hardCount = emotions.filter(e => HARD_EMOTIONS.has(e)).length;
+    const difficultyScore = present.length ? Math.round((hardCount / present.length) * 100) : 0;
+    const dist = {};
+    EMOTIONS.forEach(e => { dist[e] = emotions.filter(x => x === e).length; });
+    return { week, present: present.length, total: students.length, dist, difficultyScore };
+  });
+}
+
+async function callGroqDetector(courseData, doctorName) {
+  const key = import.meta.env.VITE_GROQ_API_KEY;
+  if (!key) return null;
+
+  const summary = courseData.map(c => ({
+    course: c.course.name,
+    hardWeeks: c.weekData
+      .filter(w => w.difficultyScore >= 30)
+      .map(w => `Week ${w.week} (${w.difficultyScore}% confused/bored, ${w.present} students present)`)
+  }));
+
+  const prompt = `You are an academic analytics AI for the EduSense platform. Analyze the following lecture emotion data for Dr. ${doctorName}.
+
+For each course, I'll give you the weeks where more than 30% of students were confused or bored (based on AI emotion detection).
+
+Data:
+${summary.map(s => `Course: ${s.course}\nDifficult weeks: ${s.hardWeeks.length ? s.hardWeeks.join(', ') : 'None detected'}`).join('\n\n')}
+
+For each difficult week, generate:
+1. A realistic topic name that would typically be taught in that week of that course
+2. A 1-sentence reason why students likely struggled
+3. One specific actionable recommendation for the lecturer
+
+Format your response as JSON array:
+[
+  {
+    "course": "course name",
+    "week": week_number,
+    "topic": "topic name",
+    "reason": "why students struggled",
+    "recommendation": "what the lecturer should do",
+    "score": difficulty_percentage
+  }
+]
+Only include weeks with difficulty score >= 30. Return only the JSON array, no other text.`;
+
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 1200, temperature: 0.4
+      })
+    });
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content || '';
+    const match = text.match(/\[[\s\S]*\]/);
+    return match ? JSON.parse(match[0]) : null;
+  } catch { return null; }
+}
+
+function DocTopicDetector({ theme: C, doctor, myCourses }) {
+  const [results, setResults] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [weekData, setWeekData] = useState([]);
+  const [selCourse, setSelCourse] = useState(myCourses[0]?.id || '');
+  const [error, setError] = useState('');
+
+  const course = myCourses.find(c => c.id === selCourse) || myCourses[0];
+  const courseWeeks = course ? buildWeeklyEmotionData(course) : [];
+
+  async function runDetector() {
+    if (!myCourses.length) return;
+    setLoading(true); setResults(null); setError('');
+    const courseData = myCourses.map(c => ({ course: c, weekData: buildWeeklyEmotionData(c) }));
+    const res = await callGroqDetector(courseData, doctor?.name || 'Lecturer');
+    if (res) { setResults(res); }
+    else { setError('Could not get AI analysis. Check that VITE_GROQ_API_KEY is set in Hostinger.'); }
+    setLoading(false);
+  }
+
+  const scoreColor = s => s >= 60 ? '#ef4444' : s >= 40 ? '#f59e0b' : '#22c55e';
+  const scoreLabel = s => s >= 60 ? '🔴 Very Hard' : s >= 40 ? '🟡 Moderate' : '🟢 Normal';
+
+  return (
+    <div style={{padding:'8px 20px 20px'}}>
+      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:16,flexWrap:'wrap',gap:12}}>
+        <div>
+          <div style={{fontSize:22,fontWeight:700,color:C.text}}>🎯 AI Difficult Topic Detector</div>
+          <div style={{fontSize:12,color:C.text3,marginTop:2}}>AI analyzes weekly emotion data to find which lectures students struggled with most</div>
+        </div>
+        <button onClick={runDetector} disabled={loading}
+          style={{background:'linear-gradient(135deg,#6366f1,#3b82f6)',border:'none',borderRadius:10,
+            padding:'10px 22px',fontSize:13,fontWeight:700,color:'#fff',cursor:loading?'default':'pointer',
+            opacity:loading?0.7:1,display:'flex',alignItems:'center',gap:8}}>
+          {loading ? '⏳ Analyzing...' : '🔍 Run AI Analysis'}
+        </button>
+      </div>
+
+      {/* Per-course emotion heatmap */}
+      <div style={{marginBottom:16}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+          <div style={{fontSize:13,fontWeight:700,color:C.text}}>Emotion Heatmap —</div>
+          <select value={selCourse} onChange={e=>setSelCourse(e.target.value)}
+            style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:'4px 10px',fontSize:12,color:C.text}}>
+            {myCourses.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+        <div style={{background:C.card,borderRadius:14,border:`1px solid ${C.border}`,padding:16}}>
+          <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+            {courseWeeks.map(w => (
+              <div key={w.week} title={`Week ${w.week}: ${w.difficultyScore}% difficult (${w.present}/${w.total} present)`}
+                style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+                <div style={{
+                  width:36,height:36,borderRadius:8,
+                  background: w.difficultyScore >= 60 ? 'rgba(239,68,68,0.8)'
+                    : w.difficultyScore >= 40 ? 'rgba(245,158,11,0.7)'
+                    : w.difficultyScore >= 20 ? 'rgba(99,102,241,0.4)'
+                    : 'rgba(34,197,94,0.4)',
+                  display:'flex',alignItems:'center',justifyContent:'center',
+                  fontSize:10,fontWeight:700,color:'#fff',cursor:'default'
+                }}>{w.week}</div>
+                <div style={{fontSize:9,color:C.text3}}>{w.difficultyScore}%</div>
+              </div>
+            ))}
+          </div>
+          <div style={{display:'flex',gap:16,marginTop:10,flexWrap:'wrap'}}>
+            {[['🟢','Easy < 20%'],['🔵','Moderate 20-40%'],['🟡','Hard 40-60%'],['🔴','Very Hard > 60%']].map(([dot,label])=>(
+              <div key={label} style={{display:'flex',alignItems:'center',gap:4,fontSize:10,color:C.text3}}>
+                <span>{dot}</span><span>{label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {error && (
+        <div style={{padding:14,background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.3)',borderRadius:10,color:'#ef4444',fontSize:13,marginBottom:16}}>
+          {error}
+        </div>
+      )}
+
+      {loading && (
+        <div style={{background:C.card,borderRadius:14,border:`1px solid ${C.border}`,padding:32,textAlign:'center'}}>
+          <div style={{fontSize:32,marginBottom:8}}>🤖</div>
+          <div style={{fontSize:14,color:C.text,fontWeight:600}}>AI is analyzing lecture emotion patterns...</div>
+          <div style={{fontSize:12,color:C.text3,marginTop:4}}>Scanning {myCourses.length} courses across 14 weeks</div>
+        </div>
+      )}
+
+      {results && results.length === 0 && (
+        <div style={{background:C.card,borderRadius:14,border:`1px solid ${C.border}`,padding:32,textAlign:'center'}}>
+          <div style={{fontSize:32,marginBottom:8}}>✅</div>
+          <div style={{fontSize:14,color:C.text,fontWeight:600}}>No difficult topics detected!</div>
+          <div style={{fontSize:12,color:C.text3,marginTop:4}}>Students showed good engagement across all lectures.</div>
+        </div>
+      )}
+
+      {results && results.length > 0 && (
+        <div>
+          <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:12}}>
+            ⚠️ {results.length} Difficult Topics Detected
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:12}}>
+            {results.sort((a,b)=>b.score-a.score).map((r,i)=>(
+              <div key={i} style={{background:C.card,borderRadius:14,border:`1px solid ${C.border}`,padding:18,
+                borderLeft:`4px solid ${scoreColor(r.score)}`}}>
+                <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,flexWrap:'wrap'}}>
+                  <div style={{flex:1}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+                      <span style={{fontSize:10,fontWeight:700,color:'#fff',background:scoreColor(r.score),
+                        borderRadius:6,padding:'2px 8px'}}>{scoreLabel(r.score)}</span>
+                      <span style={{fontSize:11,color:C.text3}}>Week {r.week} · {r.course}</span>
+                    </div>
+                    <div style={{fontSize:16,fontWeight:700,color:C.text,marginBottom:6}}>{r.topic}</div>
+                    <div style={{fontSize:12,color:C.text2,marginBottom:8}}>
+                      <span style={{fontWeight:600,color:'#f59e0b'}}>Why students struggled: </span>{r.reason}
+                    </div>
+                    <div style={{fontSize:12,background:'rgba(99,102,241,0.1)',border:'1px solid rgba(99,102,241,0.2)',
+                      borderRadius:8,padding:'8px 12px',color:C.text}}>
+                      <span style={{fontWeight:700,color:'#6366f1'}}>💡 Recommendation: </span>{r.recommendation}
+                    </div>
+                  </div>
+                  <div style={{textAlign:'center',flexShrink:0}}>
+                    <div style={{fontSize:28,fontWeight:800,color:scoreColor(r.score)}}>{r.score}%</div>
+                    <div style={{fontSize:10,color:C.text3}}>confused/bored</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DocAnalytics({ theme: C }) {
   const avgEng = store.students.length ? Math.round(store.students.reduce((a,s)=>a+s.engagement,0)/store.students.length) : 0;
   const avgAtt = store.students.length ? Math.round(store.students.reduce((a,s)=>a+s.attendanceRate,0)/store.students.length) : 0;
