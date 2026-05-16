@@ -51,7 +51,9 @@ export default function ChatWidget({ user }) {
     setLoading(true);
 
     try {
-      const contents = next.map(m => ({
+      // Gemini requires conversation to start with a user message — skip the initial greeting
+      const firstUserIdx = next.findIndex(m => m.role === 'user');
+      const contents = next.slice(firstUserIdx).map(m => ({
         role: m.role === 'model' ? 'model' : 'user',
         parts: [{ text: m.text }]
       }));
