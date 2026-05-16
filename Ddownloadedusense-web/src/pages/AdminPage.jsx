@@ -1056,17 +1056,34 @@ function CredentialsModal({ theme: C, account, onClose }) {
     navigator.clipboard.writeText(credText).then(()=>{ setCopied(true); setTimeout(()=>setCopied(false), 2500); });
   }
 
-  function sendEmail() {
+  async function sendEmail() {
     if (!account.email) { setEmailError('No email address provided for this account.'); return; }
-    const subject = encodeURIComponent('Your EduSense Account Credentials');
-    const body = encodeURIComponent(
-      `Dear ${account.name},\n\nYour EduSense account has been created. Here are your login credentials:\n\n` +
-      `Username: ${account.username}\nPassword: ${account.password}\nRole: ${account.role}\n\n` +
-      `Login at: ${window.location.origin}\n\n` +
-      `Please change your password after your first login.\n\nBest regards,\nEduSense Admin`
-    );
-    window.open(`mailto:${account.email}?subject=${subject}&body=${body}`, '_blank');
-    setSent(true);
+    setSending(true); setEmailError(''); setSent(false);
+    try {
+      const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          service_id:  'service_it50w6l',
+          template_id: 'template_n1v9mtb',
+          user_id:     '3nrjXvpxGXf0G01Xj',
+          template_params: {
+            to_email:  account.email,
+            to_name:   account.name,
+            username:  account.username,
+            password:  account.password,
+            role:      account.role,
+            login_url: window.location.origin,
+          }
+        })
+      });
+      if (res.ok) { setSent(true); }
+      else { const txt = await res.text(); setEmailError(`Failed: ${txt}`); }
+    } catch(e) {
+      setEmailError(e.message);
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
