@@ -62,7 +62,7 @@ export default function ChatWidget({ user }) {
         (user ? `\n\nCurrent user: ${user.name}, Role: ${user.role}` : '');
 
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -73,14 +73,17 @@ export default function ChatWidget({ user }) {
         }
       );
       const data = await res.json();
-      const reply =
-        data.candidates?.[0]?.content?.parts?.[0]?.text ||
-        "Sorry, I couldn't get a response. Please try again.";
-      setMessages(prev => [...prev, { role: 'model', text: reply }]);
-    } catch {
+      if (data.error) {
+        setMessages(prev => [...prev, { role: 'model', text: `Error: ${data.error.message}` }]);
+      } else {
+        const reply = data.candidates?.[0]?.content?.parts?.[0]?.text ||
+          "Sorry, I couldn't get a response.";
+        setMessages(prev => [...prev, { role: 'model', text: reply }]);
+      }
+    } catch (err) {
       setMessages(prev => [
         ...prev,
-        { role: 'model', text: 'Connection error. Please check your internet and try again.' }
+        { role: 'model', text: `Error: ${err.message}` }
       ]);
     }
     setLoading(false);
