@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import Sidebar from '../components/Sidebar';
 import Topbar  from '../components/Topbar';
 import StatCard from '../components/StatCard';
@@ -188,10 +188,176 @@ function AdminAnalytics({ theme: C }) {
 }
 
 /* ── STUDENTS ── */
+function parseCSV(text) {
+  const lines = text.trim().split('\n').map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g,''));
+  return lines.slice(1).map(line => {
+    const vals = line.match(/(".*?"|[^,]+)/g) || [];
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = (vals[i]||'').replace(/"/g,'').trim(); });
+    return obj;
+  });
+}
+
+async function parseExcel(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const XLSX = await import('https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs');
+        const wb = XLSX.read(e.target.result, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const data = XLSX.utils.sheet_to_json(ws, { defval: '' });
+        resolve(data.map(row => {
+          const norm = {};
+          Object.entries(row).forEach(([k,v]) => { norm[k.toLowerCase().trim()] = String(v).trim(); });
+          return norm;
+        }));
+      } catch { resolve([]); }
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function normalizeRow(row) {
+  return {
+    name:  row.name || row['full name'] || row['student name'] || '',
+    email: row.email || row['e-mail'] || '',
+    phone: row.phone || row['phone number'] || row.mobile || '',
+    dept:  row.dept || row.department || DEPARTMENTS[0],
+    year:  parseInt(row.year || row['academic year'] || 1) || 1,
+  };
+}
+
+function BulkImportModal({ theme: C, onClose, onImported }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(null);
+  const fileRef = useRef(null);
+
+  async function handleFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setLoading(true);
+    let parsed = [];
+    if (file.name.endsWith('.csv') || file.type === 'text/csv') {
+      const text = await file.text();
+      parsed = parseCSV(text);
+    } else {
+      parsed = await parseExcel(file);
+    }
+    setRows(parsed.map(normalizeRow).filter(r => r.name));
+    setLoading(false);
+  }
+
+  function importAll() {
+    const accounts = [];
+    rows.forEach(r => {
+      const s = store.addStudent(r);
+      const firstName = r.name.trim().split(' ')[0].toLowerCase().replace(/[^a-z]/g,'') || 'student';
+      const username = `stu.${firstName}.${s.id.toLowerCase()}`;
+      const password = generatePassword();
+      store.addUser({ name: r.name, username, password, email: r.email, role: 'student', studentId: s.id });
+      accounts.push({ name: r.name, username, password, id: s.id });
+    });
+    setDone(accounts);
+    onImported();
+  }
+
+  function downloadCSV(accounts) {
+    const header = 'Student ID,Name,Username,Password\n';
+    const body = accounts.map(a => `${a.id},${a.name},${a.username},${a.password}`).join('\n');
+    const blob = new Blob([header + body], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'imported_credentials.csv'; a.click();
+  }
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+      <div style={{background:C.card,borderRadius:18,border:`1px solid ${C.border}`,padding:28,maxWidth:700,width:'100%',maxHeight:'80vh',overflowY:'auto'}}>
+        <div style={{fontSize:18,fontWeight:700,color:C.text,marginBottom:16}}>📥 Bulk Import Students</div>
+
+        {!done ? (
+          <>
+            <div style={{marginBottom:16,padding:14,background:C.bg3,borderRadius:10,border:`1px dashed ${C.border}`}}>
+              <div style={{fontSize:12,color:C.text2,marginBottom:8}}>
+                Upload a <strong>.csv</strong> or <strong>.xlsx</strong> file with columns: <code>name, email, phone, dept, year</code>
+              </div>
+              <button onClick={() => fileRef.current?.click()}
+                style={{background:C.blue3,border:'none',borderRadius:8,padding:'8px 18px',fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer'}}>
+                📁 Choose File
+              </button>
+              <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleFile} style={{display:'none'}}/>
+            </div>
+
+            {loading && <div style={{color:C.text2,fontSize:13,marginBottom:12}}>⏳ Parsing file...</div>}
+
+            {rows.length > 0 && (
+              <>
+                <div style={{fontSize:13,fontWeight:700,color:C.text,marginBottom:8}}>Preview — {rows.length} students found</div>
+                <div style={{maxHeight:300,overflowY:'auto',borderRadius:10,border:`1px solid ${C.border}`,marginBottom:16}}>
+                  <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                    <thead>
+                      <tr style={{background:C.bg3}}>
+                        {['Name','Email','Phone','Department','Year'].map(h=>(
+                          <th key={h} style={{padding:'8px 10px',color:C.text2,fontWeight:700,textAlign:'left',borderBottom:`1px solid ${C.border}`}}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r,i)=>(
+                        <tr key={i} style={{borderBottom:`1px solid ${C.border}`}}>
+                          <td style={{padding:'7px 10px',color:C.text}}>{r.name||'—'}</td>
+                          <td style={{padding:'7px 10px',color:C.text2}}>{r.email||'—'}</td>
+                          <td style={{padding:'7px 10px',color:C.text2}}>{r.phone||'—'}</td>
+                          <td style={{padding:'7px 10px',color:C.text2}}>{r.dept||'—'}</td>
+                          <td style={{padding:'7px 10px',color:C.text2}}>Y{r.year}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{display:'flex',gap:8}}>
+                  <button onClick={importAll}
+                    style={{background:C.green,border:'none',borderRadius:8,padding:'9px 22px',fontSize:13,fontWeight:700,color:'#fff',cursor:'pointer'}}>
+                    ✅ Import {rows.length} Students
+                  </button>
+                  <button onClick={onClose}
+                    style={{background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'9px 16px',fontSize:12,color:C.text2,cursor:'pointer'}}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+          </>
+        ) : (
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:48,marginBottom:8}}>✅</div>
+            <div style={{fontSize:18,fontWeight:700,color:C.text,marginBottom:4}}>Successfully imported {done.length} students!</div>
+            <div style={{fontSize:12,color:C.text2,marginBottom:20}}>Credentials have been generated. Download the CSV to share with students.</div>
+            <div style={{display:'flex',gap:8,justifyContent:'center'}}>
+              <button onClick={() => downloadCSV(done)}
+                style={{background:C.blue3,border:'none',borderRadius:8,padding:'9px 22px',fontSize:13,fontWeight:700,color:'#fff',cursor:'pointer'}}>
+                📥 Download Credentials CSV
+              </button>
+              <button onClick={onClose}
+                style={{background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'9px 16px',fontSize:12,color:C.text2,cursor:'pointer'}}>
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AdminStudents({ theme: C }) {
   const [students, setStudents] = useState(store.students);
   const [search, setSearch] = useState('');
   const [showAdd, setShowAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [form, setForm] = useState({name:'',dept:DEPARTMENTS[0],year:1,email:'',phone:''});
   const [selected, setSelected] = useState(null);
   const [portfolioStudent, setPortfolioStudent] = useState(null);
@@ -225,10 +391,12 @@ function AdminStudents({ theme: C }) {
     <div style={{padding:'8px 20px 20px'}}>
       {portfolioStudent && <StudentPortfolioModal theme={C} student={portfolioStudent} onClose={()=>setPortfolioStudent(null)}/>}
       {createdAccount && <CredentialsModal theme={C} account={createdAccount} onClose={()=>setCreatedAccount(null)}/>}
+      {showImport && <BulkImportModal theme={C} onClose={()=>setShowImport(false)} onImported={()=>setStudents([...store.students])}/>}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
         <div style={{fontSize:22,fontWeight:700,color:C.text}}>Students ({store.students.length})</div>
         <div style={{display:'flex',gap:8}}>
           <button onClick={deleteSelected} style={{background:C.red_dim,border:`1px solid ${C.red}`,borderRadius:8,padding:'8px 14px',fontSize:11,color:C.red2,cursor:'pointer'}}>🗑️ Delete Selected</button>
+          <button onClick={()=>setShowImport(true)} style={{background:'linear-gradient(135deg,#8b5cf6,#6366f1)',border:'none',borderRadius:8,padding:'8px 14px',fontSize:11,fontWeight:700,color:'#fff',cursor:'pointer'}}>📥 Import Excel/CSV</button>
           <button onClick={()=>setShowAdd(true)} style={{background:C.blue3,border:'none',borderRadius:8,padding:'8px 14px',fontSize:11,fontWeight:700,color:'#fff',cursor:'pointer'}}>+ Add Student</button>
         </div>
       </div>

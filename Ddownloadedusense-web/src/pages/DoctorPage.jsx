@@ -55,7 +55,7 @@ export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLog
             {page==='live'       && <DocLive theme={C} doctor={doctor} myCourses={myCourses}/>}
             {page==='attendance' && <DocAttendance theme={C} doctor={doctor} myCourses={myCourses}/>}
             {page==='lectures'   && <DocLectures theme={C} doctor={doctor} myCourses={myCourses}/>}
-            {page==='students'   && <DocStudents theme={C} doctor={doctor} myCourses={myCourses}/>}
+            {page==='students'   && <DocStudents theme={C} doctor={doctor} myCourses={myCourses} doctor={doctor}/>}
             {page==='grades'     && <DocGrades theme={C} user={user} doctor={doctor} myCourses={myCourses}/>}
             {page==='chat'       && <DocChat theme={C} user={user} doctor={doctor} myCourses={myCourses}/>}
             {page==='analytics'  && <DocAnalytics theme={C}/>}
@@ -505,20 +505,80 @@ function DocLectures({ theme: C, myCourses }) {
 }
 
 /* ── STUDENTS ── */
-function DocStudents({ theme: C, myCourses }) {
+async function sendSMSAlert(phone, studentName, attendanceRate, doctorName) {
+  const msg = `EduSense Alert: ${studentName} has a low attendance rate of ${attendanceRate}%. Please contact them immediately. — ${doctorName}`;
+  try {
+    const res = await fetch('https://textbelt.com/text', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, message: msg, key: 'textbelt' })
+    });
+    return await res.json();
+  } catch {
+    return { success: false, error: 'Network error' };
+  }
+}
+
+function DocStudents({ theme: C, myCourses, doctor }) {
   const [selCourse, setSelCourse] = useState('all');
   const [search, setSearch] = useState('');
   const [portfolioStudent, setPortfolioStudent] = useState(null);
+  const [smsStatus, setSmsStatus] = useState({});
 
   const allStudents = selCourse==='all'
     ? [...new Map(myCourses.flatMap(c=>store.getEnrolledStudents(c.id)).map(s=>[s.id,s])).values()]
     : store.getEnrolledStudents(selCourse);
 
+  const atRisk = allStudents.filter(s => s.attendanceRate < 75);
   const filtered = allStudents.filter(s=>s.name.toLowerCase().includes(search.toLowerCase())||s.id.toLowerCase().includes(search.toLowerCase()));
+
+  async function handleSendSMS(stu) {
+    if (!stu.phone) { alert(`No phone number on file for ${stu.name}`); return; }
+    setSmsStatus(p => ({ ...p, [stu.id]: 'sending' }));
+    const result = await sendSMSAlert(stu.phone, stu.name, stu.attendanceRate, doctor?.name || 'Lecturer');
+    setSmsStatus(p => ({ ...p, [stu.id]: result.success ? 'sent' : 'failed' }));
+  }
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
       {portfolioStudent && <StudentPortfolioModal theme={C} student={portfolioStudent} onClose={()=>setPortfolioStudent(null)}/>}
+
+      {/* At-Risk Students Alert Section */}
+      {atRisk.length > 0 && (
+        <div style={{background:'rgba(239,68,68,0.08)',border:`1px solid rgba(239,68,68,0.3)`,borderRadius:14,padding:16,marginBottom:16}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
+            <span style={{fontSize:20}}>⚠️</span>
+            <div style={{fontSize:15,fontWeight:700,color:'#ef4444'}}>At-Risk Students ({atRisk.length})</div>
+            <div style={{fontSize:11,color:C.text3,marginLeft:4}}>Attendance below 75% — send SMS alert to their registered phone</div>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:8}}>
+            {atRisk.map(stu => {
+              const status = smsStatus[stu.id];
+              return (
+                <div key={stu.id} style={{display:'flex',alignItems:'center',gap:12,background:C.card,borderRadius:10,padding:'10px 14px',border:`1px solid ${C.border}`}}>
+                  <div style={{width:36,height:36,borderRadius:'50%',background:stu.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>{stu.emoji}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:700,color:C.text}}>{stu.name}</div>
+                    <div style={{fontSize:11,color:C.text3}}>{stu.id} · {stu.phone || 'No phone on file'}</div>
+                  </div>
+                  <div style={{fontSize:13,fontWeight:700,color:'#ef4444',minWidth:40}}>{stu.attendanceRate}%</div>
+                  <button
+                    onClick={() => handleSendSMS(stu)}
+                    disabled={status === 'sending' || status === 'sent'}
+                    style={{
+                      background: status === 'sent' ? C.green : status === 'failed' ? C.red_dim : 'linear-gradient(135deg,#3b82f6,#6366f1)',
+                      border: 'none', borderRadius:8, padding:'6px 14px', fontSize:12, fontWeight:700,
+                      color: '#fff', cursor: status==='sending'||status==='sent' ? 'default' : 'pointer', whiteSpace:'nowrap'
+                    }}
+                  >
+                    {status === 'sending' ? '📤 Sending...' : status === 'sent' ? '✅ SMS Sent' : status === 'failed' ? '❌ Failed' : '📱 Send SMS'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>Students</div>
 

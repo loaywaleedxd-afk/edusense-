@@ -66,8 +66,24 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
 }
 
 /* ══ DASHBOARD ══ */
+function calcStreak(studentId) {
+  const records = store.getStudentAttendance(studentId);
+  const weeks = [...new Set(
+    records.filter(r => r.status === 'present' || r.status === 'excused').map(r => Number(r.week))
+  )].sort((a, b) => a - b);
+  if (!weeks.length) return 0;
+  let streak = 1;
+  for (let i = weeks.length - 1; i > 0; i--) {
+    if (weeks[i] - weeks[i - 1] === 1) streak++;
+    else break;
+  }
+  return streak;
+}
+
 function StudentDashboard({ theme: C, user, stu }) {
   const myCoursesEnrolled = store.getStudentCourses(stu.id);
+  const streak = calcStreak(stu.id);
+  const streakMsg = streak >= 10 ? 'Incredible! Keep it up! 🏆' : streak >= 5 ? 'Great consistency!' : streak >= 2 ? 'Keep going!' : 'Start your streak today!';
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
@@ -79,10 +95,17 @@ function StudentDashboard({ theme: C, user, stu }) {
             : null}
           <span style={{display:(stu.capturedPhoto||store.getPhotoUrl(stu))?'none':'flex'}}>{stu.emoji||'👤'}</span>
         </div>
-        <div>
+        <div style={{flex:1}}>
           <div style={{ fontSize:22, fontWeight:700, color:C.text }}>Welcome back, {user.name.split(' ')[0]} 👋</div>
           <div style={{ fontSize:12, color:C.text2, marginTop:2 }}>{stu.id} · {stu.dept} · Year {stu.year}</div>
           <div style={{ fontSize:11, color:C.text3 }}>Your academic overview for this semester</div>
+        </div>
+        {/* Streak badge */}
+        <div style={{ flexShrink:0, textAlign:'center', background:'linear-gradient(135deg,#f97316,#ef4444)', borderRadius:14, padding:'12px 20px', minWidth:100 }}>
+          <div style={{ fontSize:32, lineHeight:1 }}>🔥</div>
+          <div style={{ fontSize:22, fontWeight:800, color:'#fff', lineHeight:1.1 }}>{streak}</div>
+          <div style={{ fontSize:10, color:'rgba(255,255,255,0.9)', fontWeight:600 }}>WEEK STREAK</div>
+          <div style={{ fontSize:9, color:'rgba(255,255,255,0.75)', marginTop:2 }}>{streakMsg}</div>
         </div>
       </div>
 
