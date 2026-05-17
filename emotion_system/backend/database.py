@@ -106,7 +106,7 @@ async def init_db():
             ('L003','D001','Data Science','CS403','Lab 1','2025-01-16 09:00:00');
         """)
         await db.commit()
-    print("✅ Database initialized")
+    print("[OK] Database initialized")
 
 
 async def get_db():

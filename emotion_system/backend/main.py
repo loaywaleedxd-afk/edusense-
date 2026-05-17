@@ -25,10 +25,10 @@ manager = ConnectionManager()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("🚀 Starting Emotion Detection System...")
+    logger.info("Starting Emotion Detection System...")
     await init_db()
     yield
-    logger.info("🛑 Shutting down...")
+    logger.info("Shutting down...")
 
 
 app = FastAPI(
