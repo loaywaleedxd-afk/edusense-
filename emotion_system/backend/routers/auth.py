@@ -37,19 +37,17 @@ async def login(req: LoginRequest):
 
     if user:
         user = dict(user)
-        stored_pw = user.get("password") or user.get("password_hash") or ""
-        # Accept: exact password match, or username as password, or student_id as password
-        if pwd == stored_pw or pwd == uname or pwd.upper() == uname.upper():
+        stored_pw = user.get("password") or ""
+        if pwd == stored_pw:
             role = user.get("role", "student")
             return {
                 "token": f"token_{user['id']}",
                 "user": {
                     "id":       user["id"],
                     "username": user.get("username") or uname,
-                    "name":     user.get("full_name") or user.get("name") or uname,
+                    "name":     user.get("full_name") or uname,
                     "email":    user.get("email", ""),
                     "role":     role,
-                    "child_id": user.get("username") if role == "parent" else None,
                 },
                 "message": "Login successful"
             }

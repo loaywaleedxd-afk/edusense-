@@ -20,9 +20,8 @@ function App() {
     async function init() {
       try {
         const url = await AsyncStorage.getItem('backend_url');
-        const savedUser = await AsyncStorage.getItem('user');
         setHasBackend(!!url);
-        if (savedUser) setUser(JSON.parse(savedUser));
+        // Do NOT restore saved session — always require login on app start
       } catch {}
       setReady(true);
     }

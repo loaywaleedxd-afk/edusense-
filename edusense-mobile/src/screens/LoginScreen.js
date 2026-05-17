@@ -6,13 +6,13 @@ import { login } from '../api';
 import { C } from '../theme';
 
 const ROLES = [
-  { id: 'student',  icon: '🎓', label: 'Student',          sub: 'View attendance & emotions',    demo: { u: 's001',    p: 'pass123' } },
-  { id: 'doctor',   icon: '👨‍🏫', label: 'Doctor / Lecturer', sub: 'Manage lectures & sessions',    demo: { u: 'dr.smith', p: 'pass123' } },
-  { id: 'admin',    icon: '🏛️', label: 'Admin',             sub: 'System management & reports',   demo: { u: 'admin',   p: 'pass123' } },
-  { id: 'parent',   icon: '👨‍👩‍👧', label: 'Parent',            sub: 'Monitor child performance',    demo: { u: 's001',    p: 'pass123' } },
+  { id: 'student',  icon: '🎓', label: 'Student',          sub: 's001 / pass123',             demo: { u: 's001',      p: 'pass123' } },
+  { id: 'doctor',   icon: '👨‍🏫', label: 'Doctor / Lecturer', sub: 'dr.smith / pass123',         demo: { u: 'dr.smith',  p: 'pass123' } },
+  { id: 'admin',    icon: '🏛️', label: 'Admin',             sub: 'admin / pass123',            demo: { u: 'admin',     p: 'pass123' } },
+  { id: 'parent',   icon: '👨‍👩‍👧', label: 'Parent',            sub: 'parent001 / pass123',        demo: { u: 'parent001', p: 'pass123' } },
 ];
 
-export default function LoginScreen({ onLogin }) {
+export default function LoginScreen({ onLogin, onResetServer }) {
   const [selectedRole, setSelectedRole] = useState(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -47,6 +47,9 @@ export default function LoginScreen({ onLogin }) {
           <Text style={styles.logo}>⚡ EduSense</Text>
           <Text style={styles.subtitle}>Classroom Emotion Detection & Attendance AI</Text>
           <Text style={styles.chooseText}>Choose your role to continue</Text>
+          <TouchableOpacity onPress={onResetServer} style={{ marginBottom: 8 }}>
+            <Text style={{ color: '#ef4444', fontSize: 12, textAlign: 'center' }}>⚙️ Change server URL</Text>
+          </TouchableOpacity>
           <View style={styles.grid}>
             {ROLES.map(r => (
               <TouchableOpacity key={r.id} onPress={() => selectRole(r)} style={styles.roleCard}>
@@ -85,6 +88,9 @@ export default function LoginScreen({ onLogin }) {
 
           <TouchableOpacity onPress={() => setSelectedRole(null)} style={styles.back}>
             <Text style={styles.backText}>← Choose different role</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onResetServer} style={styles.back}>
+            <Text style={[styles.backText, { color: '#ef4444' }]}>⚙️ Change server URL</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
