@@ -53,7 +53,11 @@ export default function DoctorAnalyticsScreen({ user }) {
 
   useEffect(() => { load(); }, []);
 
-  const emotions = overview?.emotion_distribution || analytics?.emotion_distribution || [];
+  const rawEmotions = overview?.emotion_distribution || analytics?.emotion_distribution || [];
+  // Normalise: API may return an object {happy:5} or an array [{emotion,count}]
+  const emotions = Array.isArray(rawEmotions)
+    ? rawEmotions
+    : Object.entries(rawEmotions).map(([emotion, count]) => ({ emotion, count }));
   const totalEmotions = emotions.reduce((a, e) => a + (e.count || 0), 0);
   const avgEng = analytics?.avg_engagement_rate ?? overview?.avg_engagement ?? 0;
   const avgAtt = analytics?.avg_attendance_rate ?? 0;

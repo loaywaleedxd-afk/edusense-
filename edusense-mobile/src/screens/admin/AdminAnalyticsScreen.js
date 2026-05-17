@@ -30,7 +30,11 @@ export default function AdminAnalyticsScreen() {
 
   useEffect(() => { load(); }, []);
 
-  const emotions = analytics?.emotion_distribution || overview?.emotion_distribution || [];
+  const rawEmotions = analytics?.emotion_distribution || overview?.emotion_distribution || [];
+  // Normalise: API may return an object {happy:5} or an array [{emotion,count}]
+  const emotions = Array.isArray(rawEmotions)
+    ? rawEmotions
+    : Object.entries(rawEmotions).map(([emotion, count]) => ({ emotion, count }));
   const totalEmotions = emotions.reduce((a, e) => a + (e.count || 0), 0);
   const atRisk = students.filter(s => (s.attendance_rate ?? 0) < 75 && (s.attendance_rate ?? 0) > 0).length;
 
