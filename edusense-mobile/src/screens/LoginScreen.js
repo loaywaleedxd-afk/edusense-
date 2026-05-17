@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
-import { login } from '../api';
+import { login, checkHealth, getBaseUrl } from '../api';
 import { C } from '../theme';
 
 const ROLES = [
@@ -18,12 +18,34 @@ export default function LoginScreen({ onLogin, onResetServer }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [serverUrl, setServerUrl] = useState('');
+  const [testing, setTesting] = useState(false);
+
+  React.useEffect(() => {
+    getBaseUrl().then(setServerUrl).catch(() => {});
+  }, []);
 
   function selectRole(role) {
     setSelectedRole(role);
     setUsername(role.demo.u);
     setPassword(role.demo.p);
     setError('');
+  }
+
+  async function handleTestConnection() {
+    setTesting(true); setError('');
+    try {
+      await checkHealth();
+      setError('✅ Backend connected! Now try logging in.');
+    } catch (e) {
+      const msg = e?.message || '';
+      if (msg.includes('Network') || msg.includes('timeout') || msg.includes('ECONNREFUSED')) {
+        setError(`❌ Cannot reach backend at:\n${serverUrl}\n\nMake sure start_backend.bat is running.`);
+      } else {
+        setError(`❌ Error: ${msg}`);
+      }
+    }
+    setTesting(false);
   }
 
   async function handleLogin() {
@@ -35,7 +57,13 @@ export default function LoginScreen({ onLogin, onResetServer }) {
       await AsyncStorage.setItem('user', JSON.stringify(user));
       onLogin(user);
     } catch (e) {
-      setError(e.response?.data?.detail || 'Login failed. Check your credentials.');
+      if (!e.response) {
+        // Network error — backend not reachable
+        setError(`❌ Cannot reach backend.\nURL: ${serverUrl}\n\nIs start_backend.bat running?`);
+      } else {
+        const detail = e.response?.data?.detail || e.response?.data || 'Unknown error';
+        setError(`❌ ${detail}\n(HTTP ${e.response?.status})`);
+      }
     }
     setLoading(false);
   }
@@ -47,9 +75,16 @@ export default function LoginScreen({ onLogin, onResetServer }) {
           <Text style={styles.logo}>⚡ EduSense</Text>
           <Text style={styles.subtitle}>Classroom Emotion Detection & Attendance AI</Text>
           <Text style={styles.chooseText}>Choose your role to continue</Text>
-          <TouchableOpacity onPress={onResetServer} style={{ marginBottom: 8 }}>
+          <TouchableOpacity onPress={onResetServer} style={{ marginBottom: 4 }}>
             <Text style={{ color: '#ef4444', fontSize: 12, textAlign: 'center' }}>⚙️ Change server URL</Text>
           </TouchableOpacity>
+          {serverUrl ? <Text style={{ color: '#64748b', fontSize: 10, textAlign: 'center', marginBottom: 4 }}>{serverUrl}</Text> : null}
+          <TouchableOpacity onPress={handleTestConnection} disabled={testing} style={{ marginBottom: 12, backgroundColor: '#1e293b', borderRadius: 8, padding: 8 }}>
+            {testing
+              ? <ActivityIndicator size="small" color="#3b82f6" />
+              : <Text style={{ color: '#3b82f6', fontSize: 12, textAlign: 'center' }}>🔗 Test Backend Connection</Text>}
+          </TouchableOpacity>
+          {error ? <Text style={{ color: error.startsWith('✅') ? '#22c55e' : '#ef4444', fontSize: 12, textAlign: 'center', marginBottom: 8 }}>{error}</Text> : null}
           <View style={styles.grid}>
             {ROLES.map(r => (
               <TouchableOpacity key={r.id} onPress={() => selectRole(r)} style={styles.roleCard}>
@@ -78,7 +113,7 @@ export default function LoginScreen({ onLogin, onResetServer }) {
           <Text style={styles.label}>PASSWORD</Text>
           <TextInput value={password} onChangeText={setPassword} style={styles.input} placeholderTextColor={C.text3} secureTextEntry />
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? <Text style={[styles.error, error.startsWith('✅') && { color: '#22c55e' }]}>{error}</Text> : null}
 
           <TouchableOpacity onPress={handleLogin} disabled={loading} style={styles.loginBtn}>
             <LinearGradient colors={['#3b82f6', '#6366f1']} style={styles.loginBtnGrad}>
@@ -92,6 +127,12 @@ export default function LoginScreen({ onLogin, onResetServer }) {
           <TouchableOpacity onPress={onResetServer} style={styles.back}>
             <Text style={[styles.backText, { color: '#ef4444' }]}>⚙️ Change server URL</Text>
           </TouchableOpacity>
+          <TouchableOpacity onPress={handleTestConnection} disabled={testing} style={[styles.back, { marginTop: 4 }]}>
+            {testing
+              ? <ActivityIndicator size="small" color="#3b82f6" />
+              : <Text style={[styles.backText, { color: '#3b82f6' }]}>🔗 Test Backend Connection</Text>}
+          </TouchableOpacity>
+          {serverUrl ? <Text style={{ color: '#64748b', fontSize: 10, textAlign: 'center' }}>{serverUrl}</Text> : null}
         </View>
       </KeyboardAvoidingView>
     </LinearGradient>
