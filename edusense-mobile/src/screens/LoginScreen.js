@@ -6,10 +6,10 @@ import { login } from '../api';
 import { C } from '../theme';
 
 const ROLES = [
-  { id: 'student',  icon: '🎓', label: 'Student',          sub: 's001 / pass123',             demo: { u: 's001',      p: 'pass123' } },
-  { id: 'doctor',   icon: '👨‍🏫', label: 'Doctor / Lecturer', sub: 'dr.smith / pass123',         demo: { u: 'dr.smith',  p: 'pass123' } },
-  { id: 'admin',    icon: '🏛️', label: 'Admin',             sub: 'admin / pass123',            demo: { u: 'admin',     p: 'pass123' } },
-  { id: 'parent',   icon: '👨‍👩‍👧', label: 'Parent',            sub: 'parent001 / pass123',        demo: { u: 'parent001', p: 'pass123' } },
+  { id: 'student',  icon: '🎓', label: 'Student',          sub: '231014184.0 / WGaub52Z',  demo: { u: '231014184.0', p: 'WGaub52Z'   } },
+  { id: 'doctor',   icon: '👨‍🏫', label: 'Doctor / Lecturer', sub: 'dr.ahmed / Ahmed@2024',   demo: { u: 'dr.ahmed',    p: 'Ahmed@2024' } },
+  { id: 'admin',    icon: '🏛️', label: 'Admin',             sub: 'admin / admin',           demo: { u: 'admin',       p: 'admin'      } },
+  { id: 'parent',   icon: '👨‍👩‍👧', label: 'Parent',            sub: 'parent / parent',         demo: { u: 'parent',      p: 'parent'     } },
 ];
 
 export default function LoginScreen({ onLogin, onResetServer }) {
