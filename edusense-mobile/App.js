@@ -1,6 +1,6 @@
+import { registerRootComponent } from 'expo';
 import React, { useState, useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { View, ActivityIndicator, StatusBar } from 'react-native';
 
@@ -8,12 +8,10 @@ import SetupScreen from './src/screens/SetupScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import StudentTabs from './src/screens/student/StudentTabs';
 import DoctorTabs from './src/screens/doctor/DoctorTabs';
-import AdminDashboard from './src/screens/admin/AdminDashboard';
-import ParentDashboard from './src/screens/parent/ParentDashboard';
+import AdminTabs  from './src/screens/admin/AdminTabs';
+import ParentTabs  from './src/screens/parent/ParentTabs';
 
-const Stack = createNativeStackNavigator();
-
-export default function App() {
+function App() {
   const [ready, setReady] = useState(false);
   const [hasBackend, setHasBackend] = useState(false);
   const [user, setUser] = useState(null);
@@ -38,6 +36,13 @@ export default function App() {
   async function handleLogout() {
     await AsyncStorage.removeItem('user');
     setUser(null);
+  }
+
+  async function handleResetServer() {
+    await AsyncStorage.removeItem('backend_url');
+    await AsyncStorage.removeItem('user');
+    setUser(null);
+    setHasBackend(false);
   }
 
   function handleSetupDone() {
@@ -65,7 +70,7 @@ export default function App() {
     return (
       <>
         <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
-        <LoginScreen onLogin={handleLogin} />
+        <LoginScreen onLogin={handleLogin} onResetServer={handleResetServer} />
       </>
     );
   }
@@ -78,17 +83,11 @@ export default function App() {
       <NavigationContainer>
         {role === 'student' && <StudentTabs user={user} onLogout={handleLogout} />}
         {role === 'doctor'  && <DoctorTabs  user={user} onLogout={handleLogout} />}
-        {role === 'admin'   && (
-          <Stack.Navigator screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="Admin" children={() => <AdminDashboard user={user} onLogout={handleLogout} />} />
-          </Stack.Navigator>
-        )}
-        {role === 'parent'  && (
-          <Stack.Navigator screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="Parent" children={() => <ParentDashboard user={user} onLogout={handleLogout} />} />
-          </Stack.Navigator>
-        )}
+        {role === 'admin'  && <AdminTabs  user={user} onLogout={handleLogout} />}
+        {role === 'parent' && <ParentTabs user={user} onLogout={handleLogout} />}
       </NavigationContainer>
     </>
   );
 }
+
+registerRootComponent(App);
