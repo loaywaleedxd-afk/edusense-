@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator, RefreshControl, TextInput } from 'react-native';
 import { getStudents } from '../../api';
 import { C } from '../../theme';
+import StudentAvatar from '../../components/StudentAvatar';
 
 export default function DoctorStudentsScreen({ user }) {
   const [students, setStudents] = useState([]);
@@ -62,9 +63,7 @@ export default function DoctorStudentsScreen({ user }) {
               const rate = s.attendance_rate != null ? Math.round(s.attendance_rate) : null;
               return (
                 <View key={i} style={styles.card}>
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>{(s.name || 'S')[0].toUpperCase()}</Text>
-                  </View>
+                  <StudentAvatar studentId={s.student_id} name={s.name} size={44} bgColor={C.purple} style={{ marginRight: 12 }} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.studentName}>{s.name || s.student_id}</Text>
                     <Text style={styles.studentId}>{s.student_id} · {s.email || 'no email'}</Text>
@@ -95,8 +94,6 @@ const styles = StyleSheet.create({
   searchInput: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 10, padding: 12, color: C.text, fontSize: 14 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 80 },
   card: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, marginHorizontal: 12, marginBottom: 8, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: C.border },
-  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: `${C.purple}33`, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  avatarText: { color: C.purple, fontWeight: '800', fontSize: 16 },
   studentName: { color: C.text, fontWeight: '700', fontSize: 14 },
   studentId: { color: C.text3, fontSize: 11, marginTop: 2 },
   studentCourse: { color: C.text2, fontSize: 11, marginTop: 2 },

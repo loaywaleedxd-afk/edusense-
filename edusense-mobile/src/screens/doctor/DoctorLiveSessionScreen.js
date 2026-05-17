@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
-import { getLectures, getStudents, getAttendance } from '../../api';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, TextInput, Modal } from 'react-native';
+import { getLectures, getStudents, apiClient } from '../../api';
 import { C } from '../../theme';
-import { apiClient } from '../../api';
+import StudentAvatar from '../../components/StudentAvatar';
 
 export default function DoctorLiveSessionScreen({ user }) {
   const [lectures, setLectures]       = useState([]);
@@ -10,8 +10,10 @@ export default function DoctorLiveSessionScreen({ user }) {
   const [selectedLec, setSelectedLec] = useState(null);
   const [liveStudents, setLiveStudents] = useState([]);
   const [loading, setLoading]         = useState(true);
-  const [starting, setStarting]       = useState(false);
   const [tab, setTab]                 = useState(0); // 0=select, 1=live
+  const [emailModal, setEmailModal]   = useState(false);
+  const [emailAddr, setEmailAddr]     = useState('');
+  const [sending, setSending]         = useState(false);
   const pollRef = useRef(null);
 
   useEffect(() => {
@@ -26,6 +28,11 @@ export default function DoctorLiveSessionScreen({ user }) {
     init();
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
+
+  // Pre-fill email from logged-in doctor
+  useEffect(() => {
+    if (user?.email) setEmailAddr(user.email);
+  }, [user]);
 
   async function pollAttendance(lecId) {
     try {
@@ -48,6 +55,24 @@ export default function DoctorLiveSessionScreen({ user }) {
     setTab(0);
   }
 
+  async function sendAttendanceEmail() {
+    if (!emailAddr.trim()) { Alert.alert('Error', 'Enter an email address.'); return; }
+    setSending(true);
+    try {
+      const c = await apiClient();
+      const res = await c.post('/api/email/send-attendance', {
+        lecture_id: selectedLec.lecture_id,
+        recipient_email: emailAddr.trim(),
+      });
+      setEmailModal(false);
+      Alert.alert('Sent!', `Attendance report sent to ${emailAddr}\n${res.data.present} present · ${res.data.absent} absent · ${res.data.rate}%`);
+    } catch (e) {
+      const msg = e?.response?.data?.detail || 'Failed to send email. Check email settings in Admin → Settings.';
+      Alert.alert('Error', msg);
+    }
+    setSending(false);
+  }
+
   const qrValue = selectedLec ? String(selectedLec.lecture_id) : '';
   const present = liveStudents.filter(s => s.status === 'present').length;
 
@@ -57,7 +82,7 @@ export default function DoctorLiveSessionScreen({ user }) {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Live Session</Text>
-        <Text style={styles.sub}>{tab === 1 ? `🔴 LIVE · ${present} present` : 'Select a lecture to start'}</Text>
+        <Text style={styles.sub}>{tab === 1 ? `LIVE · ${present} present` : 'Select a lecture to start'}</Text>
       </View>
 
       {tab === 0 && (
@@ -71,7 +96,7 @@ export default function DoctorLiveSessionScreen({ user }) {
             >
               <View style={{ flex: 1 }}>
                 <Text style={styles.lecName}>{lec.course_name}</Text>
-                <Text style={styles.lecSub}>{lec.course_code} · Week {lec.week} · Room {lec.room || '—'}</Text>
+                <Text style={styles.lecSub}>{lec.course_code} · Room {lec.room || '—'}</Text>
               </View>
               {selectedLec?.lecture_id === lec.lecture_id && (
                 <Text style={{ color: C.green, fontSize: 18 }}>✓</Text>
@@ -81,22 +106,19 @@ export default function DoctorLiveSessionScreen({ user }) {
 
           <TouchableOpacity
             onPress={startSession}
-            disabled={!selectedLec || starting}
-            style={[styles.startBtn, (!selectedLec || starting) && styles.startBtnDisabled]}
+            disabled={!selectedLec}
+            style={[styles.startBtn, !selectedLec && styles.startBtnDisabled]}
           >
-            {starting
-              ? <ActivityIndicator color="#fff" />
-              : <Text style={styles.startBtnText}>▶ Start Live Session</Text>
-            }
+            <Text style={styles.startBtnText}>Start Live Session</Text>
           </TouchableOpacity>
         </ScrollView>
       )}
 
       {tab === 1 && selectedLec && (
         <ScrollView contentContainerStyle={{ padding: 16 }}>
-          {/* QR Code display */}
+          {/* QR display */}
           <View style={styles.qrCard}>
-            <Text style={styles.qrTitle}>📱 Attendance QR Code</Text>
+            <Text style={styles.qrTitle}>Attendance QR Code</Text>
             <Text style={styles.qrHint}>Students scan this to mark attendance</Text>
             <View style={styles.qrBox}>
               <Text style={styles.qrValue}>{qrValue}</Text>
@@ -105,13 +127,13 @@ export default function DoctorLiveSessionScreen({ user }) {
             <Text style={styles.qrCourse}>{selectedLec.course_name} · {selectedLec.course_code}</Text>
           </View>
 
-          {/* Live stats */}
+          {/* Stats */}
           <View style={styles.statsRow}>
             {[
-              { label: 'Present', value: present, color: C.green },
-              { label: 'Absent', value: students.length - present, color: C.red },
-              { label: 'Total', value: students.length, color: C.blue },
-              { label: 'Rate', value: students.length ? `${Math.round((present / students.length) * 100)}%` : '0%', color: C.purple },
+              { label: 'Present', value: present,                   color: C.green  },
+              { label: 'Absent',  value: students.length - present, color: C.red    },
+              { label: 'Total',   value: students.length,           color: C.blue   },
+              { label: 'Rate',    value: students.length ? `${Math.round((present/students.length)*100)}%` : '0%', color: C.purple },
             ].map((s, i) => (
               <View key={i} style={styles.statBox}>
                 <Text style={[styles.statVal, { color: s.color }]}>{s.value}</Text>
@@ -120,14 +142,24 @@ export default function DoctorLiveSessionScreen({ user }) {
             ))}
           </View>
 
-          {/* Live student list */}
+          {/* Action buttons */}
+          <View style={styles.actionsRow}>
+            <TouchableOpacity onPress={() => setEmailModal(true)} style={styles.emailBtn}>
+              <Text style={styles.emailBtnText}>Email Report</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={endSession} style={styles.endBtn}>
+              <Text style={styles.endBtnText}>End Session</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Live list */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Students ({liveStudents.length} checked in)</Text>
+            <Text style={styles.sectionTitle}>Checked-in ({liveStudents.length})</Text>
             {liveStudents.length === 0 ? (
               <Text style={styles.emptyText}>Waiting for students to scan...</Text>
             ) : liveStudents.map((s, i) => (
               <View key={i} style={styles.studentRow}>
-                <View style={[styles.dot, { backgroundColor: s.status === 'present' ? C.green : C.red }]} />
+                <StudentAvatar studentId={s.student_id} name={s.full_name} size={36} bgColor={C.green} style={{ marginRight: 10 }} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.studentName}>{s.full_name || s.student_id}</Text>
                   <Text style={styles.studentSub}>{s.student_id} · {s.check_in_time?.split(' ')[1]?.slice(0,5) || '—'}</Text>
@@ -138,12 +170,36 @@ export default function DoctorLiveSessionScreen({ user }) {
               </View>
             ))}
           </View>
-
-          <TouchableOpacity onPress={endSession} style={styles.endBtn}>
-            <Text style={styles.endBtnText}>⏹ End Session</Text>
-          </TouchableOpacity>
         </ScrollView>
       )}
+
+      {/* Email modal */}
+      <Modal visible={emailModal} transparent animationType="slide" onRequestClose={() => setEmailModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Email Attendance Report</Text>
+            <Text style={styles.modalSub}>{selectedLec?.course_name} · {present} present</Text>
+            <Text style={styles.inputLabel}>RECIPIENT EMAIL</Text>
+            <TextInput
+              value={emailAddr}
+              onChangeText={setEmailAddr}
+              placeholder="doctor@university.edu"
+              placeholderTextColor={C.text3}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              style={styles.emailInput}
+            />
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity onPress={() => setEmailModal(false)} style={[styles.modalBtn, styles.modalBtnCancel]}>
+                <Text style={{ color: C.text3, fontWeight: '700' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={sendAttendanceEmail} disabled={sending} style={[styles.modalBtn, styles.modalBtnSend]}>
+                {sending ? <ActivityIndicator color="#fff" size="small" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>Send</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -169,18 +225,29 @@ const styles = StyleSheet.create({
   qrValue: { fontSize: 48, fontWeight: '900', color: '#0f172a' },
   qrId: { fontSize: 12, color: '#64748b', marginTop: 8 },
   qrCourse: { color: C.text2, fontSize: 13, fontWeight: '600' },
-  statsRow: { flexDirection: 'row', backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, marginBottom: 16 },
+  statsRow: { flexDirection: 'row', backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, marginBottom: 12 },
   statBox: { flex: 1, alignItems: 'center', paddingVertical: 14 },
   statVal: { fontSize: 18, fontWeight: '800' },
   statLbl: { color: C.text3, fontSize: 10, marginTop: 2 },
+  actionsRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  emailBtn: { flex: 1, backgroundColor: C.blue, borderRadius: 12, padding: 14, alignItems: 'center' },
+  emailBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  endBtn: { flex: 1, backgroundColor: C.red, borderRadius: 12, padding: 14, alignItems: 'center' },
+  endBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   section: { backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border, padding: 16, marginBottom: 16 },
   sectionTitle: { fontSize: 15, fontWeight: '700', color: C.text, marginBottom: 12 },
-  studentRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: C.border },
-  dot: { width: 10, height: 10, borderRadius: 5, marginRight: 12 },
+  studentRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.border },
   studentName: { color: C.text, fontWeight: '600', fontSize: 13 },
   studentSub: { color: C.text3, fontSize: 11, marginTop: 2 },
   statusText: { fontSize: 16 },
   emptyText: { color: C.text3, textAlign: 'center', paddingVertical: 20 },
-  endBtn: { backgroundColor: C.red, borderRadius: 14, padding: 16, alignItems: 'center', marginBottom: 20 },
-  endBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  modalOverlay: { flex: 1, backgroundColor: '#00000088', justifyContent: 'flex-end' },
+  modalCard: { backgroundColor: C.card, borderRadius: 20, padding: 24, margin: 16, borderWidth: 1, borderColor: C.border },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: C.text, marginBottom: 4 },
+  modalSub: { color: C.text3, fontSize: 13, marginBottom: 20 },
+  inputLabel: { fontSize: 10, color: C.text3, fontWeight: '700', textTransform: 'uppercase', marginBottom: 6 },
+  emailInput: { backgroundColor: C.bg3, borderWidth: 1, borderColor: C.border, borderRadius: 10, padding: 12, color: C.text, fontSize: 14, marginBottom: 16 },
+  modalBtn: { flex: 1, borderRadius: 10, padding: 13, alignItems: 'center' },
+  modalBtnCancel: { backgroundColor: C.bg3 },
+  modalBtnSend: { backgroundColor: C.blue },
 });

@@ -5,13 +5,16 @@ FastAPI Backend — main entry point
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 import asyncio
 import json
 import logging
+import os
 from datetime import datetime
 from contextlib import asynccontextmanager
 
 from routers import attendance, emotions, students, lectures, analytics, auth, grades, messages, excuses, users
+from routers import email_router
 from database import init_db
 import aiosqlite
 from websocket_manager import ConnectionManager
@@ -55,9 +58,15 @@ app.include_router(emotions.router,   prefix="/api/emotions",   tags=["Emotions"
 app.include_router(analytics.router,  prefix="/api/analytics",  tags=["Analytics"])
 app.include_router(grades.router,     prefix="/api/grades",     tags=["Grades"])
 app.include_router(messages.router,   prefix="/api/messages",   tags=["Messages"])
-app.include_router(excuses.router,    prefix="/api/excuses",    tags=["Excuses"])
-app.include_router(users.router,      prefix="/api/users",      tags=["Users"])
+app.include_router(excuses.router,       prefix="/api/excuses",    tags=["Excuses"])
+app.include_router(users.router,         prefix="/api/users",      tags=["Users"])
+app.include_router(email_router.router,  prefix="/api/email",      tags=["Email"])
 app.include_router(r_router)
+
+# Serve student photos as static files
+_PHOTOS_DIR = os.path.join(os.path.dirname(__file__), "..", "student_photos")
+if os.path.isdir(_PHOTOS_DIR):
+    app.mount("/photos", StaticFiles(directory=_PHOTOS_DIR), name="photos")
 
 
 @app.get("/")

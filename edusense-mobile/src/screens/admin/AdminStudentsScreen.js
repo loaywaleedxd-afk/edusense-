@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, RefreshControl, Alert } from 'react-native';
 import { getStudents, apiClient } from '../../api';
 import { C } from '../../theme';
+import StudentAvatar from '../../components/StudentAvatar';
 
 export default function AdminStudentsScreen() {
   const [students, setStudents]   = useState([]);
@@ -98,9 +99,7 @@ export default function AdminStudentsScreen() {
           const color = rate >= 75 ? C.green : rate >= 50 ? C.amber : rate > 0 ? C.red : C.text3;
           return (
             <View key={i} style={styles.studentCard}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{(s.name || s.student_id)?.[0]?.toUpperCase()}</Text>
-              </View>
+              <StudentAvatar studentId={s.student_id} name={s.name} size={40} bgColor={C.blue} style={{ marginRight: 12 }} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.studentName}>{s.name || s.student_id}</Text>
                 <Text style={styles.studentId}>{s.student_id} · {s.email || '—'}</Text>
@@ -133,8 +132,6 @@ const styles = StyleSheet.create({
   saveBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   countLabel: { color: C.text3, fontSize: 11, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 4 },
   studentCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, marginHorizontal: 12, marginBottom: 8, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: C.border },
-  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: `${C.blue}33`, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  avatarText: { color: C.blue, fontWeight: '800', fontSize: 16 },
   studentName: { color: C.text, fontWeight: '600', fontSize: 13 },
   studentId: { color: C.text3, fontSize: 11, marginTop: 2 },
   rateBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
