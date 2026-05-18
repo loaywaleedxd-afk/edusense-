@@ -530,6 +530,14 @@ class DataStore {
   addExamResult(studentId,courseId,grade,doctorId){
     if(!this.examResults[studentId]) this.examResults[studentId]={};
     this.examResults[studentId][courseId]={grade:+parseFloat(grade).toFixed(1),addedBy:doctorId,date:new Date().toISOString().slice(0,10)};
+    // Notify student — skip when called from system/bulk publish to avoid spamming
+    if(doctorId && doctorId!=='system' && doctorId!=='publish'){
+      const course=this.getCourse(courseId);
+      const g=+parseFloat(grade).toFixed(1);
+      this.addAlert({alertKind:'grade',type:'info',studentId,courseId,
+        title:`Grade Posted — ${course?.name||courseId}`,
+        message:`Your grade of ${g}% has been posted for ${course?.name||courseId}.`});
+    }
     this._persist(); return true;
   }
 
@@ -784,11 +792,30 @@ class DataStore {
       description:data.description||'',status:'pending',
       doctorId:data.doctorId||'',doctorResponse:'',adminResponse:'',
       createdAt:new Date().toISOString().slice(0,10),updatedAt:new Date().toISOString().slice(0,10)};
-    this.complaints.push(c); this._persist(); return c;
+    this.complaints.push(c);
+    // Notify doctor of new appeal
+    if(data.doctorId){
+      this.addAlert({alertKind:'new_appeal',type:'warning',doctorId:data.doctorId,studentId:null,
+        title:`New Appeal — ${data.studentName||'Student'}`,
+        message:`${data.studentName} submitted a ${(data.type||'').replace(/_/g,' ')} for ${data.courseName||'a course'}.`});
+    }
+    this._persist(); return c;
   }
   updateComplaint(id,updates){
     const c=this.complaints.find(x=>x.id===id);
-    if(c){Object.assign(c,updates,{updatedAt:new Date().toISOString().slice(0,10)});this._persist();}
+    if(c){
+      const prevStatus=c.status;
+      Object.assign(c,updates,{updatedAt:new Date().toISOString().slice(0,10)});
+      // Notify student when status changes
+      if(updates.status && updates.status!==prevStatus && c.studentId){
+        const label=updates.status==='reviewed'?'Reviewed by Lecturer':'Resolved by Admin';
+        const resp=updates.status==='reviewed'?updates.doctorResponse:updates.adminResponse;
+        this.addAlert({alertKind:'appeal',type:'info',studentId:c.studentId,
+          title:`Appeal ${label} — ${c.courseName||''}`,
+          message:resp?`Response: "${resp}"`:`Your ${(c.type||'').replace(/_/g,' ')} has been ${updates.status}.`});
+      }
+      this._persist();
+    }
     return c||null;
   }
   getStudentComplaints(studentId){return this.complaints.filter(c=>c.studentId===studentId);}
@@ -823,6 +850,45 @@ class DataStore {
     return null;
   }
   isOnWaitlist(courseId,studentId){return(this.courseWaitlists[courseId]||[]).includes(studentId);}
+
+  // ── NOTIFICATIONS (user-scoped view of systemAlerts) ──────────────────────
+  getUserNotifications(user){
+    if(!this.systemAlerts) return [];
+    if(user?.role==='student'){
+      const sid=user.studentId||user.id;
+      return this.systemAlerts.filter(a=>a.studentId===sid);
+    }
+    if(user?.role==='doctor'){
+      const did=user.doctorId;
+      return this.systemAlerts.filter(a=>a.doctorId===did||
+        (a.alertKind==='new_appeal'&&a.doctorId===did));
+    }
+    if(user?.role==='admin') return this.systemAlerts;
+    return [];
+  }
+  markAllUserAlertsRead(user){
+    const notifs=this.getUserNotifications(user);
+    notifs.forEach(a=>{a.read=true;});
+    this._persist();
+  }
+
+  // ── PUBLISH GRADES ─────────────────────────────────────────────────────────
+  publishCourseGrades(courseId, doctorId){
+    const course=this.getCourse(courseId);
+    const enrolled=this.getEnrolledStudents(courseId);
+    let published=0;
+    enrolled.forEach(s=>{
+      const rec=this.examResults[s.id]?.[courseId];
+      if(rec){
+        this.addAlert({alertKind:'grade',type:'info',studentId:s.id,courseId,
+          title:`Grade Published — ${course?.name||courseId}`,
+          message:`Your final grade of ${rec.grade}% has been officially published for ${course?.name||courseId}.`});
+        published++;
+      }
+    });
+    this._persist();
+    return published;
+  }
 }
 
 export const store = new DataStore();

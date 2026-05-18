@@ -838,7 +838,37 @@ function DocGrades({ theme: C, user, doctor, myCourses }) {
           style={{background:showWeights?C.blue3:C.bg3,border:`1px solid ${showWeights?C.blue3:C.border}`,borderRadius:8,padding:'8px 14px',fontSize:12,fontWeight:700,color:showWeights?'#fff':C.text2,cursor:'pointer'}}>
           ⚙️ Grade Weights
         </button>
+        <button onClick={()=>{
+          const n=store.publishCourseGrades(selCourse,doctor.id);
+          alert(`✅ Published grades and notified ${n} student${n!==1?'s':''}.`);
+          forceUpdate(v=>v+1);
+        }} style={{background:'#7c3aed',border:'none',borderRadius:8,padding:'8px 14px',fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer'}}>
+          📤 Publish Grades
+        </button>
       </div>
+
+      {/* Grade stats bar */}
+      {(() => {
+        const gradedCount = enrolled.filter(s=>results[s.id]).length;
+        const passCount   = enrolled.filter(s=>(results[s.id]?.grade??-1)>=50).length;
+        const avg = gradedCount ? Math.round(enrolled.reduce((a,s)=>a+(results[s.id]?.grade??0),0)/gradedCount) : 0;
+        return (
+          <div style={{display:'flex',gap:8,marginBottom:12}}>
+            {[
+              {label:'Enrolled', value:enrolled.length,  color:C.blue},
+              {label:'Graded',   value:gradedCount,       color:C.green},
+              {label:'Passing',  value:passCount,         color:'#10b981'},
+              {label:'Failing',  value:gradedCount-passCount, color:C.red},
+              {label:'Avg Grade',value:gradedCount?`${avg}%`:'—', color:C.purple||'#8b5cf6'},
+            ].map((s,i)=>(
+              <div key={i} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:'8px 14px',textAlign:'center',flex:1}}>
+                <div style={{fontSize:18,fontWeight:800,color:s.color}}>{s.value}</div>
+                <div style={{fontSize:9,color:C.text3,marginTop:2,textTransform:'uppercase',fontWeight:700}}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Grade weights panel */}
       {showWeights && weights && (

@@ -1,8 +1,20 @@
+import { useState } from 'react';
+import store from '../dataStore';
+
 const ROLE_COLORS = { doctor: '#8b5cf6', admin: '#10b981', student: '#3b82f6', parent: '#f59e0b' };
+const KIND_ICON = { grade:'📝', appeal:'📋', new_appeal:'📋', attendance:'⚠️', warning:'⚠️', danger:'🚨', info:'ℹ️' };
 
 export default function Topbar({ theme: C, user, pageTitle, isDark, onToggleMode, onLogout }) {
   const roleColor = ROLE_COLORS[user?.role] || '#3b82f6';
-  const initials = user?.initials || user?.name?.split(' ').slice(0,2).map(w=>w[0]?.toUpperCase()||'').join('') || '??';
+  const initials  = user?.initials || user?.name?.split(' ').slice(0,2).map(w=>w[0]?.toUpperCase()||'').join('') || '??';
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [, refresh] = useState(0);
+
+  const notifications = store.getUserNotifications(user) || [];
+  const unread = notifications.filter(n => !n.read).length;
+
+  function markRead(id) { store.markAlertRead(id); refresh(n=>n+1); }
+  function markAll()    { store.markAllUserAlertsRead(user); setNotifOpen(false); refresh(n=>n+1); }
 
   return (
     <div style={{
@@ -11,55 +23,124 @@ export default function Topbar({ theme: C, user, pageTitle, isDark, onToggleMode
       flexShrink: 0, position: 'relative', zIndex: 10,
     }}>
       {/* Breadcrumb */}
-      <div style={{ flex: 1, fontSize: 15, fontWeight: 700, color: C.text }}>
-        {pageTitle}
-      </div>
+      <div style={{ flex: 1, fontSize: 15, fontWeight: 700, color: C.text }}>{pageTitle}</div>
 
       {/* Right controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+
+        {/* Notification Bell */}
+        <div style={{ position: 'relative' }}>
+          <button onClick={() => setNotifOpen(o => !o)} style={{
+            background: notifOpen ? C.blue3 : C.bg3,
+            border: `1px solid ${notifOpen ? C.blue3 : C.border}`,
+            borderRadius: 20, width: 38, height: 38,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 16, cursor: 'pointer', position: 'relative',
+          }}>
+            🔔
+            {unread > 0 && (
+              <span style={{
+                position: 'absolute', top: -4, right: -4,
+                background: '#ef4444', color: '#fff', borderRadius: '50%',
+                width: 17, height: 17, fontSize: 9, fontWeight: 800,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: `2px solid ${C.card}`,
+              }}>{unread > 9 ? '9+' : unread}</span>
+            )}
+          </button>
+
+          {/* Backdrop */}
+          {notifOpen && <div style={{ position:'fixed', inset:0, zIndex:999 }} onClick={() => setNotifOpen(false)}/>}
+
+          {/* Dropdown panel */}
+          {notifOpen && (
+            <div style={{
+              position: 'absolute', top: 46, right: 0, width: 340, maxHeight: 440,
+              background: C.card, border: `1px solid ${C.border}`, borderRadius: 14,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.25)', zIndex: 1000, overflow: 'hidden',
+              display: 'flex', flexDirection: 'column',
+            }}>
+              {/* Header */}
+              <div style={{ display:'flex', alignItems:'center', padding:'12px 16px', borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
+                <div style={{ fontSize:13, fontWeight:700, color:C.text, flex:1 }}>
+                  Notifications {unread > 0 && <span style={{ color:C.blue }}>({unread} new)</span>}
+                </div>
+                {unread > 0 && (
+                  <button onClick={markAll} style={{ background:'none', border:'none', fontSize:11, color:C.blue, cursor:'pointer', fontWeight:700 }}>
+                    Mark all read
+                  </button>
+                )}
+              </div>
+
+              {/* List */}
+              <div style={{ overflowY:'auto', flex:1 }}>
+                {notifications.length === 0
+                  ? <div style={{ padding:32, textAlign:'center', color:C.text3, fontSize:12 }}>No notifications yet</div>
+                  : notifications.slice(0, 40).map((n, i) => {
+                    const icon = KIND_ICON[n.alertKind] || KIND_ICON[n.type] || '🔔';
+                    const timeStr = (() => {
+                      try { return new Date(n.createdAt).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
+                      catch { return ''; }
+                    })();
+                    return (
+                      <div key={i} onClick={() => markRead(n.id)} style={{
+                        padding:'11px 16px', borderBottom:`1px solid ${C.border}`,
+                        background: n.read ? 'transparent' : `${C.blue}18`,
+                        cursor:'pointer', display:'flex', gap:10, alignItems:'flex-start',
+                        transition:'background 0.1s',
+                      }}>
+                        <span style={{ fontSize:18, flexShrink:0, marginTop:1 }}>{icon}</span>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:12, fontWeight:700, color:C.text, marginBottom:2 }}>{n.title}</div>
+                          <div style={{ fontSize:11, color:C.text3, lineHeight:1.4, wordBreak:'break-word' }}>{n.message}</div>
+                          {timeStr && <div style={{ fontSize:10, color:C.text3, marginTop:3 }}>{timeStr}</div>}
+                        </div>
+                        {!n.read && <div style={{ width:8, height:8, borderRadius:'50%', background:C.blue, flexShrink:0, marginTop:4 }}/>}
+                      </div>
+                    );
+                  })
+                }
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Mode toggle */}
-        <button
-          onClick={onToggleMode}
-          style={{
-            background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 20,
-            padding: '7px 14px', fontSize: 11, fontWeight: 700, color: C.text2,
-            display: 'flex', alignItems: 'center', gap: 6, transition: 'background 0.15s',
-          }}
-        >
+        <button onClick={onToggleMode} style={{
+          background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 20,
+          padding: '7px 14px', fontSize: 11, fontWeight: 700, color: C.text2,
+          display: 'flex', alignItems: 'center', gap: 6,
+        }}>
           <span>{isDark ? '☀️' : '🌙'}</span>
           <span>{isDark ? 'Light' : 'Dark'}</span>
         </button>
 
-        {/* Divider */}
-        <div style={{ width: 1, height: 36, background: C.border }} />
+        <div style={{ width:1, height:36, background:C.border }}/>
 
         {/* Avatar */}
         <div style={{
-          width: 38, height: 38, borderRadius: '50%', background: roleColor,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 13, fontWeight: 700, color: '#fff', flexShrink: 0,
-          overflow: 'hidden', border: `2px solid ${roleColor}`,
+          width:38, height:38, borderRadius:'50%', background:roleColor,
+          display:'flex', alignItems:'center', justifyContent:'center',
+          fontSize:13, fontWeight:700, color:'#fff', flexShrink:0,
+          overflow:'hidden', border:`2px solid ${roleColor}`,
         }}>
           {user?.photoUrl
             ? <img src={user.photoUrl} alt={initials} onError={e=>{e.target.style.display='none';e.target.nextSibling.style.display='flex';}} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
             : null}
-          <span style={{display: user?.photoUrl ? 'none' : 'flex'}}>{initials}</span>
+          <span style={{ display: user?.photoUrl ? 'none' : 'flex' }}>{initials}</span>
         </div>
 
         {/* Name + role */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{user?.name || 'User'}</div>
-          <div style={{ fontSize: 10, color: C.text3 }}>{(user?.role||'').replace(/^\w/,c=>c.toUpperCase())}</div>
+        <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
+          <div style={{ fontSize:12, fontWeight:700, color:C.text }}>{user?.name || 'User'}</div>
+          <div style={{ fontSize:10, color:C.text3 }}>{(user?.role||'').replace(/^\w/,c=>c.toUpperCase())}</div>
         </div>
 
         {/* Sign out */}
-        <button
-          onClick={onLogout}
-          style={{
-            background: C.red_dim, border: `1px solid ${C.red}`, borderRadius: 8,
-            padding: '8px 14px', fontSize: 11, color: C.red2, fontWeight: 600,
-            transition: 'background 0.15s',
-          }}
+        <button onClick={onLogout} style={{
+          background: C.red_dim, border: `1px solid ${C.red}`, borderRadius:8,
+          padding:'8px 14px', fontSize:11, color:C.red2, fontWeight:600,
+        }}
           onMouseEnter={e=>e.currentTarget.style.background=C.red}
           onMouseLeave={e=>e.currentTarget.style.background=C.red_dim}
         >Sign Out</button>
