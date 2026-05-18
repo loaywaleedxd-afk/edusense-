@@ -172,20 +172,18 @@ class DataStore {
   }
 
   _initEnrollments(){
-    const total = this.students.length;
-    this.courses.forEach((course, i) => {
-      const cid = course.id;
-      const existing = this.courseEnrollments[cid];
-      // Re-initialize if missing or has stale low-count data (< 20)
-      if (!existing || existing.length < 20) {
-        const count  = this._ri(25, 45);
-        const offset = (i * Math.floor(total / Math.max(this.courses.length, 1))) % total;
-        const ids = [];
-        for (let j = 0; j < count && j < total; j++) {
-          ids.push(this.students[(offset + j) % total].id);
-        }
-        this.courseEnrollments[cid] = ids;
-      }
+    const n = this.courses.length || 1;
+    // Each student is enrolled in 4 out of 5 courses (skip exactly 1 per student
+    // determined by (studentIndex + courseIndex) % n === 0). This guarantees
+    // every student sees courses, and each course has ~80% of all students.
+    const needsReset = this.courses.some(c =>
+      !this.courseEnrollments[c.id] || this.courseEnrollments[c.id].length < 50
+    );
+    if (!needsReset) return;
+    this.courses.forEach((course, ci) => {
+      this.courseEnrollments[course.id] = this.students
+        .filter((_, si) => (si + ci) % n !== 0)
+        .map(s => s.id);
     });
   }
 
