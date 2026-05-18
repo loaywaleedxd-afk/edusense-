@@ -228,7 +228,7 @@ function StudentDashboard({ theme: C, user, stu }) {
 
       {/* Stat cards */}
       <div style={{ display:'flex', gap:12, marginBottom:12 }}>
-        <StatCard theme={C} label="Attendance Rate"  value={`${stu.attendanceRate}%`} sub="12 of 14 lectures" icon="✅" accent="green"/>
+        <StatCard theme={C} label="Attendance Rate"  value={`${stu.attendanceRate}%`} sub={`${Math.round(stu.attendanceRate/100*16)} of 16 lectures`} icon="✅" accent="green"/>
         <StatCard theme={C} label="Avg Engagement"   value={`${stu.engagement}%`}     sub="Above class average" icon="🧠" accent="blue"/>
         <StatCard theme={C} label="Avg Attention"    value={`${stu.attentionScore}%`}  sub="Good focus level"  icon="👁️" accent="purple"/>
         <StatCard theme={C} label="GPA"              value={stu.gpa}                  sub="Current semester"  icon="📈" accent="amber"/>
@@ -286,10 +286,13 @@ function StudentAttendance({ theme: C, stu }) {
   const [excuseSent, setExcuseSent] = useState(false);
   const [, refresh] = useState(0);
 
-  const idHash = stu.id.split('').reduce((a,c)=>a+c.charCodeAt(0),0);
-  const courseRows = myCourses.map((course, i) => {
-    const recorded = Object.keys(store.getStudentCourseAttendance(stu.id, course.id)).length;
-    const weeks = recorded > 0 ? recorded : Math.max(0, Math.min(16, Math.round(rate/100*16 + ((idHash+i*7)%5)-2)));
+  const courseRows = myCourses.map((course) => {
+    const recs     = store.getStudentCourseAttendance(stu.id, course.id);
+    const recorded = Object.keys(recs).length;
+    // Use real records if they exist; otherwise derive directly from overall rate (no per-course offset)
+    const weeks    = recorded > 0
+      ? Object.values(recs).filter(r => r.status === 'present' || r.status === 'excused').length
+      : Math.round(rate / 100 * 16);
     return {
       course: `${course.name} (${course.code})`,
       weeks: `${weeks} / 16`, time: course.time,
@@ -348,7 +351,7 @@ function StudentAttendance({ theme: C, stu }) {
       <div style={{ display:'flex', gap:12, marginBottom:12 }}>
         <StatCard theme={C} label="Attendance Rate"  value={`${rate}%`}          sub="This semester"          icon="✅" accent="green"/>
         <StatCard theme={C} label="Courses Enrolled" value={myCourses.length}     sub="Active enrollments"    icon="📚" accent="blue"/>
-        <StatCard theme={C} label="Sessions Logged"  value={attRecs.length}       sub="Recorded by system"    icon="📊" accent="purple"/>
+        <StatCard theme={C} label="Sessions Logged"  value={attRecs.length || Math.round(rate/100*16)*myCourses.length} sub="Recorded by system" icon="📊" accent="purple"/>
         <StatCard theme={C} label="Standing"         value={rate>=75?'Good':'At Risk'} sub={rate>=75?'Continue this pace':'Attend more classes'} icon={rate>=75?'👍':'⚠️'} accent={rate>=75?'green':'red'}/>
       </div>
 
