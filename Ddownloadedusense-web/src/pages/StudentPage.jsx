@@ -30,6 +30,15 @@ const NAV_BASE = [
   { id:'resources',     icon:'📖', label:'Study Resources' },
 ];
 
+function loadSeen(stuId) {
+  try { return new Set(JSON.parse(localStorage.getItem(`es_seen_${stuId}`) || '[]')); }
+  catch { return new Set(); }
+}
+function markSeen(stuId, pageId) {
+  const s = loadSeen(stuId); s.add(pageId);
+  localStorage.setItem(`es_seen_${stuId}`, JSON.stringify([...s]));
+}
+
 function buildNav(stuId, visited) {
   const today = new Date().toISOString().slice(0,10);
   const week7 = Date.now() - 7*24*3600*1000;
@@ -174,15 +183,17 @@ function AttendanceAlertBanner({ theme: C, studentId, onGoToAttendance }) {
 
 export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLogout }) {
   const [page, setPage] = useState('dashboard');
-  const [visited, setVisited] = useState(new Set());
-
   const sid = user.studentId || user.id || '';
   const stu = store.getStudent(sid) || store.students[0];
-  const nav = buildNav(stu?.id || sid, visited);
+  const stuId = stu?.id || sid;
+
+  const [visited, setVisited] = useState(() => loadSeen(stuId));
+  const nav = buildNav(stuId, visited);
 
   function navigate(id) {
     setPage(id);
     if (id === 'announcements' || id === 'exams') {
+      markSeen(stuId, id);
       setVisited(prev => new Set([...prev, id]));
     }
   }
