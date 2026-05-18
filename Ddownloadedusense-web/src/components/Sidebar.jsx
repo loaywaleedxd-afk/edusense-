@@ -67,13 +67,13 @@ function NavBtn({ item, isActive, theme: C, onClick }) {
       </span>
 
       {/* Badge */}
-      {item.badge && (
+      {(() => { const b = typeof item.badge === 'function' ? item.badge() : item.badge; return b > 0 ? (
         <span style={{
           background: C.red, color: '#fff', fontSize: 9, fontWeight: 700,
           borderRadius: 10, minWidth: 22, height: 18, display: 'flex', alignItems: 'center',
           justifyContent: 'center', marginRight: 10, padding: '0 4px',
-        }}>{item.badge}</span>
-      )}
+        }}>{b}</span>
+      ) : null; })()}
 
       {/* Live dot */}
       {item.live && (

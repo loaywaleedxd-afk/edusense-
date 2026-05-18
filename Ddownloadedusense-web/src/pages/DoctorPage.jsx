@@ -28,7 +28,9 @@ const NAV = [
   {id:'alerts',    icon:'🔔', label:'Alerts', badge:()=>store.getAlerts(true).length||0},
   {id:'moodle',    icon:'🌐', label:'Moodle'},
   {id:'ranalysis', icon:'📈', label:'R Analysis'},
-  {id:'appeals',   icon:'📋', label:'Appeals'},
+  {id:'appeals',       icon:'📋', label:'Appeals'},
+  {id:'announcements', icon:'📢', label:'Announcements'},
+  {id:'examschedule',  icon:'🗓️', label:'Exam Schedule'},
 ];
 
 const PAGE_TITLES = {
@@ -36,7 +38,7 @@ const PAGE_TITLES = {
   lectures:'My Lectures', students:'Students', grades:'Exam Results',
   chat:'Community Chat', analytics:'Analytics', detector:'AI Topic Detector',
   alerts:'Alerts', moodle:'Moodle', ranalysis:'R Analysis Reports',
-  appeals:'Student Appeals',
+  appeals:'Student Appeals', announcements:'Announcements', examschedule:'Exam Schedule',
 };
 
 function letterGrade(g){if(g>=90)return'A+';if(g>=85)return'A';if(g>=80)return'B+';if(g>=75)return'B';if(g>=70)return'C+';if(g>=65)return'C';if(g>=60)return'D+';if(g>=50)return'D';return'F';}
@@ -66,7 +68,9 @@ export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLog
             {page==='alerts'     && <DocAlerts theme={C}/>}
             {page==='moodle'     && <DocMoodle theme={C}/>}
             {page==='ranalysis'  && <DocRAnalysis theme={C}/>}
-            {page==='appeals'    && <DocAppeals theme={C} doctor={doctor} myCourses={myCourses}/>}
+            {page==='appeals'       && <DocAppeals theme={C} doctor={doctor} myCourses={myCourses}/>}
+            {page==='announcements' && <DocAnnouncements theme={C} doctor={doctor} myCourses={myCourses}/>}
+            {page==='examschedule'  && <DocExamSchedule theme={C} doctor={doctor} myCourses={myCourses}/>}
           </div>
         </div>
       </div>
@@ -366,10 +370,56 @@ function DocAttendance({ theme: C, myCourses }) {
 
       {/* Tabs */}
       <div style={{display:'flex',gap:8,marginBottom:12}}>
-        {TAB('roster','📋 Student Roster',0)}
-        {TAB('qr','📱 QR Check-In',0)}
+        {TAB('mark','✏️ Mark Attendance',0)}
+        {TAB('roster','📋 Roster',0)}
+        {TAB('qr','📱 QR Code',0)}
         {TAB('excuses','📄 Excuses',pendingExcuses)}
       </div>
+
+      {/* ── MARK ATTENDANCE TAB ── */}
+      {activeTab==='mark' && (
+        <div style={{background:C.card,borderRadius:14,border:`1px solid ${C.border}`,overflow:'hidden'}}>
+          <div style={{padding:'12px 16px',background:C.bg3,borderBottom:`1px solid ${C.border}`,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <div style={{fontSize:13,fontWeight:700,color:C.text}}>Mark each student — Week {week} · {course?.name}</div>
+            <div style={{display:'flex',gap:6}}>
+              <button onClick={()=>{enrolled.forEach(s=>store.markStudentStatus(selCourse,week,s.id,'present'));refresh();}}
+                style={{background:'rgba(16,185,129,0.15)',border:'1px solid #10b981',borderRadius:8,padding:'5px 12px',fontSize:11,fontWeight:700,color:'#10b981',cursor:'pointer'}}>✅ All Present</button>
+              <button onClick={()=>{enrolled.forEach(s=>store.markStudentStatus(selCourse,week,s.id,'absent'));refresh();}}
+                style={{background:'rgba(239,68,68,0.12)',border:'1px solid #ef4444',borderRadius:8,padding:'5px 12px',fontSize:11,fontWeight:700,color:'#ef4444',cursor:'pointer'}}>❌ All Absent</button>
+            </div>
+          </div>
+          {enrolled.length===0 && <div style={{padding:40,textAlign:'center',color:C.text3}}>No students enrolled.</div>}
+          {enrolled.map((s,i)=>{
+            const rec=store.getCourseWeekAttendance(selCourse,week)[s.id];
+            const status=rec?.status||(isPresent(s)?'present':'absent');
+            const photoUrl=s.capturedPhoto||store.getPhotoUrl(s);
+            const BTN=(st,label,col,bg)=>(
+              <button onClick={e=>{e.stopPropagation();store.markStudentStatus(selCourse,week,s.id,st);refresh();}}
+                style={{padding:'4px 10px',fontSize:10,fontWeight:700,borderRadius:6,border:`1px solid ${col}`,
+                  background:status===st?bg:'transparent',color:status===st?col:C.text3,cursor:'pointer',transition:'all 0.1s'}}>
+                {label}
+              </button>
+            );
+            return (
+              <div key={s.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 16px',borderBottom:i<enrolled.length-1?`1px solid ${C.border}`:'none',background:i%2===0?C.bg3:'transparent'}}>
+                <div style={{width:36,height:36,borderRadius:'50%',background:s.color||C.blue,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,overflow:'hidden',flexShrink:0}}>
+                  {photoUrl?<img src={photoUrl} alt={s.name} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>{e.target.style.display='none';e.target.nextSibling.style.display='flex';}}/>:null}
+                  <span style={{display:photoUrl?'none':'flex'}}>{s.emoji||'👤'}</span>
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:700,color:C.text}}>{s.name}</div>
+                  <div style={{fontSize:10,color:C.text3}}>{s.id} · {s.dept}</div>
+                </div>
+                <div style={{display:'flex',gap:6,flexShrink:0}}>
+                  {BTN('present','✅ Present','#10b981','rgba(16,185,129,0.15)')}
+                  {BTN('late','⏰ Late','#f59e0b','rgba(245,158,11,0.15)')}
+                  {BTN('absent','❌ Absent','#ef4444','rgba(239,68,68,0.12)')}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* ── ROSTER TAB ── */}
       {activeTab==='roster' && (
@@ -1772,6 +1822,180 @@ function DocAppeals({ theme: C, doctor, myCourses }) {
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ── ANNOUNCEMENTS ── */
+function DocAnnouncements({ theme: C, doctor, myCourses }) {
+  const [selCourse, setSelCourse] = useState(myCourses[0]?.id || '');
+  const [form, setForm] = useState({ title:'', body:'' });
+  const [posted, setPosted] = useState(false);
+  const [, refresh] = useState(0);
+
+  const announcements = selCourse ? store.getCourseAnnouncements(selCourse) : [];
+
+  function post() {
+    if (!form.title.trim() || !form.body.trim()) return;
+    const course = store.getCourse(selCourse);
+    store.addAnnouncement({ doctorId: doctor.id, courseId: selCourse, courseName: course?.name||'', title: form.title, body: form.body });
+    setForm({ title:'', body:'' });
+    setPosted(true);
+    setTimeout(() => setPosted(false), 3000);
+    refresh(n => n+1);
+  }
+
+  function del(id) {
+    store.deleteAnnouncement(id);
+    refresh(n => n+1);
+  }
+
+  return (
+    <div style={{ padding:'8px 20px 20px' }}>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>📢 Announcements</div>
+      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Post announcements to enrolled students — they get a bell notification instantly</div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, alignItems:'start' }}>
+        {/* Post form */}
+        <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, padding:18 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:14 }}>New Announcement</div>
+
+          <div style={{ marginBottom:10 }}>
+            <div style={{ fontSize:10, color:C.text3, fontWeight:700, textTransform:'uppercase', marginBottom:4 }}>Course</div>
+            <select value={selCourse} onChange={e=>setSelCourse(e.target.value)}
+              style={{ width:'100%', height:36, background:C.bg3, border:`1px solid ${C.border}`, borderRadius:8, padding:'0 10px', fontSize:12, color:C.text }}>
+              {myCourses.map(c=><option key={c.id} value={c.id}>{c.name} ({c.code})</option>)}
+            </select>
+          </div>
+
+          <div style={{ marginBottom:10 }}>
+            <div style={{ fontSize:10, color:C.text3, fontWeight:700, textTransform:'uppercase', marginBottom:4 }}>Title</div>
+            <input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="e.g. Midterm postponed to next week"
+              style={{ width:'100%', height:36, background:C.bg3, border:`1px solid ${C.border}`, borderRadius:8, padding:'0 10px', fontSize:12, color:C.text, boxSizing:'border-box' }}/>
+          </div>
+
+          <div style={{ marginBottom:14 }}>
+            <div style={{ fontSize:10, color:C.text3, fontWeight:700, textTransform:'uppercase', marginBottom:4 }}>Message</div>
+            <textarea value={form.body} onChange={e=>setForm({...form,body:e.target.value})} placeholder="Write your announcement here..."
+              rows={5} style={{ width:'100%', background:C.bg3, border:`1px solid ${C.border}`, borderRadius:8, padding:'8px 10px', fontSize:12, color:C.text, resize:'vertical', boxSizing:'border-box' }}/>
+          </div>
+
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <button onClick={post} disabled={!form.title.trim()||!form.body.trim()}
+              style={{ background:C.blue3, border:'none', borderRadius:8, padding:'10px 20px', fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer', opacity:form.title.trim()&&form.body.trim()?1:0.5 }}>
+              📤 Post Announcement
+            </button>
+            {posted && <span style={{ color:C.green, fontSize:12, fontWeight:700 }}>✅ Posted!</span>}
+          </div>
+        </div>
+
+        {/* Existing announcements */}
+        <div>
+          <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10 }}>Posted ({announcements.length})</div>
+          {announcements.length === 0
+            ? <div style={{ textAlign:'center', padding:40, color:C.text3, fontSize:12, background:C.card, borderRadius:14, border:`1px solid ${C.border}` }}>No announcements yet.</div>
+            : announcements.map((ann, i) => {
+              const t = (() => { try { return new Date(ann.createdAt).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); } catch{ return ''; } })();
+              return (
+                <div key={i} style={{ background:C.card, borderRadius:12, border:`1px solid ${C.border}`, padding:14, marginBottom:10 }}>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{ann.title}</div>
+                    <button onClick={()=>del(ann.id)} style={{ background:'none', border:'none', color:C.red2, fontSize:16, cursor:'pointer', padding:'0 4px' }}>×</button>
+                  </div>
+                  <div style={{ fontSize:11, color:C.text3, marginBottom:6 }}>{t}</div>
+                  <div style={{ fontSize:12, color:C.text2, lineHeight:1.5 }}>{ann.body}</div>
+                </div>
+              );
+            })
+          }
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── EXAM SCHEDULE ── */
+function DocExamSchedule({ theme: C, doctor, myCourses }) {
+  const [form, setForm] = useState({ courseId: myCourses[0]?.id||'', type:'midterm', date:'', time:'', room:'', duration:120, notes:'' });
+  const [, refresh] = useState(0);
+  const exams = store.getDoctorExams(doctor.id);
+  const TYPE_CFG = {
+    midterm: { label:'Midterm', color:'#8b5cf6' },
+    final:   { label:'Final',   color:'#ef4444' },
+    quiz:    { label:'Quiz',    color:'#10b981' },
+  };
+
+  function add() {
+    if (!form.date) { alert('Select a date.'); return; }
+    store.addExam(form);
+    setForm({ courseId: myCourses[0]?.id||'', type:'midterm', date:'', time:'', room:'', duration:120, notes:'' });
+    refresh(n => n+1);
+  }
+
+  function del(id) { store.deleteExam(id); refresh(n => n+1); }
+
+  return (
+    <div style={{ padding:'8px 20px 20px' }}>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>🗓️ Exam Schedule</div>
+      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Schedule exams for your courses — students will see them in their exam calendar</div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1.6fr', gap:16, alignItems:'start' }}>
+        {/* Add form */}
+        <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, padding:18 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:14 }}>Schedule New Exam</div>
+          {[
+            ['Course', <select value={form.courseId} onChange={e=>setForm({...form,courseId:e.target.value})} style={{ width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text }}>
+              {myCourses.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>],
+            ['Type', <select value={form.type} onChange={e=>setForm({...form,type:e.target.value})} style={{ width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text }}>
+              <option value="midterm">Midterm</option><option value="final">Final</option><option value="quiz">Quiz</option>
+            </select>],
+            ['Date', <input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} style={{ width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text,boxSizing:'border-box' }}/>],
+            ['Time', <input type="time" value={form.time} onChange={e=>setForm({...form,time:e.target.value})} style={{ width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text,boxSizing:'border-box' }}/>],
+            ['Room', <input value={form.room} onChange={e=>setForm({...form,room:e.target.value})} placeholder="e.g. Hall A" style={{ width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text,boxSizing:'border-box' }}/>],
+            ['Duration (min)', <input type="number" value={form.duration} onChange={e=>setForm({...form,duration:parseInt(e.target.value)||120})} style={{ width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text,boxSizing:'border-box' }}/>],
+            ['Notes (optional)', <input value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} placeholder="e.g. Bring student ID" style={{ width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text,boxSizing:'border-box' }}/>],
+          ].map(([lbl,el],i)=>(
+            <div key={i} style={{ marginBottom:10 }}>
+              <div style={{ fontSize:10,color:C.text3,fontWeight:700,textTransform:'uppercase',marginBottom:4 }}>{lbl}</div>
+              {el}
+            </div>
+          ))}
+          <button onClick={add} style={{ width:'100%', height:40, background:C.blue3, border:'none', borderRadius:8, fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer', marginTop:4 }}>
+            ➕ Add Exam
+          </button>
+        </div>
+
+        {/* Exam list */}
+        <div>
+          <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:10 }}>Scheduled ({exams.length})</div>
+          {exams.length === 0
+            ? <div style={{ textAlign:'center', padding:40, color:C.text3, background:C.card, borderRadius:14, border:`1px solid ${C.border}`, fontSize:12 }}>No exams scheduled yet.</div>
+            : exams.map((exam, i) => {
+              const cfg = TYPE_CFG[exam.type] || TYPE_CFG.midterm;
+              return (
+                <div key={i} style={{ background:C.card, borderRadius:12, border:`1px solid ${C.border}`, padding:14, marginBottom:10, display:'flex', gap:12, alignItems:'flex-start' }}>
+                  <div style={{ width:44, textAlign:'center', flexShrink:0 }}>
+                    <div style={{ fontSize:10, fontWeight:700, color:cfg.color }}>{exam.date?new Date(exam.date+'T00:00:00').toLocaleString('en-GB',{month:'short'}):'—'}</div>
+                    <div style={{ fontSize:24, fontWeight:800, color:C.text }}>{exam.date?new Date(exam.date+'T00:00:00').getDate():'—'}</div>
+                  </div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
+                      <span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:20, background:cfg.color+'22', color:cfg.color }}>{cfg.label}</span>
+                    </div>
+                    <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{exam.courseName}</div>
+                    <div style={{ fontSize:11, color:C.text3, marginTop:2 }}>
+                      {exam.time&&`⏰ ${exam.time}`}{exam.room&&` · 📍 ${exam.room}`}{` · ⏱ ${exam.duration} min`}
+                    </div>
+                    {exam.notes && <div style={{ fontSize:11, color:C.text2, marginTop:3 }}>{exam.notes}</div>}
+                  </div>
+                  <button onClick={()=>del(exam.id)} style={{ background:'none', border:'none', color:C.red2, fontSize:18, cursor:'pointer', flexShrink:0 }}>×</button>
+                </div>
+              );
+            })
+          }
+        </div>
+      </div>
     </div>
   );
 }

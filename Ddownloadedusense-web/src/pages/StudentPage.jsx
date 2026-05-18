@@ -22,8 +22,11 @@ const NAV = [
   { id:'portfolio',  icon:'🎓', label:'My Portfolio' },
   { id:'chat',       icon:'💬', label:'Community' },
   { id:'moodle',     icon:'🌐', label:'Moodle' },
-  { id:'appeals',    icon:'📋', label:'My Appeals' },
-  { id:'transcript', icon:'🎓', label:'Transcript' },
+  { id:'appeals',       icon:'📋', label:'My Appeals' },
+  { id:'transcript',    icon:'🎓', label:'Transcript' },
+  { id:'announcements', icon:'📢', label:'Announcements' },
+  { id:'exams',         icon:'🗓️', label:'Exam Schedule' },
+  { id:'degreeaudit',   icon:'🏛️', label:'Degree Audit' },
 ];
 
 const PAGE_TITLES = {
@@ -31,6 +34,7 @@ const PAGE_TITLES = {
   schedule:'Schedule', performance:'Performance', grades:'My Grades',
   portfolio:'My Portfolio', chat:'Community Chat', moodle:'Moodle',
   appeals:'My Appeals', transcript:'Academic Transcript',
+  announcements:'Announcements', exams:'Exam Schedule', degreeaudit:'Degree Audit',
 };
 
 function letterGrade(g) {
@@ -178,8 +182,11 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
             {page==='portfolio'  && <StudentPortfolio theme={C} user={user} stu={stu}/>}
             {page==='chat'       && <StudentChat theme={C} user={user} stu={stu} isDark={isDark}/>}
             {page==='moodle'     && <StudentMoodle theme={C}/>}
-            {page==='appeals'    && <StudentAppeals theme={C} user={user} stu={stu}/>}
-            {page==='transcript' && <StudentTranscript theme={C} stu={stu}/>}
+            {page==='appeals'       && <StudentAppeals theme={C} user={user} stu={stu}/>}
+            {page==='transcript'    && <StudentTranscript theme={C} stu={stu}/>}
+            {page==='announcements' && <StudentAnnouncements theme={C} stu={stu}/>}
+            {page==='exams'         && <StudentExamSchedule theme={C} stu={stu}/>}
+            {page==='degreeaudit'   && <StudentDegreeAudit theme={C} stu={stu}/>}
           </div>
         </div>
       </div>
@@ -221,6 +228,22 @@ function StudentDashboard({ theme: C, user, stu }) {
           <div style={{ fontSize:22, fontWeight:700, color:C.text }}>Welcome back, {user.name.split(' ')[0]} 👋</div>
           <div style={{ fontSize:12, color:C.text2, marginTop:2 }}>{stu.id} · {stu.dept} · Year {stu.year}</div>
           <div style={{ fontSize:11, color:C.text3 }}>Your academic overview for this semester</div>
+          {(() => {
+            const standing = store.getAcademicStanding(stu.id);
+            const cfg = {
+              'Honors':            { bg:'#10b98122', color:'#10b981', icon:'🏆' },
+              'Good Standing':     { bg:'#3b82f622', color:'#3b82f6', icon:'✅' },
+              'Academic Warning':  { bg:'#f59e0b22', color:'#f59e0b', icon:'⚠️' },
+              'Academic Probation':{ bg:'#ef444422', color:'#ef4444', icon:'🚨' },
+              'No Grades Yet':     { bg:'#64748b22', color:'#64748b', icon:'📋' },
+            }[standing] || { bg:'#64748b22', color:'#64748b', icon:'📋' };
+            return (
+              <div style={{ display:'inline-flex', alignItems:'center', gap:5, marginTop:5, padding:'3px 10px', borderRadius:20, background:cfg.bg, border:`1px solid ${cfg.color}33` }}>
+                <span style={{ fontSize:12 }}>{cfg.icon}</span>
+                <span style={{ fontSize:11, fontWeight:700, color:cfg.color }}>{standing}</span>
+              </div>
+            );
+          })()}
         </div>
         {/* Streak badge */}
         <div style={{ flexShrink:0, textAlign:'center', background:'linear-gradient(135deg,#f97316,#ef4444)', borderRadius:14, padding:'12px 20px', minWidth:100 }}>
@@ -991,7 +1014,9 @@ function StudentTranscript({ theme: C, stu }) {
   });
 
   const graded   = rows.filter(r=>r.grade!==null);
-  const semGPA   = graded.length ? (graded.reduce((a,r)=>a+(r.grade/25),0)/graded.length).toFixed(2) : stu.gpa||'—';
+  const calcGPA  = store.calculateSemesterGPA(stu.id);
+  const semGPA   = calcGPA !== null ? calcGPA : (stu.gpa||'—');
+  const standing = store.getAcademicStanding(stu.id);
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
@@ -1012,7 +1037,8 @@ function StudentTranscript({ theme: C, stu }) {
             ['Year',      `Year ${stu.year}`],
             ['Email',     stu.email||'—'],
             ['Semester',  reg.semester],
-            ['Cumulative GPA', stu.gpa||'—'],
+            ['Semester GPA', semGPA],
+            ['Academic Standing', standing],
             ['Reg. Status', fee.paid?'✅ Cleared':'⚠️ Fees Pending'],
           ].map(([label,val],i)=>(
             <div key={i}>
@@ -1054,6 +1080,204 @@ function StudentTranscript({ theme: C, stu }) {
             </div>
           </div>
         </Card>
+      </div>
+    </div>
+  );
+}
+
+/* ══ ANNOUNCEMENTS ══ */
+function StudentAnnouncements({ theme: C, stu }) {
+  const announcements = store.getStudentAnnouncements(stu.id);
+  const TYPE_COLOR = { blue: C.blue, purple: C.purple, green: C.green, amber: C.amber };
+
+  return (
+    <div style={{ padding:'8px 20px 20px' }}>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>📢 Announcements</div>
+      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Posted by your lecturers for your enrolled courses</div>
+
+      {announcements.length === 0
+        ? (
+          <div style={{ textAlign:'center', padding:60, color:C.text3 }}>
+            <div style={{ fontSize:48, marginBottom:12 }}>📢</div>
+            <div style={{ fontSize:14, fontWeight:700, color:C.text }}>No announcements yet</div>
+            <div style={{ fontSize:12, marginTop:4 }}>Your lecturers haven't posted anything yet.</div>
+          </div>
+        )
+        : announcements.map((ann, i) => {
+          const course = store.getCourse(ann.courseId);
+          const timeStr = (() => { try { return new Date(ann.createdAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); } catch{ return ''; } })();
+          return (
+            <div key={i} style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, padding:18, marginBottom:12 }}>
+              <div style={{ display:'flex', alignItems:'flex-start', gap:12 }}>
+                <div style={{ width:42, height:42, borderRadius:10, background:course?.color||C.blue, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>📢</div>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:C.text, marginBottom:3 }}>{ann.title}</div>
+                  <div style={{ fontSize:11, color:C.text3, marginBottom:8 }}>
+                    {ann.doctorName} · {ann.courseName} · {timeStr}
+                  </div>
+                  <div style={{ fontSize:13, color:C.text2, lineHeight:1.6 }}>{ann.body}</div>
+                </div>
+              </div>
+            </div>
+          );
+        })
+      }
+    </div>
+  );
+}
+
+/* ══ EXAM SCHEDULE ══ */
+function StudentExamSchedule({ theme: C, stu }) {
+  const exams = store.getStudentExams(stu.id);
+  const today = new Date().toISOString().slice(0,10);
+  const TYPE_CFG = {
+    midterm: { label:'Midterm', color:'#8b5cf6', bg:'#8b5cf622' },
+    final:   { label:'Final',   color:'#ef4444', bg:'#ef444422' },
+    quiz:    { label:'Quiz',    color:'#10b981', bg:'#10b98122' },
+  };
+
+  return (
+    <div style={{ padding:'8px 20px 20px' }}>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>🗓️ Exam Schedule</div>
+      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Your upcoming exams for this semester</div>
+
+      {exams.length === 0
+        ? (
+          <div style={{ textAlign:'center', padding:60, color:C.text3 }}>
+            <div style={{ fontSize:48, marginBottom:12 }}>🗓️</div>
+            <div style={{ fontSize:14, fontWeight:700, color:C.text }}>No exams scheduled</div>
+            <div style={{ fontSize:12, marginTop:4 }}>No exams have been scheduled yet.</div>
+          </div>
+        )
+        : (
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            {exams.map((exam, i) => {
+              const cfg = TYPE_CFG[exam.type] || TYPE_CFG.midterm;
+              const isPast = exam.date && exam.date < today;
+              const isToday = exam.date === today;
+              return (
+                <div key={i} style={{ background:C.card, borderRadius:14, border:`1px solid ${isPast?C.border:cfg.color+'44'}`, padding:18, display:'flex', gap:16, alignItems:'center', opacity:isPast?0.6:1 }}>
+                  <div style={{ width:56, textAlign:'center', flexShrink:0 }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:cfg.color, textTransform:'uppercase' }}>{exam.date?new Date(exam.date+'T00:00:00').toLocaleString('en-GB',{month:'short'}):'—'}</div>
+                    <div style={{ fontSize:28, fontWeight:800, color:C.text, lineHeight:1 }}>{exam.date?new Date(exam.date+'T00:00:00').getDate():'—'}</div>
+                  </div>
+                  <div style={{ width:1, height:48, background:C.border, flexShrink:0 }}/>
+                  <div style={{ flex:1 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                      <span style={{ fontSize:11, fontWeight:700, padding:'2px 10px', borderRadius:20, background:cfg.bg, color:cfg.color }}>{cfg.label}</span>
+                      {isToday && <span style={{ fontSize:11, fontWeight:700, padding:'2px 10px', borderRadius:20, background:'#ef444422', color:'#ef4444' }}>TODAY</span>}
+                      {isPast && <span style={{ fontSize:11, color:C.text3 }}>Completed</span>}
+                    </div>
+                    <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{exam.courseName}</div>
+                    <div style={{ fontSize:11, color:C.text3, marginTop:2 }}>
+                      {exam.time && `⏰ ${exam.time}`}{exam.room && ` · 📍 ${exam.room}`}{exam.duration && ` · ⏱ ${exam.duration} min`}
+                    </div>
+                    {exam.notes && <div style={{ fontSize:11, color:C.text2, marginTop:4 }}>{exam.notes}</div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )
+      }
+    </div>
+  );
+}
+
+/* ══ DEGREE AUDIT ══ */
+function StudentDegreeAudit({ theme: C, stu }) {
+  const audit = store.getDegreeAudit(stu.id);
+  const gpa = store.calculateSemesterGPA(stu.id);
+  const standing = store.getAcademicStanding(stu.id);
+
+  const STATUS_CFG = {
+    completed:  { icon:'✅', color:'#10b981', label:'Completed' },
+    failed:     { icon:'❌', color:'#ef4444', label:'Failed' },
+    in_progress:{ icon:'🔄', color:'#3b82f6', label:'In Progress' },
+    not_started:{ icon:'⬜', color:'#64748b', label:'Not Started' },
+  };
+  const STANDING_CFG = {
+    'Honors':            { color:'#10b981', bg:'#10b98115', icon:'🏆' },
+    'Good Standing':     { color:'#3b82f6', bg:'#3b82f615', icon:'✅' },
+    'Academic Warning':  { color:'#f59e0b', bg:'#f59e0b15', icon:'⚠️' },
+    'Academic Probation':{ color:'#ef4444', bg:'#ef444415', icon:'🚨' },
+    'No Grades Yet':     { color:'#64748b', bg:'#64748b15', icon:'📋' },
+  };
+  const sc = STANDING_CFG[standing] || STANDING_CFG['No Grades Yet'];
+
+  return (
+    <div style={{ padding:'8px 20px 20px' }}>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>🏛️ Degree Audit</div>
+      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Track your progress toward graduation</div>
+
+      {/* Summary cards */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:16 }}>
+        {[
+          ['Credits Earned', `${audit.creditsEarned}/${audit.creditsRequired}`, C.blue],
+          ['Courses Done',   `${audit.completed.length}/5`, C.green],
+          ['GPA', gpa !== null ? gpa : '—', C.amber],
+          ['Status', audit.readyToGraduate ? '🎓 Ready' : 'In Progress', audit.readyToGraduate ? C.green : C.purple],
+        ].map(([lbl,val,col],i)=>(
+          <div key={i} style={{ background:C.card, borderRadius:12, border:`1px solid ${C.border}`, padding:'14px 12px', textAlign:'center' }}>
+            <div style={{ fontSize:22, fontWeight:700, color:col }}>{val}</div>
+            <div style={{ fontSize:11, color:C.text2, marginTop:2 }}>{lbl}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, padding:'16px 20px', marginBottom:16 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+          <span style={{ fontSize:13, fontWeight:700, color:C.text }}>Overall Progress</span>
+          <span style={{ fontSize:13, fontWeight:700, color:C.blue }}>{audit.progressPct}%</span>
+        </div>
+        <div style={{ background:C.bg3, borderRadius:99, height:10 }}>
+          <div style={{ width:`${audit.progressPct}%`, height:'100%', borderRadius:99, background:'linear-gradient(90deg,#3b82f6,#8b5cf6)', transition:'width 0.6s' }}/>
+        </div>
+        <div style={{ marginTop:8, display:'flex', justifyContent:'space-between', fontSize:11, color:C.text3 }}>
+          <span>{audit.creditsEarned} credit hours earned</span>
+          <span>{audit.creditsRequired - audit.creditsEarned} remaining</span>
+        </div>
+      </div>
+
+      {/* Academic standing */}
+      <div style={{ background:sc.bg, borderRadius:12, border:`1px solid ${sc.color}44`, padding:'12px 18px', marginBottom:16, display:'flex', alignItems:'center', gap:10 }}>
+        <span style={{ fontSize:22 }}>{sc.icon}</span>
+        <div>
+          <div style={{ fontSize:13, fontWeight:700, color:sc.color }}>{standing}</div>
+          <div style={{ fontSize:11, color:C.text2 }}>
+            {standing==='Honors'?'Outstanding academic performance — GPA 3.5+':
+             standing==='Good Standing'?'You are meeting all academic requirements.':
+             standing==='Academic Warning'?'Your GPA is below 2.0. Seek academic advising.':
+             standing==='Academic Probation'?'Serious academic risk. Immediate intervention required.':
+             'No grades recorded yet for this semester.'}
+          </div>
+        </div>
+      </div>
+
+      {/* Course checklist */}
+      <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, overflow:'hidden' }}>
+        <div style={{ padding:'12px 18px', borderBottom:`1px solid ${C.border}`, fontSize:13, fontWeight:700, color:C.text }}>
+          Required Courses Checklist
+        </div>
+        {audit.audit.map((item, i) => {
+          const cfg = STATUS_CFG[item.status];
+          return (
+            <div key={i} style={{ display:'flex', alignItems:'center', gap:14, padding:'14px 18px', borderBottom:i<audit.audit.length-1?`1px solid ${C.border}`:'none', background:i%2===0?C.bg3:'transparent' }}>
+              <span style={{ fontSize:20, flexShrink:0 }}>{cfg.icon}</span>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{item.courseName}</div>
+                <div style={{ fontSize:10, color:C.text3 }}>{item.courseId} · {item.credits} credit hours</div>
+              </div>
+              <div style={{ textAlign:'right' }}>
+                <div style={{ fontSize:11, fontWeight:700, color:cfg.color }}>{cfg.label}</div>
+                {item.grade !== null && (
+                  <div style={{ fontSize:11, color:C.text3 }}>{item.grade}% · {letterGrade(item.grade)}</div>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

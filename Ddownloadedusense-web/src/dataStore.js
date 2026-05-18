@@ -96,6 +96,8 @@ class DataStore {
     this.registrationStatus = { open: true, semester: 'Fall 2024', deadline: '2024-12-15' };
     this.studentFees = {};
     this.courseWaitlists = {};
+    this.announcements = [];
+    this.examSchedule = [];
   }
 
   _loadStudents(){
@@ -372,6 +374,8 @@ class DataStore {
       if(data.registrationStatus) Object.assign(this.registrationStatus, data.registrationStatus);
       if(data.studentFees) this.studentFees = data.studentFees;
       if(data.courseWaitlists) this.courseWaitlists = data.courseWaitlists;
+      if(data.announcements) this.announcements = data.announcements;
+      if(data.examSchedule) this.examSchedule = data.examSchedule;
     } catch(e){ console.warn('DataStore load error',e); }
   }
 
@@ -390,6 +394,8 @@ class DataStore {
         registrationStatus: this.registrationStatus,
         studentFees: this.studentFees,
         courseWaitlists: this.courseWaitlists,
+        announcements: this.announcements,
+        examSchedule: this.examSchedule,
       }));
     } catch(e){ console.warn('DataStore persist error',e); }
   }
@@ -870,6 +876,135 @@ class DataStore {
     const notifs=this.getUserNotifications(user);
     notifs.forEach(a=>{a.read=true;});
     this._persist();
+  }
+
+  // ── ATTENDANCE MARKING (Doctor) ───────────────────────────────────────────
+  markStudentStatus(courseId, week, studentId, status){
+    const key=this._attKey(courseId,week);
+    if(!this.attendance[key]) this.attendance[key]={};
+    this.attendance[key][studentId]={
+      studentId,courseId,week,status,
+      time:new Date().toTimeString().slice(0,8),
+      date:new Date().toISOString().slice(0,10),
+      method:'manual',confidence:1.0,
+    };
+    this._persist(); return true;
+  }
+  getCourseWeekAttendance(courseId,week){ return this.attendance[this._attKey(courseId,week)]||{}; }
+
+  // ── ANNOUNCEMENTS ─────────────────────────────────────────────────────────
+  addAnnouncement(data){
+    if(!this.announcements) this.announcements=[];
+    const doc=this.getDoctor(data.doctorId||'');
+    const a={
+      id:`ANN${Date.now()}`,
+      courseId:data.courseId||'',courseName:data.courseName||'',
+      doctorId:data.doctorId||'',doctorName:doc?doc.name:(data.doctorName||''),
+      title:data.title||'',body:data.body||'',
+      createdAt:new Date().toISOString(),
+    };
+    this.announcements.unshift(a);
+    // Notify all enrolled students
+    const enrolled=this.getEnrolledStudents(data.courseId||'');
+    enrolled.forEach(s=>{
+      this.addAlert({alertKind:'announcement',type:'info',studentId:s.id,courseId:data.courseId,
+        title:`📢 ${a.title}`,
+        message:`${a.doctorName} posted for ${a.courseName}: ${a.body.slice(0,80)}${a.body.length>80?'…':''}`});
+    });
+    this._persist(); return a;
+  }
+  getCourseAnnouncements(courseId){ if(!this.announcements) this.announcements=[]; return this.announcements.filter(a=>a.courseId===courseId); }
+  getStudentAnnouncements(studentId){
+    if(!this.announcements) this.announcements=[];
+    const ids=new Set(Object.entries(this.courseEnrollments).filter(([,ids])=>ids.includes(studentId)).map(([cid])=>cid));
+    return this.announcements.filter(a=>ids.has(a.courseId));
+  }
+  deleteAnnouncement(id){
+    if(!this.announcements) this.announcements=[];
+    const n=this.announcements.length;
+    this.announcements=this.announcements.filter(a=>a.id!==id);
+    if(this.announcements.length<n){this._persist();return true;} return false;
+  }
+
+  // ── EXAM SCHEDULE ─────────────────────────────────────────────────────────
+  addExam(data){
+    if(!this.examSchedule) this.examSchedule=[];
+    const course=this.getCourse(data.courseId||'');
+    const e={
+      id:`EXS${Date.now()}`,
+      courseId:data.courseId||'',courseName:course?.name||data.courseName||'',
+      type:data.type||'midterm',date:data.date||'',time:data.time||'',
+      room:data.room||'',duration:parseInt(data.duration)||120,notes:data.notes||'',
+      createdAt:new Date().toISOString(),
+    };
+    this.examSchedule.push(e);
+    this._persist(); return e;
+  }
+  getStudentExams(studentId){
+    if(!this.examSchedule) this.examSchedule=[];
+    const ids=new Set(Object.entries(this.courseEnrollments).filter(([,ids])=>ids.includes(studentId)).map(([cid])=>cid));
+    return this.examSchedule.filter(e=>ids.has(e.courseId)).sort((a,b)=>a.date.localeCompare(b.date));
+  }
+  getAllExams(){ if(!this.examSchedule) this.examSchedule=[]; return [...this.examSchedule].sort((a,b)=>a.date.localeCompare(b.date)); }
+  getDoctorExams(doctorId){
+    if(!this.examSchedule) this.examSchedule=[];
+    const ids=new Set(this.getDoctorCourses(doctorId).map(c=>c.id));
+    return this.examSchedule.filter(e=>ids.has(e.courseId)).sort((a,b)=>a.date.localeCompare(b.date));
+  }
+  deleteExam(id){
+    if(!this.examSchedule) this.examSchedule=[];
+    const n=this.examSchedule.length;
+    this.examSchedule=this.examSchedule.filter(e=>e.id!==id);
+    if(this.examSchedule.length<n){this._persist();return true;} return false;
+  }
+
+  // ── GPA & ACADEMIC STANDING ───────────────────────────────────────────────
+  gradeToPoints(grade){
+    if(grade>=90)return 4.0; if(grade>=85)return 4.0; if(grade>=80)return 3.5;
+    if(grade>=75)return 3.0; if(grade>=70)return 2.5; if(grade>=65)return 2.0;
+    if(grade>=60)return 1.5; if(grade>=50)return 1.0; return 0.0;
+  }
+  calculateSemesterGPA(studentId){
+    const entries=Object.entries(this.getStudentResults(studentId));
+    if(!entries.length) return null;
+    return +(entries.reduce((sum,[,v])=>sum+this.gradeToPoints(v.grade),0)/entries.length).toFixed(2);
+  }
+  getAcademicStanding(studentId){
+    const gpa=this.calculateSemesterGPA(studentId);
+    if(gpa===null) return 'No Grades Yet';
+    if(gpa>=3.5) return 'Honors';
+    if(gpa>=2.0) return 'Good Standing';
+    if(gpa>=1.5) return 'Academic Warning';
+    return 'Academic Probation';
+  }
+  getStudentsOnProbation(){
+    return this.students.filter(s=>this.getAcademicStanding(s.id)==='Academic Probation');
+  }
+
+  // ── DEGREE AUDIT ──────────────────────────────────────────────────────────
+  getDegreeAudit(studentId){
+    const REQUIRED=['CS401','CS402','CS403','CS404','CS405'];
+    const CREDITS=3;
+    const results=this.getStudentResults(studentId);
+    const enrolled=new Set(Object.entries(this.courseEnrollments).filter(([,ids])=>ids.includes(studentId)).map(([cid])=>cid));
+    const audit=REQUIRED.map(cid=>{
+      const course=this.getCourse(cid);
+      const rec=results[cid];
+      let status;
+      if(rec) status=rec.grade>=50?'completed':'failed';
+      else if(enrolled.has(cid)) status='in_progress';
+      else status='not_started';
+      return{courseId:cid,courseName:course?.name||cid,credits:CREDITS,status,grade:rec?.grade??null};
+    });
+    const completed=audit.filter(a=>a.status==='completed');
+    const failed=audit.filter(a=>a.status==='failed');
+    const inProgress=audit.filter(a=>a.status==='in_progress');
+    const notStarted=audit.filter(a=>a.status==='not_started');
+    const creditsEarned=completed.length*CREDITS;
+    const creditsRequired=REQUIRED.length*CREDITS;
+    return{audit,completed,failed,inProgress,notStarted,creditsEarned,creditsRequired,
+      progressPct:Math.round((creditsEarned/creditsRequired)*100),
+      readyToGraduate:completed.length===REQUIRED.length};
   }
 
   // ── PUBLISH GRADES ─────────────────────────────────────────────────────────

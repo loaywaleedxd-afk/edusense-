@@ -32,6 +32,7 @@ const NAV = [
   {id:'enrollments', icon:'📋', label:'Enrollments'},
   {id:'appeals',      icon:'📋', label:'Appeals'},
   {id:'registration', icon:'🏛️', label:'Registration & Fees'},
+  {id:'examschedule', icon:'🗓️', label:'Exam Schedule'},
   {id:'parents',     icon:'👨‍👩‍👧',label:'Parents'},
   {section:'Reports'},
   {id:'r_reports',   icon:'📊', label:'R Reports'},
@@ -42,7 +43,7 @@ const PAGE_TITLES = {
   dashboard:'Dashboard', analytics:'System Analytics', students:'Students',
   doctors:'Lecturers', courses:'Course Management', enrollments:'Enrollment Management',
   parents:'Parents Management', r_reports:'R Analysis Reports', settings:'Settings',
-  appeals:'Appeals Management', registration:'Registration & Fees',
+  appeals:'Appeals Management', registration:'Registration & Fees', examschedule:'Exam Schedule',
 };
 
 export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogout }) {
@@ -63,6 +64,7 @@ export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogo
             {page==='enrollments' && <AdminEnrollments theme={C}/>}
             {page==='appeals'      && <AdminAppeals theme={C}/>}
             {page==='registration' && <AdminRegistration theme={C}/>}
+            {page==='examschedule' && <AdminExamSchedule theme={C}/>}
             {page==='parents'     && <AdminParents theme={C}/>}
             {page==='r_reports'   && <AdminRReports theme={C}/>}
             {page==='settings'    && <AdminSettings theme={C}/>}
@@ -100,6 +102,7 @@ function AdminDashboard({ theme: C }) {
         <StatCard theme={C} label="Lecturers"        value={store.doctors.length}  sub="Active faculty"        icon="👨‍🏫" accent="purple"/>
         <StatCard theme={C} label="Active Lectures"  value={activeLectures}        sub="Running right now"     icon="📚" accent="green"/>
         <StatCard theme={C} label="Avg Engagement"   value={`${avgEng}%`}          sub="Across all students"   icon="🧠" accent="amber"/>
+        <StatCard theme={C} label="On Probation"     value={store.getStudentsOnProbation().length} sub="Academic probation" icon="🚨" accent="red"/>
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'3fr 2fr',gap:12,marginBottom:12}}>
@@ -1561,6 +1564,108 @@ function StudentPortfolioModal({ theme: C, student, onClose }) {
 
         <div style={{fontSize:10,color:C.text3,textAlign:'right',marginTop:12}}>
           Generated {new Date().toLocaleDateString()} · UsenseLab Academic System
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── EXAM SCHEDULE ── */
+function AdminExamSchedule({ theme: C }) {
+  const [form, setForm] = useState({ courseId: store.courses[0]?.id||'', type:'midterm', date:'', time:'', room:'', duration:120, notes:'' });
+  const [, refresh] = useState(0);
+  const exams = store.getAllExams();
+  const today = new Date().toISOString().slice(0,10);
+
+  const TYPE_CFG = {
+    midterm: { label:'Midterm', color:'#8b5cf6', bg:'#8b5cf622' },
+    final:   { label:'Final',   color:'#ef4444', bg:'#ef444422' },
+    quiz:    { label:'Quiz',    color:'#10b981', bg:'#10b98122' },
+  };
+
+  function add() {
+    if (!form.courseId || !form.date) { alert('Select a course and date.'); return; }
+    store.addExam(form);
+    setForm({ courseId: store.courses[0]?.id||'', type:'midterm', date:'', time:'', room:'', duration:120, notes:'' });
+    refresh(n => n+1);
+  }
+
+  function del(id) { store.deleteExam(id); refresh(n => n+1); }
+
+  const upcoming = exams.filter(e => e.date >= today);
+  const past = exams.filter(e => e.date < today);
+
+  return (
+    <div style={{ padding:'8px 20px 20px' }}>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>🗓️ Exam Schedule Management</div>
+      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Schedule exams across all courses — students and lecturers see their relevant exams</div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'340px 1fr', gap:16, alignItems:'start' }}>
+        {/* Form */}
+        <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, padding:18 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:14 }}>Add New Exam</div>
+          {[
+            ['Course', <select value={form.courseId} onChange={e=>setForm({...form,courseId:e.target.value})} style={{ width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text }}>
+              {store.courses.map(c=><option key={c.id} value={c.id}>{c.name} ({c.code})</option>)}
+            </select>],
+            ['Exam Type', <select value={form.type} onChange={e=>setForm({...form,type:e.target.value})} style={{ width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text }}>
+              <option value="midterm">Midterm</option><option value="final">Final</option><option value="quiz">Quiz</option>
+            </select>],
+            ['Date', <input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} style={{ width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text,boxSizing:'border-box' }}/>],
+            ['Time', <input type="time" value={form.time} onChange={e=>setForm({...form,time:e.target.value})} style={{ width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text,boxSizing:'border-box' }}/>],
+            ['Room / Hall', <input value={form.room} onChange={e=>setForm({...form,room:e.target.value})} placeholder="e.g. Hall A, Lab 2" style={{ width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text,boxSizing:'border-box' }}/>],
+            ['Duration (min)', <input type="number" value={form.duration} onChange={e=>setForm({...form,duration:parseInt(e.target.value)||120})} style={{ width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text,boxSizing:'border-box' }}/>],
+            ['Notes', <input value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} placeholder="e.g. Open book, bring calculator" style={{ width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text,boxSizing:'border-box' }}/>],
+          ].map(([lbl,el],i)=>(
+            <div key={i} style={{ marginBottom:10 }}>
+              <div style={{ fontSize:10,color:C.text3,fontWeight:700,textTransform:'uppercase',marginBottom:4 }}>{lbl}</div>
+              {el}
+            </div>
+          ))}
+          <button onClick={add} style={{ width:'100%', height:42, background:C.blue3, border:'none', borderRadius:8, fontSize:13, fontWeight:700, color:'#fff', cursor:'pointer', marginTop:4 }}>
+            ➕ Add to Schedule
+          </button>
+        </div>
+
+        {/* Exam list */}
+        <div>
+          <div style={{ display:'flex', gap:12, marginBottom:12 }}>
+            {[['Upcoming',upcoming.length,C.blue],['Past',past.length,C.text3],['Total',exams.length,C.green]].map(([lbl,val,col],i)=>(
+              <div key={i} style={{ flex:1, background:C.card, borderRadius:10, border:`1px solid ${C.border}`, padding:'10px 14px', textAlign:'center' }}>
+                <div style={{ fontSize:20, fontWeight:700, color:col }}>{val}</div>
+                <div style={{ fontSize:11, color:C.text2 }}>{lbl}</div>
+              </div>
+            ))}
+          </div>
+
+          {exams.length === 0
+            ? <div style={{ textAlign:'center', padding:60, color:C.text3, background:C.card, borderRadius:14, border:`1px solid ${C.border}`, fontSize:13 }}>No exams scheduled yet.</div>
+            : exams.map((exam, i) => {
+              const cfg = TYPE_CFG[exam.type] || TYPE_CFG.midterm;
+              const isPast = exam.date < today;
+              return (
+                <div key={i} style={{ background:C.card, borderRadius:12, border:`1px solid ${isPast?C.border:cfg.color+'44'}`, padding:14, marginBottom:10, display:'flex', gap:14, alignItems:'center', opacity:isPast?0.65:1 }}>
+                  <div style={{ width:48, textAlign:'center', flexShrink:0 }}>
+                    <div style={{ fontSize:10, fontWeight:700, color:cfg.color }}>{exam.date?new Date(exam.date+'T00:00:00').toLocaleString('en-GB',{month:'short'}):'—'}</div>
+                    <div style={{ fontSize:26, fontWeight:800, color:C.text, lineHeight:1.1 }}>{exam.date?new Date(exam.date+'T00:00:00').getDate():'—'}</div>
+                  </div>
+                  <div style={{ width:1, height:40, background:C.border, flexShrink:0 }}/>
+                  <div style={{ flex:1 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
+                      <span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:20, background:cfg.bg, color:cfg.color }}>{cfg.label}</span>
+                      {isPast && <span style={{ fontSize:10, color:C.text3 }}>Past</span>}
+                    </div>
+                    <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{exam.courseName}</div>
+                    <div style={{ fontSize:11, color:C.text3, marginTop:2 }}>
+                      {exam.time&&`⏰ ${exam.time}`}{exam.room&&` · 📍 ${exam.room}`}{` · ⏱ ${exam.duration} min`}
+                    </div>
+                    {exam.notes && <div style={{ fontSize:11, color:C.text2, marginTop:3 }}>{exam.notes}</div>}
+                  </div>
+                  <button onClick={()=>del(exam.id)} style={{ background:C.red_dim, border:`1px solid ${C.red}`, borderRadius:8, padding:'4px 10px', fontSize:11, color:C.red2, cursor:'pointer', flexShrink:0 }}>Delete</button>
+                </div>
+              );
+            })
+          }
         </div>
       </div>
     </div>
