@@ -146,15 +146,17 @@ class DataStore {
   }
 
   _makeLectures(){
-    const times=['09:00','11:00','13:00','15:00','17:00'];
-    const stats=['active','scheduled','scheduled','ended','ended'];
+    const times  = ['09:00','11:00','13:00','15:00','17:00'];
+    const stats  = ['active','scheduled','scheduled','ended','ended'];
+    const doctors= ['Dr. Ahmed Smith','Dr. Laila Hassan','Dr. Khalid Omar','Dr. Sara Nour','Dr. Ahmed Smith'];
+    const docIds = ['D001','D002','D003','D004','D001'];
     return COURSE_DATA.map(([name,code,room,color],i)=>({
       id:`L${String(i+1).padStart(3,'0')}`,name,code,room,color,
       time:times[i],duration:90,status:stats[i],
       students:this._ri(28,48),present:this._ri(20,40),
       avgEngagement:this._ri(50,90),avgAttention:this._ri(45,85),
       dominantEmotion:EMOTIONS[i%EMOTIONS.length],
-      doctor:'Dr. Ahmed Smith',doctorId:'D001',
+      doctor:doctors[i],doctorId:docIds[i],
     }));
   }
 
