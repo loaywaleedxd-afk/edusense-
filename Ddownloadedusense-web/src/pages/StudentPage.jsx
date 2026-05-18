@@ -30,17 +30,17 @@ const NAV_BASE = [
   { id:'resources',     icon:'📖', label:'Study Resources' },
 ];
 
-function buildNav(stuId) {
+function buildNav(stuId, visited) {
   const today = new Date().toISOString().slice(0,10);
   const week7 = Date.now() - 7*24*3600*1000;
   return NAV_BASE.map(item => {
     if (item.id === 'announcements') return {
       ...item,
-      badge: () => store.getStudentAnnouncements(stuId).filter(a => new Date(a.createdAt).getTime() > week7).length || 0,
+      badge: () => visited.has('announcements') ? 0 : store.getStudentAnnouncements(stuId).filter(a => new Date(a.createdAt).getTime() > week7).length || 0,
     };
     if (item.id === 'exams') return {
       ...item,
-      badge: () => store.getStudentExams(stuId).filter(e => e.date >= today).length || 0,
+      badge: () => visited.has('exams') ? 0 : store.getStudentExams(stuId).filter(e => e.date >= today).length || 0,
     };
     return item;
   });
@@ -174,14 +174,22 @@ function AttendanceAlertBanner({ theme: C, studentId, onGoToAttendance }) {
 
 export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLogout }) {
   const [page, setPage] = useState('dashboard');
+  const [visited, setVisited] = useState(new Set());
 
   const sid = user.studentId || user.id || '';
   const stu = store.getStudent(sid) || store.students[0];
-  const nav = buildNav(stu?.id || sid);
+  const nav = buildNav(stu?.id || sid, visited);
+
+  function navigate(id) {
+    setPage(id);
+    if (id === 'announcements' || id === 'exams') {
+      setVisited(prev => new Set([...prev, id]));
+    }
+  }
 
   return (
     <div style={{ display:'flex', height:'100%', background:C.bg, overflow:'hidden' }}>
-      <Sidebar theme={C} navItems={nav} activeId={page} onNav={setPage}/>
+      <Sidebar theme={C} navItems={nav} activeId={page} onNav={navigate}/>
       <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', minWidth:0 }}>
         <Topbar theme={C} user={user} pageTitle={PAGE_TITLES[page]||page} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout}/>
         <div className="content-scroll" style={{ flex:1, background:C.bg, overflowY:'auto' }}>
