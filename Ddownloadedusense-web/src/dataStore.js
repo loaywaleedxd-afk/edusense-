@@ -190,9 +190,12 @@ class DataStore {
   }
 
   _syncStats(){
-    // Sync course enrolledCount from actual enrollment data
+    // Sync course enrolledCount and ensure weeks is always full 16
     this.courses.forEach(c => {
       c.enrolledCount = (this.courseEnrollments[c.id] || []).length;
+      if (!c.weeks || c.weeks.length < 16) {
+        c.weeks = Array.from({length: 16}, (_, k) => k + 1);
+      }
     });
     // Compute doctor stats dynamically from actual courses + enrollments
     this.doctors.forEach(d => {
