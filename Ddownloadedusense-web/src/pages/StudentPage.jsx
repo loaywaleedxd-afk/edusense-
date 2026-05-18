@@ -28,6 +28,7 @@ const NAV_BASE = [
   { id:'exams',         icon:'🗓️', label:'Exam Schedule' },
   { id:'degreeaudit',   icon:'🏛️', label:'Degree Audit' },
   { id:'resources',     icon:'📖', label:'Study Resources' },
+  { id:'assignments',   icon:'📋', label:'Assignments' },
 ];
 
 function loadLastSeen(stuId) {
@@ -59,6 +60,14 @@ function buildNav(stuId, lastSeen) {
           .filter(e => e.date >= today && new Date(e.createdAt || 0).getTime() > since).length || 0;
       },
     };
+    if (item.id === 'assignments') return {
+      ...item,
+      badge: () => {
+        const since = lastSeen.assignments || 0;
+        return store.getStudentAssignments(stuId)
+          .filter(a => new Date(a.createdAt).getTime() > since).length || 0;
+      },
+    };
     return item;
   });
 }
@@ -69,7 +78,7 @@ const PAGE_TITLES = {
   portfolio:'My Portfolio', chat:'Community Chat', moodle:'Moodle',
   appeals:'My Appeals', transcript:'Academic Transcript',
   announcements:'Announcements', exams:'Exam Schedule', degreeaudit:'Degree Audit',
-  resources:'Study Resources',
+  resources:'Study Resources', assignments:'Assignments',
 };
 
 function letterGrade(g) {
@@ -200,7 +209,7 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
 
   function navigate(id) {
     setPage(id);
-    if (id === 'announcements' || id === 'exams') {
+    if (id === 'announcements' || id === 'exams' || id === 'assignments') {
       saveLastSeen(stuId, id);
       setLastSeen(loadLastSeen(stuId));
     }
@@ -234,6 +243,7 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
             {page==='exams'         && <StudentExamSchedule theme={C} stu={stu}/>}
             {page==='degreeaudit'   && <StudentDegreeAudit theme={C} stu={stu}/>}
             {page==='resources'     && <StudentResources theme={C} stu={stu}/>}
+            {page==='assignments'   && <StudentAssignments theme={C} stu={stu}/>}
           </div>
         </div>
       </div>
@@ -1442,6 +1452,175 @@ function StudentResources({ theme: C, stu }) {
           <span style={{ fontSize:11 }}>Check back after your next lecture.</span>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ══ ASSIGNMENTS ══ */
+function StudentAssignments({ theme: C, stu }) {
+  const assignments = store.getStudentAssignments(stu.id);
+  const [expanded,  setExpanded]  = useState(null);
+  const [content,   setContent]   = useState({});
+  const [submitted, setSubmitted] = useState({});
+  const [, refresh] = useState(0);
+  const today = new Date().toISOString().slice(0,10);
+
+  function submit(asnId) {
+    const text = (content[asnId]||'').trim();
+    if (!text) return;
+    store.submitAssignment(asnId, stu.id, text);
+    setSubmitted(prev=>({...prev,[asnId]:true}));
+    setTimeout(()=>setSubmitted(prev=>({...prev,[asnId]:false})),2500);
+    refresh(n=>n+1);
+  }
+
+  const pending = assignments.filter(a=>{
+    const sub = store.getSubmission(a.id, stu.id);
+    return !sub;
+  }).length;
+
+  const STATUS = {
+    graded:    { label:'Graded',        color:'#10b981', bg:'#10b98115', icon:'✅' },
+    submitted: { label:'Submitted',     color:'#3b82f6', bg:'#3b82f615', icon:'📤' },
+    overdue:   { label:'Overdue',       color:'#ef4444', bg:'#ef444415', icon:'⚠️' },
+    pending:   { label:'Not Submitted', color:'#f59e0b', bg:'#f59e0b15', icon:'📋' },
+  };
+
+  function getStatus(asn) {
+    const sub = store.getSubmission(asn.id, stu.id);
+    if (sub?.grade != null) return 'graded';
+    if (sub) return 'submitted';
+    if (asn.deadline && asn.deadline < today) return 'overdue';
+    return 'pending';
+  }
+
+  return (
+    <div style={{ padding:'8px 20px 20px' }}>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>📋 Assignments</div>
+      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Submit your work and view grades from your instructors</div>
+
+      {/* Summary bar */}
+      <div style={{ display:'flex', gap:10, marginBottom:16 }}>
+        {[
+          ['Total', assignments.length, C.blue],
+          ['Pending', pending, C.amber],
+          ['Submitted', assignments.filter(a=>{ const s=store.getSubmission(a.id,stu.id); return s&&s.grade==null; }).length, '#3b82f6'],
+          ['Graded', assignments.filter(a=>store.getSubmission(a.id,stu.id)?.grade!=null).length, C.green],
+        ].map(([lbl,val,col])=>(
+          <div key={lbl} style={{ flex:1, background:C.card, borderRadius:12, border:`1px solid ${C.border}`, padding:'12px', textAlign:'center' }}>
+            <div style={{ fontSize:22, fontWeight:700, color:col }}>{val}</div>
+            <div style={{ fontSize:10, color:C.text3, marginTop:2, textTransform:'uppercase', fontWeight:700 }}>{lbl}</div>
+          </div>
+        ))}
+      </div>
+
+      {assignments.length===0 && (
+        <div style={{ textAlign:'center', padding:60, color:C.text3, background:C.card, borderRadius:14, border:`1px solid ${C.border}` }}>
+          <div style={{ fontSize:48, marginBottom:12 }}>📭</div>
+          No assignments posted yet. Check back after your next lecture.
+        </div>
+      )}
+
+      {assignments.map(asn=>{
+        const sub    = store.getSubmission(asn.id, stu.id);
+        const status = getStatus(asn);
+        const sc     = STATUS[status];
+        const isOpen = expanded===asn.id;
+        const daysLeft = asn.deadline
+          ? Math.ceil((new Date(asn.deadline+'T23:59:59')-new Date())/(1000*3600*24))
+          : null;
+
+        return (
+          <div key={asn.id} style={{ background:C.card, borderRadius:14, border:`1.5px solid ${isOpen?sc.color:C.border}`, marginBottom:12, overflow:'hidden', transition:'border-color 0.2s' }}>
+            {/* Header */}
+            <div onClick={()=>setExpanded(isOpen?null:asn.id)}
+              style={{ padding:'14px 18px', cursor:'pointer', display:'flex', alignItems:'center', gap:12 }}>
+              <div style={{ width:38, height:38, borderRadius:10, background:sc.bg, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>
+                {sc.icon}
+              </div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{asn.title}</div>
+                <div style={{ fontSize:11, color:C.text3, marginTop:2 }}>
+                  {asn.courseName}
+                  {asn.deadline && (
+                    <span style={{ color:status==='overdue'?C.red:status==='graded'||status==='submitted'?C.text3:daysLeft<=3?C.red:C.amber, marginLeft:8 }}>
+                      {status==='overdue'?`⚠️ Was due ${asn.deadline}`:
+                       status==='graded'||status==='submitted'?`📅 ${asn.deadline}`:
+                       daysLeft===0?'⏰ Due today':daysLeft===1?'⏰ Due tomorrow':`📅 Due in ${daysLeft} days`}
+                    </span>
+                  )}
+                  {' · '}Max {asn.maxScore} pts
+                </div>
+              </div>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:20, background:sc.bg, color:sc.color }}>{sc.label}</span>
+                {sub?.grade!=null && (
+                  <span style={{ fontSize:14, fontWeight:800, color:sub.grade/asn.maxScore>=0.5?C.green:C.red }}>
+                    {sub.grade}/{asn.maxScore}
+                  </span>
+                )}
+                <span style={{ color:C.text3, fontSize:13 }}>{isOpen?'▲':'▼'}</span>
+              </div>
+            </div>
+
+            {/* Expanded body */}
+            {isOpen && (
+              <div style={{ borderTop:`1px solid ${C.border}`, padding:'14px 18px' }}>
+                {asn.description && (
+                  <div style={{ fontSize:12, color:C.text2, background:C.bg3, borderRadius:8, padding:'10px 14px', marginBottom:14, lineHeight:1.6 }}>
+                    {asn.description}
+                  </div>
+                )}
+
+                {/* If graded — show result */}
+                {sub?.grade!=null && (
+                  <div style={{ background:`${C.green}15`, border:`1px solid ${C.green}44`, borderRadius:10, padding:'12px 16px', marginBottom:14 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:C.green, marginBottom:4 }}>
+                      ✅ Graded — {sub.grade}/{asn.maxScore} pts ({Math.round(sub.grade/asn.maxScore*100)}%)
+                    </div>
+                    {sub.feedback && <div style={{ fontSize:12, color:C.text2 }}>💬 {sub.feedback}</div>}
+                    <div style={{ fontSize:10, color:C.text3, marginTop:6 }}>Graded {new Date(sub.gradedAt).toLocaleString()}</div>
+                  </div>
+                )}
+
+                {/* Submitted but not graded */}
+                {sub && sub.grade==null && (
+                  <div style={{ background:`${C.blue}15`, border:`1px solid ${C.blue}44`, borderRadius:10, padding:'10px 14px', marginBottom:14 }}>
+                    <div style={{ fontSize:12, fontWeight:700, color:C.blue2 }}>📤 Submitted — awaiting grade</div>
+                    <div style={{ fontSize:11, color:C.text3, marginTop:2 }}>{new Date(sub.submittedAt).toLocaleString()}</div>
+                    <div style={{ fontSize:12, color:C.text2, marginTop:8 }}>{sub.content}</div>
+                  </div>
+                )}
+
+                {/* Submit / resubmit */}
+                {status !== 'graded' && (
+                  <div>
+                    <div style={{ fontSize:10, fontWeight:700, color:C.text3, marginBottom:6, textTransform:'uppercase' }}>
+                      {sub ? 'Resubmit (replaces previous)' : 'Your Answer'}
+                    </div>
+                    <textarea
+                      value={content[asn.id]||''}
+                      onChange={e=>setContent(prev=>({...prev,[asn.id]:e.target.value}))}
+                      placeholder="Write your answer, paste a link, or describe your submission..."
+                      rows={4}
+                      style={{ width:'100%', background:C.bg3, border:`1px solid ${C.border}`, borderRadius:8, padding:10, fontSize:12, color:C.text, resize:'vertical', boxSizing:'border-box', marginBottom:8 }}
+                    />
+                    <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                      <button onClick={()=>submit(asn.id)} disabled={!(content[asn.id]||'').trim()}
+                        style={{ background:'linear-gradient(135deg,#3b82f6,#6366f1)', border:'none', borderRadius:8,
+                          padding:'9px 22px', fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer',
+                          opacity:(content[asn.id]||'').trim()?1:0.5 }}>
+                        📤 {sub?'Resubmit':'Submit'}
+                      </button>
+                      {submitted[asn.id] && <span style={{ fontSize:12, color:C.green, fontWeight:700 }}>✅ Submitted!</span>}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -99,6 +99,8 @@ class DataStore {
     this.announcements = [];
     this.examSchedule = [];
     this.courseResources = [];
+    this.assignments = [];
+    this.submissions = [];
   }
 
   _loadStudents(){
@@ -378,6 +380,8 @@ class DataStore {
       if(data.announcements) this.announcements = data.announcements;
       if(data.examSchedule) this.examSchedule = data.examSchedule;
       if(data.courseResources) this.courseResources = data.courseResources;
+      if(data.assignments) this.assignments = data.assignments;
+      if(data.submissions) this.submissions = data.submissions;
     } catch(e){ console.warn('DataStore load error',e); }
   }
 
@@ -399,6 +403,8 @@ class DataStore {
         announcements: this.announcements,
         examSchedule: this.examSchedule,
         courseResources: this.courseResources,
+        assignments: this.assignments,
+        submissions: this.submissions,
       }));
     } catch(e){ console.warn('DataStore persist error',e); }
   }
@@ -991,6 +997,87 @@ class DataStore {
     const n=this.examSchedule.length;
     this.examSchedule=this.examSchedule.filter(e=>e.id!==id);
     if(this.examSchedule.length<n){this._persist();return true;} return false;
+  }
+
+  // ── ASSIGNMENTS ───────────────────────────────────────────────────────────
+  addAssignment(data){
+    if(!this.assignments) this.assignments=[];
+    const course=this.getCourse(data.courseId||'');
+    const a={
+      id:`ASN${Date.now()}`,
+      courseId:data.courseId||'', courseName:course?.name||'',
+      doctorId:data.doctorId||'', title:data.title||'',
+      description:data.description||'', deadline:data.deadline||'',
+      maxScore:parseInt(data.maxScore)||100,
+      createdAt:new Date().toISOString(),
+    };
+    this.assignments.unshift(a);
+    // Notify enrolled students
+    const enrolled=this.getEnrolledStudents(data.courseId||'');
+    enrolled.forEach(s=>{
+      this.addAlert({alertKind:'assignment',type:'info',studentId:s.id,
+        courseId:data.courseId,
+        title:`📋 New Assignment: ${a.title}`,
+        message:`${course?.name||''} — due ${a.deadline||'no deadline'}`,
+      });
+    });
+    this._persist(); return a;
+  }
+  getAssignment(id){ return (this.assignments||[]).find(a=>a.id===id)||null; }
+  getCourseAssignments(courseId){ return (this.assignments||[]).filter(a=>a.courseId===courseId); }
+  getDoctorAssignments(doctorId){ return (this.assignments||[]).filter(a=>a.doctorId===doctorId); }
+  getStudentAssignments(studentId){
+    if(!this.assignments) return [];
+    const ids=new Set(Object.entries(this.courseEnrollments).filter(([,ids])=>ids.includes(studentId)).map(([cid])=>cid));
+    return this.assignments.filter(a=>ids.has(a.courseId));
+  }
+  deleteAssignment(id){
+    if(!this.assignments) return false;
+    const n=this.assignments.length;
+    this.assignments=this.assignments.filter(a=>a.id!==id);
+    if(this.assignments.length<n){
+      if(!this.submissions) this.submissions=[];
+      this.submissions=this.submissions.filter(s=>s.assignmentId!==id);
+      this._persist(); return true;
+    } return false;
+  }
+
+  // ── SUBMISSIONS ───────────────────────────────────────────────────────────
+  submitAssignment(assignmentId, studentId, content){
+    if(!this.submissions) this.submissions=[];
+    const existing=this.submissions.find(s=>s.assignmentId===assignmentId&&s.studentId===studentId);
+    if(existing){
+      existing.content=content; existing.submittedAt=new Date().toISOString();
+      existing.grade=null; existing.feedback=''; existing.gradedAt=null;
+      this._persist(); return existing;
+    }
+    const asn=this.getAssignment(assignmentId);
+    const sub={
+      id:`SUB${Date.now()}`, assignmentId, studentId,
+      courseId:asn?.courseId||'', content,
+      submittedAt:new Date().toISOString(),
+      grade:null, feedback:'', gradedAt:null, gradedBy:'',
+    };
+    this.submissions.push(sub); this._persist(); return sub;
+  }
+  getSubmission(assignmentId, studentId){
+    return (this.submissions||[]).find(s=>s.assignmentId===assignmentId&&s.studentId===studentId)||null;
+  }
+  getAssignmentSubmissions(assignmentId){
+    return (this.submissions||[]).filter(s=>s.assignmentId===assignmentId);
+  }
+  gradeSubmission(assignmentId, studentId, grade, feedback, doctorId){
+    if(!this.submissions) return false;
+    const sub=this.submissions.find(s=>s.assignmentId===assignmentId&&s.studentId===studentId);
+    if(!sub) return false;
+    sub.grade=parseFloat(grade); sub.feedback=feedback||'';
+    sub.gradedAt=new Date().toISOString(); sub.gradedBy=doctorId||'';
+    const asn=this.getAssignment(assignmentId);
+    this.addAlert({alertKind:'grade',type:'success',studentId,courseId:asn?.courseId||'',
+      title:`✅ Assignment Graded: ${asn?.title||''}`,
+      message:`Score: ${sub.grade}/${asn?.maxScore||100}${feedback?` — ${feedback}`:''}`,
+    });
+    this._persist(); return true;
   }
 
   // ── GPA & ACADEMIC STANDING ───────────────────────────────────────────────

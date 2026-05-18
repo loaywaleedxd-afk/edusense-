@@ -32,6 +32,7 @@ const NAV = [
   {id:'announcements', icon:'📢', label:'Announcements'},
   {id:'examschedule',  icon:'🗓️', label:'Exam Schedule'},
   {id:'resources',     icon:'📖', label:'Resources'},
+  {id:'assignments',   icon:'📋', label:'Assignments'},
 ];
 
 const PAGE_TITLES = {
@@ -40,7 +41,7 @@ const PAGE_TITLES = {
   chat:'Community Chat', analytics:'Analytics', detector:'AI Topic Detector',
   alerts:'Alerts', moodle:'Moodle', ranalysis:'R Analysis Reports',
   appeals:'Student Appeals', announcements:'Announcements', examschedule:'Exam Schedule',
-  resources:'Study Resources',
+  resources:'Study Resources', assignments:'Assignments',
 };
 
 function letterGrade(g){if(g>=90)return'A+';if(g>=85)return'A';if(g>=80)return'B+';if(g>=75)return'B';if(g>=70)return'C+';if(g>=65)return'C';if(g>=60)return'D+';if(g>=50)return'D';return'F';}
@@ -80,6 +81,7 @@ export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLog
             {page==='announcements' && <DocAnnouncements theme={C} doctor={doctor} myCourses={myCourses}/>}
             {page==='examschedule'  && <DocExamSchedule theme={C} doctor={doctor} myCourses={myCourses}/>}
             {page==='resources'     && <DocResources theme={C} doctor={doctor} myCourses={myCourses}/>}
+            {page==='assignments'   && <DocAssignments theme={C} doctor={doctor} myCourses={myCourses}/>}
           </div>
         </div>
       </div>
@@ -2169,6 +2171,208 @@ function DocResources({ theme: C, doctor, myCourses }) {
               </button>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── ASSIGNMENTS ── */
+function DocAssignments({ theme: C, doctor, myCourses }) {
+  const [selCourse, setSelCourse] = useState(myCourses[0]?.id||'');
+  const [form, setForm] = useState({ title:'', description:'', deadline:'', maxScore:'100' });
+  const [saved, setSaved]   = useState(false);
+  const [expanded, setExpanded] = useState(null);
+  const [gradeInputs, setGradeInputs] = useState({});
+  const [, refresh] = useState(0);
+
+  const assignments = store.getCourseAssignments(selCourse);
+  const enrolled    = store.getEnrolledStudents(selCourse);
+
+  function create() {
+    if (!form.title.trim()) return;
+    store.addAssignment({ ...form, courseId: selCourse, doctorId: doctor.id });
+    setForm({ title:'', description:'', deadline:'', maxScore:'100' });
+    setSaved(true); setTimeout(()=>setSaved(false),2000);
+    refresh(n=>n+1);
+  }
+
+  function del(id) { store.deleteAssignment(id); refresh(n=>n+1); }
+
+  function saveGrade(asnId, stuId) {
+    const key = `${asnId}_${stuId}`;
+    const { score='', feedback='' } = gradeInputs[key]||{};
+    if (score==='') return;
+    store.gradeSubmission(asnId, stuId, score, feedback, doctor.id);
+    refresh(n=>n+1);
+  }
+
+  const today = new Date().toISOString().slice(0,10);
+
+  return (
+    <div style={{ padding:'8px 20px 20px' }}>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>📋 Assignments</div>
+      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Create assignments, view submissions, and grade students</div>
+
+      {/* Course selector */}
+      <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
+        {myCourses.map(c=>(
+          <button key={c.id} onClick={()=>{ setSelCourse(c.id); setExpanded(null); }}
+            style={{ padding:'6px 16px', borderRadius:20, border:`1.5px solid ${selCourse===c.id?C.blue:C.border}`,
+              background:selCourse===c.id?C.blue_dim:'transparent', fontSize:12, fontWeight:selCourse===c.id?700:400,
+              color:selCourse===c.id?C.blue2:C.text3, cursor:'pointer' }}>
+            {c.name}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'360px 1fr', gap:16, alignItems:'start' }}>
+        {/* Create form */}
+        <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, padding:18 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:14 }}>➕ New Assignment</div>
+
+          {[
+            ['TITLE', 'title', 'e.g. Lab Report Week 3', 'input'],
+            ['DESCRIPTION', 'description', 'Instructions, requirements...', 'textarea'],
+          ].map(([lbl, key, ph, type])=>(
+            <div key={key} style={{ marginBottom:10 }}>
+              <div style={{ fontSize:10, fontWeight:700, color:C.text3, marginBottom:4 }}>{lbl}</div>
+              {type==='textarea'
+                ? <textarea value={form[key]} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))}
+                    placeholder={ph} rows={3}
+                    style={{ width:'100%', background:C.bg3, border:`1px solid ${C.border}`, borderRadius:8, padding:8, fontSize:12, color:C.text, resize:'vertical', boxSizing:'border-box' }}/>
+                : <input value={form[key]} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))}
+                    placeholder={ph}
+                    style={{ width:'100%', height:36, background:C.bg3, border:`1px solid ${C.border}`, borderRadius:8, padding:'0 10px', fontSize:12, color:C.text, boxSizing:'border-box' }}/>
+              }
+            </div>
+          ))}
+
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14 }}>
+            <div>
+              <div style={{ fontSize:10, fontWeight:700, color:C.text3, marginBottom:4 }}>DEADLINE</div>
+              <input type="date" value={form.deadline} onChange={e=>setForm(f=>({...f,deadline:e.target.value}))}
+                style={{ width:'100%', height:36, background:C.bg3, border:`1px solid ${C.border}`, borderRadius:8, padding:'0 10px', fontSize:12, color:C.text, boxSizing:'border-box' }}/>
+            </div>
+            <div>
+              <div style={{ fontSize:10, fontWeight:700, color:C.text3, marginBottom:4 }}>MAX SCORE</div>
+              <input type="number" value={form.maxScore} onChange={e=>setForm(f=>({...f,maxScore:e.target.value}))}
+                min={1} max={1000}
+                style={{ width:'100%', height:36, background:C.bg3, border:`1px solid ${C.border}`, borderRadius:8, padding:'0 10px', fontSize:12, color:C.text, boxSizing:'border-box' }}/>
+            </div>
+          </div>
+
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <button onClick={create} disabled={!form.title.trim()}
+              style={{ background:'linear-gradient(135deg,#3b82f6,#6366f1)', border:'none', borderRadius:9,
+                padding:'9px 22px', fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer', opacity:form.title.trim()?1:0.5 }}>
+              📤 Publish
+            </button>
+            {saved && <span style={{ fontSize:12, color:C.green, fontWeight:700 }}>✅ Published!</span>}
+          </div>
+        </div>
+
+        {/* Assignment list */}
+        <div>
+          {assignments.length===0
+            ? <div style={{ textAlign:'center', color:C.text3, padding:60, background:C.card, borderRadius:14, border:`1px solid ${C.border}`, fontSize:13 }}>
+                No assignments yet for this course.
+              </div>
+            : assignments.map((asn,i)=>{
+                const subs   = store.getAssignmentSubmissions(asn.id);
+                const graded = subs.filter(s=>s.grade!==null).length;
+                const overdue = asn.deadline && asn.deadline < today;
+                const isOpen  = expanded===asn.id;
+
+                return (
+                  <div key={asn.id} style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, marginBottom:12, overflow:'hidden' }}>
+                    {/* Header */}
+                    <div onClick={()=>setExpanded(isOpen?null:asn.id)}
+                      style={{ padding:'14px 18px', cursor:'pointer', display:'flex', alignItems:'center', gap:12 }}>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{asn.title}</div>
+                        <div style={{ fontSize:11, color:C.text3, marginTop:2 }}>
+                          {asn.deadline
+                            ? <span style={{ color:overdue?C.red:C.amber }}>
+                                {overdue?'⚠️ Overdue':'📅'} {asn.deadline}
+                              </span>
+                            : '📅 No deadline'}
+                          {' · '}Max {asn.maxScore} pts
+                        </div>
+                      </div>
+                      <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                        <span style={{ fontSize:11, color:C.text3 }}>{subs.length}/{enrolled.length} submitted</span>
+                        <span style={{ fontSize:11, color:C.green }}>{graded} graded</span>
+                        <button onClick={e=>{e.stopPropagation();del(asn.id);}}
+                          style={{ background:'none', border:'none', color:C.red2, fontSize:18, cursor:'pointer' }}>×</button>
+                        <span style={{ color:C.text3, fontSize:13 }}>{isOpen?'▲':'▼'}</span>
+                      </div>
+                    </div>
+
+                    {/* Submissions table */}
+                    {isOpen && (
+                      <div style={{ borderTop:`1px solid ${C.border}`, padding:'0 18px 16px' }}>
+                        {asn.description && (
+                          <div style={{ fontSize:12, color:C.text2, padding:'10px 0 8px', borderBottom:`1px solid ${C.border}`, marginBottom:10 }}>
+                            {asn.description}
+                          </div>
+                        )}
+                        <div style={{ fontSize:12, fontWeight:700, color:C.text3, margin:'10px 0 8px', textTransform:'uppercase', fontSize:10, letterSpacing:'0.06em' }}>
+                          Submissions ({subs.length}/{enrolled.length})
+                        </div>
+                        {enrolled.map(stu=>{
+                          const sub = store.getSubmission(asn.id, stu.id);
+                          const key = `${asn.id}_${stu.id}`;
+                          const gi  = gradeInputs[key]||{ score: sub?.grade!=null?String(sub.grade):'', feedback: sub?.feedback||'' };
+                          const isGraded = sub?.grade!=null;
+
+                          return (
+                            <div key={stu.id} style={{ borderBottom:`1px solid ${C.border}`, padding:'10px 0' }}>
+                              <div style={{ display:'flex', alignItems:'flex-start', gap:10 }}>
+                                <div style={{ width:32, height:32, borderRadius:'50%', background:stu.color, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>{stu.emoji}</div>
+                                <div style={{ flex:1 }}>
+                                  <div style={{ fontSize:12, fontWeight:700, color:C.text }}>{stu.name}</div>
+                                  {!sub
+                                    ? <div style={{ fontSize:11, color:C.text3 }}>Not submitted</div>
+                                    : <>
+                                        <div style={{ fontSize:11, color:C.text3 }}>Submitted {new Date(sub.submittedAt).toLocaleString()}</div>
+                                        <div style={{ fontSize:12, color:C.text2, background:C.bg3, borderRadius:8, padding:'6px 10px', marginTop:6 }}>
+                                          {sub.content}
+                                        </div>
+                                      </>
+                                  }
+                                </div>
+                                {sub && (
+                                  <div style={{ display:'flex', flexDirection:'column', gap:4, minWidth:200 }}>
+                                    <div style={{ display:'flex', gap:6 }}>
+                                      <input type="number" placeholder="Score" min={0} max={asn.maxScore}
+                                        value={gi.score}
+                                        onChange={e=>setGradeInputs(prev=>({...prev,[key]:{...gi,score:e.target.value}}))}
+                                        style={{ width:70, height:30, background:C.bg3, border:`1px solid ${isGraded?C.green:C.border}`, borderRadius:6, padding:'0 8px', fontSize:12, color:C.text, textAlign:'center' }}/>
+                                      <span style={{ fontSize:12, color:C.text3, lineHeight:'30px' }}>/ {asn.maxScore}</span>
+                                    </div>
+                                    <input placeholder="Feedback (optional)"
+                                      value={gi.feedback}
+                                      onChange={e=>setGradeInputs(prev=>({...prev,[key]:{...gi,feedback:e.target.value}}))}
+                                      style={{ height:28, background:C.bg3, border:`1px solid ${C.border}`, borderRadius:6, padding:'0 8px', fontSize:11, color:C.text }}/>
+                                    <button onClick={()=>saveGrade(asn.id, stu.id)}
+                                      disabled={gi.score===''}
+                                      style={{ background:isGraded?C.green:'linear-gradient(135deg,#10b981,#059669)', border:'none', borderRadius:6,
+                                        padding:'5px 12px', fontSize:11, fontWeight:700, color:'#fff', cursor:'pointer', opacity:gi.score!==''?1:0.5 }}>
+                                      {isGraded?'✅ Update':'💾 Grade'}
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+          }
         </div>
       </div>
     </div>
