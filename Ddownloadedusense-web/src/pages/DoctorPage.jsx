@@ -28,6 +28,7 @@ const NAV = [
   {id:'alerts',    icon:'🔔', label:'Alerts', badge:()=>store.getAlerts(true).length||0},
   {id:'moodle',    icon:'🌐', label:'Moodle'},
   {id:'ranalysis', icon:'📈', label:'R Analysis'},
+  {id:'appeals',   icon:'📋', label:'Appeals'},
 ];
 
 const PAGE_TITLES = {
@@ -35,6 +36,7 @@ const PAGE_TITLES = {
   lectures:'My Lectures', students:'Students', grades:'Exam Results',
   chat:'Community Chat', analytics:'Analytics', detector:'AI Topic Detector',
   alerts:'Alerts', moodle:'Moodle', ranalysis:'R Analysis Reports',
+  appeals:'Student Appeals',
 };
 
 function letterGrade(g){if(g>=90)return'A+';if(g>=85)return'A';if(g>=80)return'B+';if(g>=75)return'B';if(g>=70)return'C+';if(g>=65)return'C';if(g>=60)return'D+';if(g>=50)return'D';return'F';}
@@ -64,6 +66,7 @@ export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLog
             {page==='alerts'     && <DocAlerts theme={C}/>}
             {page==='moodle'     && <DocMoodle theme={C}/>}
             {page==='ranalysis'  && <DocRAnalysis theme={C}/>}
+            {page==='appeals'    && <DocAppeals theme={C} doctor={doctor} myCourses={myCourses}/>}
           </div>
         </div>
       </div>
@@ -1676,6 +1679,69 @@ function DocRAnalysis({ theme: C }) {
           {output}
         </pre>
       </div>
+    </div>
+  );
+}
+
+/* ── DOC APPEALS ── */
+function DocAppeals({ theme: C, doctor, myCourses }) {
+  const [complaints, setComplaints] = useState(store.getDoctorComplaints(doctor.id));
+  const [filter, setFilter] = useState('all');
+  const [response, setResponse] = useState({});
+
+  function respond(id) {
+    const text = response[id]?.trim();
+    if (!text) return;
+    store.updateComplaint(id, { status:'reviewed', doctorResponse: text });
+    setComplaints(store.getDoctorComplaints(doctor.id));
+    setResponse(r => ({...r, [id]:''}));
+  }
+
+  const statusColor = { pending:'amber', reviewed:'blue', resolved:'green' };
+  const typeLabel   = { absence_excuse:'Absence Excuse', grade_appeal:'Grade Appeal', general:'General Complaint' };
+  const filtered = filter==='all' ? complaints : complaints.filter(c=>c.status===filter);
+
+  return (
+    <div style={{padding:'8px 20px 20px'}}>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>Student Appeals ({complaints.filter(c=>c.status==='pending').length} pending)</div>
+
+      <div style={{display:'flex',gap:8,marginBottom:16}}>
+        {['all','pending','reviewed','resolved'].map(s=>(
+          <button key={s} onClick={()=>setFilter(s)}
+            style={{padding:'6px 14px',borderRadius:8,fontSize:12,fontWeight:700,cursor:'pointer',
+              background:filter===s?C.blue3:C.bg3, border:`1px solid ${filter===s?C.blue3:C.border}`,
+              color:filter===s?'#fff':C.text2}}>
+            {s.charAt(0).toUpperCase()+s.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      {filtered.length===0
+        ? <div style={{textAlign:'center',color:C.text3,padding:40,fontSize:13}}>No {filter==='all'?'':filter} appeals.</div>
+        : filtered.slice().reverse().map((c,i)=>(
+        <div key={i} style={{background:C.card,borderRadius:14,border:`1px solid ${c.status==='pending'?C.amber:C.border}`,padding:18,marginBottom:12}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
+            <Badge text={typeLabel[c.type]||c.type} color="blue" isDark/>
+            <Badge text={c.status.charAt(0).toUpperCase()+c.status.slice(1)} color={statusColor[c.status]} isDark/>
+            <span style={{fontSize:12,color:C.text,fontWeight:700,marginLeft:4}}>{c.studentName}</span>
+            <span style={{fontSize:10,color:C.text3,marginLeft:'auto'}}>{c.createdAt}</span>
+          </div>
+          <div style={{fontSize:12,color:C.text2,marginBottom:4}}><strong>Course:</strong> {c.courseName||'—'}</div>
+          <div style={{fontSize:13,color:C.text,marginBottom:10,lineHeight:1.5}}>{c.description}</div>
+          {c.doctorResponse && <div style={{background:C.bg3,borderRadius:8,padding:'8px 12px',fontSize:12,color:C.text2,marginBottom:10}}><strong>Your response:</strong> {c.doctorResponse}</div>}
+          {c.status==='pending' && (
+            <div style={{display:'flex',gap:8}}>
+              <input value={response[c.id]||''} onChange={e=>setResponse(r=>({...r,[c.id]:e.target.value}))}
+                placeholder="Write your response..."
+                style={{flex:1,height:34,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}/>
+              <button onClick={()=>respond(c.id)}
+                style={{background:C.green,border:'none',borderRadius:8,padding:'0 16px',fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer'}}>
+                Respond
+              </button>
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

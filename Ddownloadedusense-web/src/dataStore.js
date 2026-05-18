@@ -92,6 +92,10 @@ class DataStore {
     this.currentWeek = 1;
     this.examResults = {};
     this.chatMessages = {};
+    this.complaints = [];
+    this.registrationStatus = { open: true, semester: 'Fall 2024', deadline: '2024-12-15' };
+    this.studentFees = {};
+    this.courseWaitlists = {};
   }
 
   _loadStudents(){
@@ -186,7 +190,7 @@ class DataStore {
       days:courseDays[i],daysLabel:daysLabels[i],
       doctorId:doctors[i],doctorName:dnames[i],
       weeks:Array.from({length:16},(_,k)=>k+1),
-      semester:'Fall 2024',enrolledCount:0,
+      semester:'Fall 2024',enrolledCount:0,capacity:300,
     }));
   }
 
@@ -364,6 +368,10 @@ class DataStore {
       if(data.courseEnrollments) Object.assign(this.courseEnrollments, data.courseEnrollments);
       if(data.attendance) Object.assign(this.attendance, data.attendance);
       if(data.systemAlerts) this.systemAlerts = data.systemAlerts;
+      if(data.complaints) this.complaints = data.complaints;
+      if(data.registrationStatus) Object.assign(this.registrationStatus, data.registrationStatus);
+      if(data.studentFees) this.studentFees = data.studentFees;
+      if(data.courseWaitlists) this.courseWaitlists = data.courseWaitlists;
     } catch(e){ console.warn('DataStore load error',e); }
   }
 
@@ -378,6 +386,10 @@ class DataStore {
         examResults: this.examResults,
         chatMessages: this.chatMessages,
         systemAlerts: this.systemAlerts,
+        complaints: this.complaints,
+        registrationStatus: this.registrationStatus,
+        studentFees: this.studentFees,
+        courseWaitlists: this.courseWaitlists,
       }));
     } catch(e){ console.warn('DataStore persist error',e); }
   }
@@ -765,6 +777,52 @@ class DataStore {
     if(!this.systemAlerts) this.systemAlerts=[];
     this.systemAlerts=this.systemAlerts.filter(a=>a.id!==id); this._persist();
   }
+  // ── COMPLAINTS ──
+  submitComplaint(data){
+    const c={id:`CP${Date.now()}`,studentId:data.studentId,studentName:data.studentName||'',
+      type:data.type||'general',courseId:data.courseId||'',courseName:data.courseName||'',
+      description:data.description||'',status:'pending',
+      doctorId:data.doctorId||'',doctorResponse:'',adminResponse:'',
+      createdAt:new Date().toISOString().slice(0,10),updatedAt:new Date().toISOString().slice(0,10)};
+    this.complaints.push(c); this._persist(); return c;
+  }
+  updateComplaint(id,updates){
+    const c=this.complaints.find(x=>x.id===id);
+    if(c){Object.assign(c,updates,{updatedAt:new Date().toISOString().slice(0,10)});this._persist();}
+    return c||null;
+  }
+  getStudentComplaints(studentId){return this.complaints.filter(c=>c.studentId===studentId);}
+  getDoctorComplaints(doctorId){return this.complaints.filter(c=>c.doctorId===doctorId);}
+  getAllComplaints(){return [...this.complaints].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}
+  getPendingComplaintsCount(){return this.complaints.filter(c=>c.status==='pending').length;}
+
+  // ── REGISTRATION ──
+  getRegistrationStatus(){return this.registrationStatus;}
+  setRegistrationStatus(data){Object.assign(this.registrationStatus,data);this._persist();}
+
+  // ── FEES ──
+  getStudentFeeStatus(studentId){return this.studentFees[studentId]||{paid:true,amount:1500,dueDate:'2024-12-01'};}
+  setStudentFeeStatus(studentId,data){this.studentFees[studentId]={...this.getStudentFeeStatus(studentId),...data};this._persist();}
+
+  // ── WAITLIST ──
+  joinWaitlist(courseId,studentId){
+    if(!this.courseWaitlists[courseId])this.courseWaitlists[courseId]=[];
+    if(!this.courseWaitlists[courseId].includes(studentId)){this.courseWaitlists[courseId].push(studentId);this._persist();return true;}
+    return false;
+  }
+  removeFromWaitlist(courseId,studentId){
+    const list=this.courseWaitlists[courseId]||[];const idx=list.indexOf(studentId);
+    if(idx>=0){this.courseWaitlists[courseId].splice(idx,1);this._persist();return true;}return false;
+  }
+  getWaitlist(courseId){return(this.courseWaitlists[courseId]||[]).map(sid=>this.getStudent(sid)).filter(Boolean);}
+  isCourseFull(courseId){const c=this.getCourse(courseId);if(!c||!c.capacity)return false;return(this.courseEnrollments[courseId]||[]).length>=c.capacity;}
+  promoteFromWaitlist(courseId){
+    const list=this.courseWaitlists[courseId]||[];if(!list.length)return null;
+    const studentId=list[0];
+    if(this.enrollStudent(courseId,studentId)){this.removeFromWaitlist(courseId,studentId);return studentId;}
+    return null;
+  }
+  isOnWaitlist(courseId,studentId){return(this.courseWaitlists[courseId]||[]).includes(studentId);}
 }
 
 export const store = new DataStore();

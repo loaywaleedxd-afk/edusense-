@@ -22,12 +22,15 @@ const NAV = [
   { id:'portfolio',  icon:'🎓', label:'My Portfolio' },
   { id:'chat',       icon:'💬', label:'Community' },
   { id:'moodle',     icon:'🌐', label:'Moodle' },
+  { id:'appeals',    icon:'📋', label:'My Appeals' },
+  { id:'transcript', icon:'🎓', label:'Transcript' },
 ];
 
 const PAGE_TITLES = {
   dashboard:'Dashboard', attendance:'My Attendance', emotions:'My Emotions',
   schedule:'Schedule', performance:'Performance', grades:'My Grades',
   portfolio:'My Portfolio', chat:'Community Chat', moodle:'Moodle',
+  appeals:'My Appeals', transcript:'Academic Transcript',
 };
 
 function letterGrade(g) {
@@ -175,6 +178,8 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
             {page==='portfolio'  && <StudentPortfolio theme={C} user={user} stu={stu}/>}
             {page==='chat'       && <StudentChat theme={C} user={user} stu={stu} isDark={isDark}/>}
             {page==='moodle'     && <StudentMoodle theme={C}/>}
+            {page==='appeals'    && <StudentAppeals theme={C} user={user} stu={stu}/>}
+            {page==='transcript' && <StudentTranscript theme={C} stu={stu}/>}
           </div>
         </div>
       </div>
@@ -607,6 +612,18 @@ function StudentPerformance({ theme: C, stu }) {
 
 /* ══ GRADES ══ */
 function StudentGrades({ theme: C, stu }) {
+  const feeStatus = store.getStudentFeeStatus(stu.id);
+  if(!feeStatus.paid) return (
+    <div style={{padding:'8px 20px 20px'}}>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>My Grades</div>
+      <div style={{background:C.card,borderRadius:16,border:`1px solid ${C.red}`,padding:40,textAlign:'center'}}>
+        <div style={{fontSize:48,marginBottom:12}}>🔒</div>
+        <div style={{fontSize:18,fontWeight:700,color:C.text,marginBottom:8}}>Grades Locked</div>
+        <div style={{fontSize:13,color:C.text3}}>Your fees are unpaid. Please visit the finance office to clear your balance and unlock grade access.</div>
+      </div>
+    </div>
+  );
+
   const results = store.getStudentResults(stu.id);
   const entries = Object.entries(results);
 
@@ -864,6 +881,179 @@ function ChatMessage({ msg, myId, theme: C, course, onReact }) {
         {Object.entries(msg.reactions||{}).filter(([,r])=>r.length>0).map(([e,r])=>(
           <span key={e} style={{ fontSize:11, background:C.bg3, borderRadius:8, padding:'2px 6px', color:C.text2 }}>{e} {r.length}</span>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/* ══ APPEALS ══ */
+function StudentAppeals({ theme: C, user, stu }) {
+  const myCourses = store.getStudentCourses(stu.id);
+  const [complaints, setComplaints] = useState(store.getStudentComplaints(stu.id));
+  const [form, setForm] = useState({ type:'absence_excuse', courseId: myCourses[0]?.id||'', description:'' });
+  const [submitted, setSubmitted] = useState(false);
+
+  function submit() {
+    if (!form.description.trim()) return;
+    const course = store.getCourse(form.courseId);
+    const doctorId = course?.doctorId || '';
+    store.submitComplaint({
+      studentId: stu.id, studentName: stu.name,
+      type: form.type, courseId: form.courseId,
+      courseName: course?.name||'', description: form.description,
+      doctorId,
+    });
+    setComplaints(store.getStudentComplaints(stu.id));
+    setForm({ type:'absence_excuse', courseId: myCourses[0]?.id||'', description:'' });
+    setSubmitted(true);
+    setTimeout(() => setSubmitted(false), 3000);
+  }
+
+  const statusColor = { pending: 'amber', reviewed: 'blue', resolved: 'green' };
+  const typeLabel = { absence_excuse:'Absence Excuse', grade_appeal:'Grade Appeal', general:'General Complaint' };
+
+  return (
+    <div style={{padding:'8px 20px 20px'}}>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>My Appeals & Complaints</div>
+
+      <Card theme={C} title="Submit New Appeal">
+        <div style={{padding:'4px 16px 16px',display:'flex',flexDirection:'column',gap:12}}>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+            <div>
+              <div style={{fontSize:10,color:C.text3,fontWeight:700,textTransform:'uppercase',marginBottom:4}}>Type</div>
+              <select value={form.type} onChange={e=>setForm({...form,type:e.target.value})}
+                style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}>
+                <option value="absence_excuse">Absence Excuse</option>
+                <option value="grade_appeal">Grade Appeal</option>
+                <option value="general">General Complaint</option>
+              </select>
+            </div>
+            <div>
+              <div style={{fontSize:10,color:C.text3,fontWeight:700,textTransform:'uppercase',marginBottom:4}}>Course</div>
+              <select value={form.courseId} onChange={e=>setForm({...form,courseId:e.target.value})}
+                style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}>
+                {myCourses.map(c=><option key={c.id} value={c.id}>{c.name} ({c.code})</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <div style={{fontSize:10,color:C.text3,fontWeight:700,textTransform:'uppercase',marginBottom:4}}>Description</div>
+            <textarea value={form.description} onChange={e=>setForm({...form,description:e.target.value})}
+              placeholder="Describe your appeal or excuse in detail..."
+              rows={4} style={{width:'100%',background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:12,color:C.text,resize:'vertical',boxSizing:'border-box'}}/>
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:12}}>
+            <button onClick={submit} disabled={!form.description.trim()}
+              style={{background:C.blue3,border:'none',borderRadius:8,padding:'10px 24px',fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer',opacity:form.description.trim()?1:0.5}}>
+              📤 Submit
+            </button>
+            {submitted && <span style={{color:C.green,fontSize:12,fontWeight:700}}>✅ Submitted successfully!</span>}
+          </div>
+        </div>
+      </Card>
+
+      <div style={{marginTop:16}}>
+        <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:10}}>Submission History ({complaints.length})</div>
+        {complaints.length===0
+          ? <div style={{textAlign:'center',color:C.text3,padding:40,fontSize:13}}>No appeals submitted yet.</div>
+          : complaints.slice().reverse().map((c,i)=>(
+          <div key={i} style={{background:C.card,borderRadius:12,border:`1px solid ${C.border}`,padding:16,marginBottom:10}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+              <Badge text={typeLabel[c.type]||c.type} color="blue" isDark/>
+              <Badge text={c.status.charAt(0).toUpperCase()+c.status.slice(1)} color={statusColor[c.status]||'amber'} isDark/>
+              <span style={{fontSize:10,color:C.text3,marginLeft:'auto'}}>{c.createdAt}</span>
+            </div>
+            <div style={{fontSize:12,color:C.text2,marginBottom:4}}><strong>Course:</strong> {c.courseName||'—'}</div>
+            <div style={{fontSize:12,color:C.text2,marginBottom:c.doctorResponse||c.adminResponse?8:0}}>{c.description}</div>
+            {c.doctorResponse && <div style={{background:C.bg3,borderRadius:8,padding:'8px 12px',fontSize:12,color:C.text2,marginBottom:6}}><strong>Doctor:</strong> {c.doctorResponse}</div>}
+            {c.adminResponse  && <div style={{background:C.bg3,borderRadius:8,padding:'8px 12px',fontSize:12,color:C.text2}}><strong>Admin:</strong> {c.adminResponse}</div>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ══ TRANSCRIPT ══ */
+function StudentTranscript({ theme: C, stu }) {
+  const myCourses = store.getStudentCourses(stu.id);
+  const results   = store.getStudentResults(stu.id);
+  const reg       = store.getRegistrationStatus();
+  const fee       = store.getStudentFeeStatus(stu.id);
+  const idHash    = stu.id.split('').reduce((a,c)=>a+c.charCodeAt(0),0);
+
+  const rows = myCourses.map((course, i) => {
+    const rec = results[course.id];
+    const seed = (idHash + i*17) % 100;
+    const att  = Math.min(100, Math.max(50, stu.attendanceRate + ((seed%20)-10)));
+    const grade = rec ? rec.grade : null;
+    return { course, att, grade };
+  });
+
+  const graded   = rows.filter(r=>r.grade!==null);
+  const semGPA   = graded.length ? (graded.reduce((a,r)=>a+(r.grade/25),0)/graded.length).toFixed(2) : stu.gpa||'—';
+
+  return (
+    <div style={{padding:'8px 20px 20px'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+        <div style={{fontSize:22,fontWeight:700,color:C.text}}>Academic Transcript</div>
+        <button onClick={()=>window.print()}
+          style={{background:C.blue3,border:'none',borderRadius:8,padding:'8px 16px',fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer'}}>
+          🖨️ Print / Export PDF
+        </button>
+      </div>
+
+      <Card theme={C} title="Student Information">
+        <div style={{padding:'4px 16px 16px',display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:12}}>
+          {[
+            ['Name',      stu.name],
+            ['Student ID',stu.id],
+            ['Department',stu.dept],
+            ['Year',      `Year ${stu.year}`],
+            ['Email',     stu.email||'—'],
+            ['Semester',  reg.semester],
+            ['Cumulative GPA', stu.gpa||'—'],
+            ['Reg. Status', fee.paid?'✅ Cleared':'⚠️ Fees Pending'],
+          ].map(([label,val],i)=>(
+            <div key={i}>
+              <div style={{fontSize:10,color:C.text3,textTransform:'uppercase',fontWeight:700,marginBottom:2}}>{label}</div>
+              <div style={{fontSize:13,color:C.text,fontWeight:600}}>{val}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <div style={{marginTop:12}}>
+        <Card theme={C} title={`${reg.semester} — Course Record`}>
+          <div style={{padding:'4px 16px 16px'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+              <thead>
+                <tr style={{borderBottom:`2px solid ${C.border}`}}>
+                  {['Course','Code','Credits','Attendance','Grade','Letter','Status'].map(h=>(
+                    <th key={h} style={{textAlign:'left',padding:'8px 10px',fontSize:10,color:C.text3,textTransform:'uppercase',fontWeight:700}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r,i)=>(
+                  <tr key={i} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?C.bg3:'transparent'}}>
+                    <td style={{padding:'10px 10px',color:C.text,fontWeight:600}}>{r.course.name}</td>
+                    <td style={{padding:'10px 10px',color:C.text2}}>{r.course.code}</td>
+                    <td style={{padding:'10px 10px',color:C.text2}}>3</td>
+                    <td style={{padding:'10px 10px',color:r.att>=75?C.green:r.att>=60?C.amber:C.red,fontWeight:700}}>{r.att}%</td>
+                    <td style={{padding:'10px 10px',color:r.grade!=null?(r.grade>=50?C.green:C.red):C.text3,fontWeight:700}}>{r.grade!=null?`${r.grade}%`:'—'}</td>
+                    <td style={{padding:'10px 10px',fontWeight:700,color:r.grade!=null?gradeColor(r.grade,C):C.text3}}>{r.grade!=null?letterGrade(r.grade):'—'}</td>
+                    <td style={{padding:'10px 10px'}}><Badge text={r.grade!=null?(r.grade>=50?'Pass':'Fail'):'Pending'} color={r.grade!=null?(r.grade>=50?'green':'red'):'amber'} isDark/></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={{display:'flex',justifyContent:'flex-end',marginTop:12,gap:16}}>
+              <div style={{fontSize:12,color:C.text2}}>Total Credit Hours: <strong style={{color:C.text}}>{myCourses.length*3}</strong></div>
+              <div style={{fontSize:12,color:C.text2}}>Semester GPA: <strong style={{color:C.green}}>{semGPA}</strong></div>
+            </div>
+          </div>
+        </Card>
       </div>
     </div>
   );

@@ -30,6 +30,8 @@ const NAV = [
   {id:'doctors',     icon:'👨‍🏫',label:'Lecturers'},
   {id:'courses',     icon:'📚', label:'Courses'},
   {id:'enrollments', icon:'📋', label:'Enrollments'},
+  {id:'appeals',      icon:'📋', label:'Appeals'},
+  {id:'registration', icon:'🏛️', label:'Registration & Fees'},
   {id:'parents',     icon:'👨‍👩‍👧',label:'Parents'},
   {section:'Reports'},
   {id:'r_reports',   icon:'📊', label:'R Reports'},
@@ -40,6 +42,7 @@ const PAGE_TITLES = {
   dashboard:'Dashboard', analytics:'System Analytics', students:'Students',
   doctors:'Lecturers', courses:'Course Management', enrollments:'Enrollment Management',
   parents:'Parents Management', r_reports:'R Analysis Reports', settings:'Settings',
+  appeals:'Appeals Management', registration:'Registration & Fees',
 };
 
 export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogout }) {
@@ -58,6 +61,8 @@ export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogo
             {page==='doctors'     && <AdminDoctors theme={C}/>}
             {page==='courses'     && <AdminCourses theme={C}/>}
             {page==='enrollments' && <AdminEnrollments theme={C}/>}
+            {page==='appeals'      && <AdminAppeals theme={C}/>}
+            {page==='registration' && <AdminRegistration theme={C}/>}
             {page==='parents'     && <AdminParents theme={C}/>}
             {page==='r_reports'   && <AdminRReports theme={C}/>}
             {page==='settings'    && <AdminSettings theme={C}/>}
@@ -638,13 +643,13 @@ function AdminCourses({ theme: C }) {
   const [courses, setCourses]       = useState(store.courses);
   const [showAdd, setShowAdd]       = useState(false);
   const [weeksOpen, setWeeksOpen]   = useState(null); // courseId with weeks panel open
-  const [form, setForm] = useState({name:'',code:'',room:'',time:'09:00',duration:90,doctorId:'',color:'#3b82f6',semester:'Fall 2024',days:[1,4]});
+  const [form, setForm] = useState({name:'',code:'',room:'',time:'09:00',duration:90,doctorId:'',color:'#3b82f6',semester:'Fall 2024',days:[1,4],capacity:300});
 
   function addCourse() {
     if(!form.name.trim()||!form.code.trim()) { alert('Name and code required'); return; }
     if(!form.days.length) { alert('Select at least one lecture day'); return; }
     store.addCourse(form); setCourses([...store.courses]); setShowAdd(false);
-    setForm({name:'',code:'',room:'',time:'09:00',duration:90,doctorId:'',color:'#3b82f6',semester:'Fall 2024',days:[1,4]});
+    setForm({name:'',code:'',room:'',time:'09:00',duration:90,doctorId:'',color:'#3b82f6',semester:'Fall 2024',days:[1,4],capacity:300});
   }
 
   function toggleDay(d) {
@@ -706,6 +711,11 @@ function AdminCourses({ theme: C }) {
               <input value={form.color} onChange={e=>setForm({...form,color:e.target.value})} type="color"
                 style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 4px',cursor:'pointer'}}/>
             </div>
+            <div>
+              <div style={{fontSize:10,color:C.text3,marginBottom:4,textTransform:'uppercase',fontWeight:700}}>Capacity</div>
+              <input value={form.capacity} onChange={e=>setForm({...form,capacity:parseInt(e.target.value)||300})} type="number" min="1" max="1000"
+                style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}/>
+            </div>
           </div>
           {/* Day-of-week picker */}
           <div style={{marginBottom:14}}>
@@ -756,6 +766,10 @@ function AdminCourses({ theme: C }) {
                   <div style={{textAlign:'center'}}>
                     <div style={{fontSize:20,fontWeight:700,color:c.color}}>{c.enrolledCount}</div>
                     <div style={{fontSize:9,color:C.text3}}>Enrolled</div>
+                  </div>
+                  <div style={{textAlign:'center'}}>
+                    <div style={{fontSize:13,fontWeight:700,color:store.isCourseFull(c.id)?C.red:C.text3}}>{c.capacity||'∞'}</div>
+                    <div style={{fontSize:9,color:C.text3}}>Capacity</div>
                   </div>
                   {/* Weeks edit button */}
                   <button
@@ -880,14 +894,200 @@ function AdminEnrollments({ theme: C }) {
                   <div style={{fontSize:11,fontWeight:700,color:C.text}}>{s.name}</div>
                   <div style={{fontSize:10,color:C.text3}}>{s.id}</div>
                 </div>
-                <button onClick={()=>{store.enrollStudent(selCourse,s.id);forceUpdate(n=>n+1);}}
-                  style={{background:C.green_dim,border:`1px solid ${C.green}`,borderRadius:6,padding:'4px 8px',fontSize:10,color:C.green2,cursor:'pointer'}}>Enroll</button>
+                {store.isCourseFull(selCourse) || store.isOnWaitlist(selCourse,s.id)
+                  ? <button onClick={()=>{store.joinWaitlist(selCourse,s.id);forceUpdate(n=>n+1);}}
+                      disabled={store.isOnWaitlist(selCourse,s.id)}
+                      style={{background:C.red_dim,border:`1px solid ${C.amber}`,borderRadius:6,padding:'4px 8px',fontSize:10,color:C.amber,cursor:'pointer',opacity:store.isOnWaitlist(selCourse,s.id)?0.5:1}}>
+                      {store.isOnWaitlist(selCourse,s.id)?'Waitlisted':'+ Waitlist'}
+                    </button>
+                  : <button onClick={()=>{store.enrollStudent(selCourse,s.id);forceUpdate(n=>n+1);}}
+                      style={{background:C.green_dim,border:`1px solid ${C.green}`,borderRadius:6,padding:'4px 8px',fontSize:10,color:C.green2,cursor:'pointer'}}>Enroll</button>
+                }
               </div>
               );
             })}
             {unenrolled.length===0&&<div style={{color:C.text3,fontSize:12,textAlign:'center',padding:'20px 0'}}>All students enrolled</div>}
           </div>
         </Card>
+      </div>
+
+      {/* Waitlist */}
+      {(() => {
+        const waitlist = store.getWaitlist(selCourse);
+        if (!waitlist.length) return null;
+        return (
+          <Card theme={C} title={`Waitlist (${waitlist.length})`} accentColor={C.amber} style={{marginTop:12}}>
+            <div style={{padding:'4px 12px 12px',display:'flex',flexDirection:'column',gap:6}}>
+              {waitlist.map((s,i)=>(
+                <div key={i} style={{display:'flex',alignItems:'center',background:C.bg3,borderRadius:8,padding:'8px 10px',gap:10}}>
+                  <div style={{width:24,height:24,borderRadius:'50%',background:C.amber,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'#fff',flexShrink:0}}>{i+1}</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:11,fontWeight:700,color:C.text}}>{s.name}</div>
+                    <div style={{fontSize:10,color:C.text3}}>{s.id}</div>
+                  </div>
+                  <button onClick={()=>{store.promoteFromWaitlist(selCourse);forceUpdate(n=>n+1);}}
+                    style={{background:C.green_dim,border:`1px solid ${C.green}`,borderRadius:6,padding:'4px 8px',fontSize:10,color:C.green2,cursor:'pointer'}}>
+                    ↑ Promote
+                  </button>
+                  <button onClick={()=>{store.removeFromWaitlist(selCourse,s.id);forceUpdate(n=>n+1);}}
+                    style={{background:C.red_dim,border:`1px solid ${C.red}`,borderRadius:6,padding:'4px 8px',fontSize:10,color:C.red2,cursor:'pointer'}}>
+                    Remove
+                  </button>
+                </div>
+              ))}
+              <button onClick={()=>{store.promoteFromWaitlist(selCourse);forceUpdate(n=>n+1);}}
+                style={{background:C.green,border:'none',borderRadius:8,padding:'8px',fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer',marginTop:4}}>
+                ↑ Promote Next Person
+              </button>
+            </div>
+          </Card>
+        );
+      })()}
+    </div>
+  );
+}
+
+/* ── ADMIN APPEALS ── */
+function AdminAppeals({ theme: C }) {
+  const [complaints, setComplaints] = useState(store.getAllComplaints());
+  const [filter, setFilter] = useState('all');
+  const [response, setResponse] = useState({});
+
+  function resolve(id) {
+    const text = response[id]?.trim();
+    store.updateComplaint(id, { status:'resolved', adminResponse: text||'Reviewed and resolved by admin.' });
+    setComplaints(store.getAllComplaints());
+    setResponse(r=>({...r,[id]:''}));
+  }
+
+  const statusColor = { pending:'amber', reviewed:'blue', resolved:'green' };
+  const typeLabel   = { absence_excuse:'Absence Excuse', grade_appeal:'Grade Appeal', general:'General Complaint' };
+  const filtered    = filter==='all' ? complaints : complaints.filter(c=>c.status===filter);
+
+  return (
+    <div style={{padding:'8px 20px 20px'}}>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:4}}>Appeals Management</div>
+      <div style={{fontSize:12,color:C.text3,marginBottom:12}}>{complaints.filter(c=>c.status==='pending').length} pending · {complaints.filter(c=>c.status==='reviewed').length} reviewed · {complaints.filter(c=>c.status==='resolved').length} resolved</div>
+
+      <div style={{display:'flex',gap:8,marginBottom:16}}>
+        {['all','pending','reviewed','resolved'].map(s=>(
+          <button key={s} onClick={()=>setFilter(s)}
+            style={{padding:'6px 14px',borderRadius:8,fontSize:12,fontWeight:700,cursor:'pointer',
+              background:filter===s?C.blue3:C.bg3, border:`1px solid ${filter===s?C.blue3:C.border}`,
+              color:filter===s?'#fff':C.text2}}>
+            {s.charAt(0).toUpperCase()+s.slice(1)} {s!=='all'?`(${complaints.filter(c=>c.status===s).length})`:''}
+          </button>
+        ))}
+      </div>
+
+      {filtered.length===0
+        ? <div style={{textAlign:'center',color:C.text3,padding:40,fontSize:13}}>No {filter==='all'?'':filter} appeals.</div>
+        : filtered.map((c,i)=>(
+        <div key={i} style={{background:C.card,borderRadius:14,border:`1px solid ${c.status==='pending'?C.amber:C.border}`,padding:18,marginBottom:12}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10,flexWrap:'wrap'}}>
+            <Badge text={typeLabel[c.type]||c.type} color="blue" isDark/>
+            <Badge text={c.status.charAt(0).toUpperCase()+c.status.slice(1)} color={statusColor[c.status]} isDark/>
+            <span style={{fontSize:12,color:C.text,fontWeight:700}}>{c.studentName}</span>
+            <span style={{fontSize:11,color:C.text3}}>— {c.courseName||'No course'}</span>
+            <span style={{fontSize:10,color:C.text3,marginLeft:'auto'}}>{c.createdAt} · Updated {c.updatedAt}</span>
+          </div>
+          <div style={{fontSize:13,color:C.text,marginBottom:10,lineHeight:1.5}}>{c.description}</div>
+          {c.doctorResponse && <div style={{background:C.bg3,borderRadius:8,padding:'8px 12px',fontSize:12,color:C.text2,marginBottom:8}}><strong>Doctor:</strong> {c.doctorResponse}</div>}
+          {c.adminResponse  && <div style={{background:C.bg3,borderRadius:8,padding:'8px 12px',fontSize:12,color:C.text2,marginBottom:8}}><strong>Admin:</strong> {c.adminResponse}</div>}
+          {c.status!=='resolved' && (
+            <div style={{display:'flex',gap:8,marginTop:8}}>
+              <input value={response[c.id]||''} onChange={e=>setResponse(r=>({...r,[c.id]:e.target.value}))}
+                placeholder="Admin response (optional)..."
+                style={{flex:1,height:34,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}/>
+              <button onClick={()=>resolve(c.id)}
+                style={{background:C.green,border:'none',borderRadius:8,padding:'0 16px',fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer'}}>
+                ✅ Resolve
+              </button>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── ADMIN REGISTRATION & FEES ── */
+function AdminRegistration({ theme: C }) {
+  const [reg, setReg] = useState(store.getRegistrationStatus());
+  const [search, setSearch]   = useState('');
+  const [, forceUpdate] = useState(0);
+
+  function toggleReg() {
+    store.setRegistrationStatus({ open: !reg.open });
+    setReg({ ...store.getRegistrationStatus() });
+  }
+
+  function toggleFee(studentId) {
+    const current = store.getStudentFeeStatus(studentId);
+    store.setStudentFeeStatus(studentId, { paid: !current.paid });
+    forceUpdate(n=>n+1);
+  }
+
+  const q = search.toLowerCase();
+  const students = q ? store.students.filter(s=>(s.name||'').toLowerCase().includes(q)||(s.id||'').toLowerCase().includes(q)) : store.students;
+
+  return (
+    <div style={{padding:'8px 20px 20px'}}>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>Registration & Fees</div>
+
+      <Card theme={C} title="Semester Registration">
+        <div style={{padding:'4px 16px 16px',display:'flex',alignItems:'center',gap:20}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:14,fontWeight:700,color:C.text}}>{reg.semester}</div>
+            <div style={{fontSize:12,color:C.text3,marginTop:2}}>Registration deadline: {reg.deadline}</div>
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:12}}>
+            <Badge text={reg.open?'Open':'Closed'} color={reg.open?'green':'red'} isDark/>
+            <button onClick={toggleReg}
+              style={{background:reg.open?C.red_dim:C.green_dim,border:`1px solid ${reg.open?C.red:C.green}`,borderRadius:8,padding:'8px 16px',fontSize:12,fontWeight:700,color:reg.open?C.red2:C.green2,cursor:'pointer'}}>
+              {reg.open?'🔒 Close Registration':'🔓 Open Registration'}
+            </button>
+          </div>
+        </div>
+        <div style={{padding:'0 16px 16px',display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+          <div>
+            <div style={{fontSize:10,color:C.text3,textTransform:'uppercase',fontWeight:700,marginBottom:4}}>Semester Name</div>
+            <input value={reg.semester} onChange={e=>{store.setRegistrationStatus({semester:e.target.value});setReg({...store.getRegistrationStatus()});}}
+              style={{width:'100%',height:34,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}/>
+          </div>
+          <div>
+            <div style={{fontSize:10,color:C.text3,textTransform:'uppercase',fontWeight:700,marginBottom:4}}>Deadline</div>
+            <input type="date" value={reg.deadline} onChange={e=>{store.setRegistrationStatus({deadline:e.target.value});setReg({...store.getRegistrationStatus()});}}
+              style={{width:'100%',height:34,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}/>
+          </div>
+        </div>
+      </Card>
+
+      <div style={{marginTop:16}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+          <div style={{fontSize:15,fontWeight:700,color:C.text,flex:1}}>Student Fees</div>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search student..."
+            style={{height:34,background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 12px',fontSize:12,color:C.text,width:200}}/>
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:500,overflowY:'auto'}}>
+          {students.map((s,i)=>{
+            const fee = store.getStudentFeeStatus(s.id);
+            return (
+              <div key={i} style={{display:'flex',alignItems:'center',background:C.card,borderRadius:10,border:`1px solid ${C.border}`,padding:'10px 14px',gap:10}}>
+                <div style={{width:32,height:32,borderRadius:'50%',background:s.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,flexShrink:0}}>{s.emoji}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:12,fontWeight:700,color:C.text}}>{s.name}</div>
+                  <div style={{fontSize:10,color:C.text3}}>{s.id} · {s.dept}</div>
+                </div>
+                <Badge text={fee.paid?'Paid':'Unpaid'} color={fee.paid?'green':'red'} isDark/>
+                <button onClick={()=>toggleFee(s.id)}
+                  style={{background:fee.paid?C.red_dim:C.green_dim,border:`1px solid ${fee.paid?C.red:C.green}`,borderRadius:6,padding:'5px 12px',fontSize:11,fontWeight:700,color:fee.paid?C.red2:C.green2,cursor:'pointer'}}>
+                  {fee.paid?'Mark Unpaid':'Mark Paid'}
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
