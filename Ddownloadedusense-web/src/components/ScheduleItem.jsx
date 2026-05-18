@@ -16,7 +16,7 @@ export default function ScheduleItem({ theme: C, lecture, onClick }) {
 
       <div style={{ padding: '12px 14px', flex: 1 }}>
         <div style={{ fontSize: 10, color: C.text3, marginBottom: 2 }}>
-          {lecture.time} · {lecture.duration} min
+          {lecture.time} · {lecture.duration} min{lecture.daysLabel ? ` · ${lecture.daysLabel}` : ''}
         </div>
         <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 2 }}>
           {lecture.name}

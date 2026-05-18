@@ -146,21 +146,27 @@ class DataStore {
   }
 
   _makeLectures(){
-    const times  = ['09:00','11:00','13:00','15:00','17:00'];
-    const doctors= ['Dr. Ahmed Smith','Dr. Laila Hassan','Dr. Khalid Omar','Dr. Sara Nour','Dr. Ahmed Smith'];
-    const docIds = ['D001','D002','D003','D004','D001'];
+    const times   = ['09:00','11:00','13:00','15:00','17:00'];
+    const doctors = ['Dr. Ahmed Smith','Dr. Laila Hassan','Dr. Khalid Omar','Dr. Sara Nour','Dr. Ahmed Smith'];
+    const docIds  = ['D001','D002','D003','D004','D001'];
+    // Each course meets on two weekdays (JS: 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu)
+    const courseDays      = [[0,3],[1,4],[2,4],[0,3],[1,3]]; // Sun&Wed, Mon&Thu, Tue&Thu, Sun&Wed, Mon&Wed
+    const courseDaysLabel = ['Sun & Wed','Mon & Thu','Tue & Thu','Sun & Wed','Mon & Wed'];
     const now    = new Date();
+    const today  = now.getDay();
     const nowMin = now.getHours() * 60 + now.getMinutes();
-    const getStatus = (time) => {
+    const getStatus = (time, days) => {
+      if (!days.includes(today)) return 'scheduled';
       const [h, m] = time.split(':').map(Number);
       const start  = h * 60 + m;
       if (nowMin >= start && nowMin < start + 90) return 'active';
-      if (nowMin < start) return 'scheduled';
-      return 'scheduled'; // past sessions stay as scheduled (not ended) in the weekly view
+      return 'scheduled';
     };
     return COURSE_DATA.map(([name,code,room,color],i)=>({
       id:`L${String(i+1).padStart(3,'0')}`,name,code,room,color,
-      time:times[i],duration:90,status:getStatus(times[i]),
+      time:times[i],duration:90,
+      days:courseDays[i],daysLabel:courseDaysLabel[i],
+      status:getStatus(times[i],courseDays[i]),
       students:this._ri(28,48),present:this._ri(20,40),
       avgEngagement:this._ri(50,90),avgAttention:this._ri(45,85),
       dominantEmotion:EMOTIONS[i%EMOTIONS.length],
@@ -169,12 +175,15 @@ class DataStore {
   }
 
   _makeCourses(){
-    const doctors=['D001','D002','D003','D004','D001'];
-    const dnames=['Dr. Ahmed Smith','Dr. Laila Hassan','Dr. Khalid Omar','Dr. Sara Nour','Dr. Ahmed Smith'];
-    const times=['09:00','11:00','13:00','15:00','17:00'];
+    const doctors     = ['D001','D002','D003','D004','D001'];
+    const dnames      = ['Dr. Ahmed Smith','Dr. Laila Hassan','Dr. Khalid Omar','Dr. Sara Nour','Dr. Ahmed Smith'];
+    const times       = ['09:00','11:00','13:00','15:00','17:00'];
+    const courseDays  = [[0,3],[1,4],[2,4],[0,3],[1,3]];
+    const daysLabels  = ['Sun & Wed','Mon & Thu','Tue & Thu','Sun & Wed','Mon & Wed'];
     return COURSE_DATA.map(([name,code,room,color],i)=>({
       id:code,name,code,room,color,
       time:times[i],duration:90,
+      days:courseDays[i],daysLabel:daysLabels[i],
       doctorId:doctors[i],doctorName:dnames[i],
       weeks:Array.from({length:16},(_,k)=>k+1),
       semester:'Fall 2024',enrolledCount:0,

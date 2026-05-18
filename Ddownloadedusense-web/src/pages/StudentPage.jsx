@@ -261,9 +261,15 @@ function StudentDashboard({ theme: C, user, stu }) {
 
       {/* Bottom row */}
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-        <Card theme={C} title="Today's Schedule">
+        <Card theme={C} title={`Today's Schedule (${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date().getDay()]})`}>
           <div style={{ padding:'0 12px 12px', display:'flex', flexDirection:'column', gap:6 }}>
-            {store.lectures.slice(0,3).map((lec,i)=><ScheduleItem key={i} theme={C} lecture={lec}/>)}
+            {(() => {
+              const today = new Date().getDay();
+              const todayLecs = store.lectures.filter(l => l.days && l.days.includes(today));
+              if (todayLecs.length === 0)
+                return <div style={{ padding:'16px 0', textAlign:'center', color:C.text3, fontSize:12 }}>No lectures scheduled for today.</div>;
+              return todayLecs.map((lec,i) => <ScheduleItem key={i} theme={C} lecture={lec}/>);
+            })()}
           </div>
         </Card>
         <Card theme={C} title="Emotion Log Today">
@@ -541,7 +547,7 @@ function StudentSchedule({ theme: C, stu }) {
               <div key={i} style={{ background:C.bg3, borderRadius:10, display:'flex', overflow:'hidden' }}>
                 <div style={{ width:5, background:course.color, flexShrink:0 }}/>
                 <div style={{ padding:'12px 14px', flex:1 }}>
-                  <div style={{ fontSize:10, color:C.text3 }}>{course.time} · {course.duration} min</div>
+                  <div style={{ fontSize:10, color:C.text3 }}>{course.time} · {course.duration} min{course.daysLabel ? ` · ${course.daysLabel}` : ''}</div>
                   <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{course.name}</div>
                   <div style={{ fontSize:10, color:C.text2 }}>{course.room} · {course.code} · {course.doctorName}</div>
                   <div style={{ fontSize:10, color:C.text3 }}>{course.semester}</div>

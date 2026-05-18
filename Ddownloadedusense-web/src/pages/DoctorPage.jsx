@@ -105,9 +105,15 @@ function DocDashboard({ theme: C, doctor, myCourses }) {
         </Card>
       </div>
 
-      <Card theme={C} title="My Lectures Today">
+      <Card theme={C} title={`My Lectures Today (${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date().getDay()]})`}>
         <div style={{padding:'4px 14px 14px',display:'flex',flexDirection:'column',gap:8}}>
-          {store.lectures.slice(0,3).map((lec,i)=><ScheduleItem key={i} theme={C} lecture={lec}/>)}
+          {(() => {
+            const today = new Date().getDay();
+            const todayLecs = store.lectures.filter(l => l.days && l.days.includes(today));
+            if (todayLecs.length === 0)
+              return <div style={{padding:'16px 0',textAlign:'center',color:C.text3,fontSize:12}}>No lectures scheduled for today.</div>;
+            return todayLecs.map((lec,i)=><ScheduleItem key={i} theme={C} lecture={lec}/>);
+          })()}
         </div>
       </Card>
     </div>
@@ -500,7 +506,7 @@ function DocLectures({ theme: C, myCourses }) {
               <div style={{padding:'16px 20px',flex:1,display:'flex',alignItems:'center',gap:20}}>
                 <div style={{flex:1}}>
                   <div style={{fontSize:16,fontWeight:700,color:C.text}}>{c.name}</div>
-                  <div style={{fontSize:11,color:C.text2,marginTop:2}}>{c.code} · {c.room} · {c.time} · {c.duration} min</div>
+                  <div style={{fontSize:11,color:C.text2,marginTop:2}}>{c.code} · {c.room} · {c.time} · {c.duration} min{c.daysLabel ? ` · ${c.daysLabel}` : ''}</div>
                   <div style={{fontSize:11,color:C.text3}}>Semester: {c.semester}</div>
                 </div>
                 <div style={{textAlign:'center'}}>
