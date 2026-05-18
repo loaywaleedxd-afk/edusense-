@@ -211,6 +211,10 @@ class DataStore {
         ? Math.round(stuList.reduce((a, s) => a + (s.attendanceRate ?? s.engagement ?? 0), 0) / stuList.length)
         : 0;
     });
+    // Recompute aggregates so they reflect actual student data after localStorage restore
+    this.emotionDist = this._makeEmoDist();
+    this.trendData   = this._makeTrend();
+    this.alerts      = this._makeAlerts();
   }
 
   _makeUsers(){
@@ -259,28 +263,52 @@ class DataStore {
   }
 
   _makeEmoDist(){
-    const ws=[0.32,0.28,0.14,0.10,0.08,0.05,0.02,0.01];
-    const es=['neutral','happy','confused','bored','surprise','sad','angry','fear'];
-    return es.map((e,i)=>({emotion:e,count:Math.floor(1200*ws[i]),pct:Math.floor(ws[i]*100),color:this._emoColor(e)}));
+    // Count actual student emotions from store data
+    const counts = {};
+    this.students.forEach(s => {
+      const e = (s.emotion || 'neutral').toLowerCase();
+      counts[e] = (counts[e] || 0) + 1;
+    });
+    const total = this.students.length || 1;
+    const order = ['neutral','happy','confused','bored','surprise','sad','angry','fear'];
+    return order
+      .map(e => ({ emotion:e, count:counts[e]||0, pct:Math.round(((counts[e]||0)/total)*100), color:this._emoColor(e) }))
+      .filter(d => d.count > 0)
+      .sort((a, b) => b.count - a.count);
   }
 
   _makeTrend(){
+    // Base on actual student averages, vary ±8 per week via seeded RNG
+    const total = this.students.length || 1;
+    const avgEng = Math.round(this.students.reduce((a,s)=>a+(s.engagement||70),0)/total);
+    const avgAtt = Math.round(this.students.reduce((a,s)=>a+(s.attendanceRate||75),0)/total);
     return {
-      labels:Array.from({length:16},(_,i)=>`W${i+1}`),
-      engagement:Array.from({length:16},()=>this._ri(45,92)),
-      attention:Array.from({length:16},()=>this._ri(40,88)),
+      labels:     Array.from({length:16}, (_,i) => `W${i+1}`),
+      engagement: Array.from({length:16}, () => Math.min(100,Math.max(30, avgEng + this._ri(-8,8)))),
+      attention:  Array.from({length:16}, () => Math.min(100,Math.max(25, avgAtt + this._ri(-10,10)))),
     };
   }
 
   _makeAlerts(){
-    const s0 = this.students[1]?.name || 'Ahmed Hassan';
-    const s1 = this.students[2]?.name || 'Nour Ali';
-    const s2 = this.students[3]?.name || 'Mohamed Karim';
-    return [
-      {type:'warning',msg:'Engagement dropped below 40%',student:s0,lecture:'CS401',severity:'Warning',time:'10:23',details:'Engagement dropped to 32%'},
-      {type:'info',msg:'Student distracted for 15+ minutes',student:s1,lecture:'CS402',severity:'Info',time:'11:15',details:'Attention score below threshold'},
-      {type:'critical',msg:'Student not detected in session',student:s2,lecture:'CS403',severity:'Critical',time:'13:05',details:'Not detected in session'},
-    ];
+    const alerts = [];
+    const lowEng = this.students.filter(s=>(s.engagement||100)<45).slice(0,2);
+    lowEng.forEach(s=>{
+      const course = this.courses[0];
+      alerts.push({type:'warning',msg:`Engagement dropped below 45%`,student:s.name,
+        lecture:course?.code||'CS401',severity:'Warning',time:'10:23',details:`Engagement at ${s.engagement}%`});
+    });
+    const lowAtt = this.students.filter(s=>(s.attendanceRate||100)<60).slice(0,2);
+    lowAtt.forEach(s=>{
+      const course = this.courses[2];
+      alerts.push({type:'critical',msg:`Critical attendance alert`,student:s.name,
+        lecture:course?.code||'CS403',severity:'Critical',time:'13:05',details:`Attendance at ${s.attendanceRate}%`});
+    });
+    if(!alerts.length){
+      const s0=this.students[0];
+      alerts.push({type:'info',msg:'System running normally',student:s0?.name||'—',
+        lecture:'—',severity:'Info',time:'—',details:'All metrics within normal range'});
+    }
+    return alerts.slice(0,4);
   }
 
   // Returns the URL to display a student's photo, or null if not available

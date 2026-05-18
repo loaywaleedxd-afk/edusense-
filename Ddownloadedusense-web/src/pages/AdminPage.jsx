@@ -139,15 +139,21 @@ function AdminDashboard({ theme: C }) {
 
 /* ── ANALYTICS ── */
 function AdminAnalytics({ theme: C }) {
+  const totalEnrolled = store.courses.reduce((a,c)=>a+(store.courseEnrollments[c.id]||[]).length,0);
+  const atRisk        = store.students.filter(s=>(s.attendanceRate||100)<65||(s.engagement||100)<40).length;
+  const avgAtt        = store.students.length
+    ? Math.round(store.students.reduce((a,s)=>a+(s.attendanceRate||0),0)/store.students.length)
+    : 0;
+
   return (
     <div style={{padding:'8px 20px 20px'}}>
       <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>System Analytics</div>
 
       <div style={{display:'flex',gap:12,marginBottom:12}}>
-        <StatCard theme={C} label="System Uptime"    value="99.9%" sub="Last 30 days"     icon="✅" accent="green"/>
-        <StatCard theme={C} label="Sessions Tracked" value="1,240" sub="This semester"    icon="📷" accent="blue"/>
-        <StatCard theme={C} label="Detections Made"  value="48.2K" sub="Total face scans" icon="🔍" accent="purple"/>
-        <StatCard theme={C} label="Reports Generated"value="384"   sub="PDFs exported"    icon="📄" accent="amber"/>
+        <StatCard theme={C} label="Avg Attendance"   value={`${avgAtt}%`}           sub="Across all students"   icon="✅" accent="green"/>
+        <StatCard theme={C} label="Total Enrollments" value={totalEnrolled.toLocaleString()} sub="Across all courses" icon="📋" accent="blue"/>
+        <StatCard theme={C} label="At-Risk Students"  value={atRisk}                 sub="Attendance<65% or Eng<40%" icon="⚠️" accent="purple"/>
+        <StatCard theme={C} label="Courses Running"   value={store.courses.length}   sub="This semester"        icon="📚" accent="amber"/>
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
