@@ -25,7 +25,7 @@ const NAV = [
   {id:'chat',      icon:'💬', label:'Community'},
   {id:'analytics', icon:'📊', label:'Analytics'},
   {id:'detector',  icon:'🎯', label:'Topic Detector'},
-  {id:'alerts',    icon:'🔔', label:'Alerts', badge:()=>store.getAlerts(true).length||0},
+  {id:'alerts',    icon:'🔔', label:'Alerts'},
   {id:'moodle',    icon:'🌐', label:'Moodle'},
   {id:'ranalysis', icon:'📈', label:'R Analysis'},
   {id:'appeals',       icon:'📋', label:'Appeals'},
@@ -51,9 +51,15 @@ export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLog
   const doctor = store.getDoctor(user.doctorId||'') || store.doctors[0];
   const myCourses = store.getDoctorCourses(doctor.id);
 
+  const nav = NAV.map(item =>
+    item.id === 'alerts'
+      ? { ...item, badge: () => store.getUserNotifications(user).filter(a => !a.read).length || 0 }
+      : item
+  );
+
   return (
     <div style={{display:'flex',height:'100%',background:C.bg,overflow:'hidden'}}>
-      <Sidebar theme={C} navItems={NAV} activeId={page} onNav={setPage}/>
+      <Sidebar theme={C} navItems={nav} activeId={page} onNav={setPage}/>
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
         <Topbar theme={C} user={user} pageTitle={PAGE_TITLES[page]||page} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout}/>
         <div className="content-scroll" style={{flex:1,overflowY:'auto',background:C.bg}}>
@@ -67,7 +73,7 @@ export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLog
             {page==='chat'       && <DocChat theme={C} user={user} doctor={doctor} myCourses={myCourses}/>}
             {page==='analytics'  && <DocAnalytics theme={C}/>}
             {page==='detector'   && <DocTopicDetector theme={C} doctor={doctor} myCourses={myCourses}/>}
-            {page==='alerts'     && <DocAlerts theme={C}/>}
+            {page==='alerts'     && <DocAlerts theme={C} user={user}/>}
             {page==='moodle'     && <DocMoodle theme={C}/>}
             {page==='ranalysis'  && <DocRAnalysis theme={C}/>}
             {page==='appeals'       && <DocAppeals theme={C} doctor={doctor} myCourses={myCourses}/>}
@@ -1413,9 +1419,9 @@ function DocAnalytics({ theme: C }) {
 }
 
 /* ── ALERTS ── */
-function DocAlerts({ theme: C }) {
+function DocAlerts({ theme: C, user }) {
   const [, refresh] = useState(0);
-  const alerts = store.getAlerts();
+  const alerts = store.getUserNotifications(user);
   const unread = alerts.filter(a=>!a.read).length;
 
   const typeStyle = {
@@ -1431,7 +1437,7 @@ function DocAlerts({ theme: C }) {
         <div style={{fontSize:22,fontWeight:700,color:C.text}}>🔔 Alerts</div>
         {unread>0 && <span style={{background:'#ef4444',color:'#fff',borderRadius:20,padding:'2px 10px',fontSize:11,fontWeight:800}}>{unread} new</span>}
         <div style={{flex:1}}/>
-        {unread>0 && <button onClick={()=>{store.markAllAlertsRead();refresh(n=>n+1);}}
+        {unread>0 && <button onClick={()=>{store.markAllUserAlertsRead(user);refresh(n=>n+1);}}
           style={{background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'6px 14px',fontSize:11,color:C.text2,cursor:'pointer'}}>
           Mark all read
         </button>}
