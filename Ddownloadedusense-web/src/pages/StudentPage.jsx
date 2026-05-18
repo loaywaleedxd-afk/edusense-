@@ -30,26 +30,34 @@ const NAV_BASE = [
   { id:'resources',     icon:'📖', label:'Study Resources' },
 ];
 
-function loadSeen(stuId) {
-  try { return new Set(JSON.parse(localStorage.getItem(`es_seen_${stuId}`) || '[]')); }
-  catch { return new Set(); }
+function loadLastSeen(stuId) {
+  try { return JSON.parse(localStorage.getItem(`es_lastseen_${stuId}`) || '{}'); }
+  catch { return {}; }
 }
-function markSeen(stuId, pageId) {
-  const s = loadSeen(stuId); s.add(pageId);
-  localStorage.setItem(`es_seen_${stuId}`, JSON.stringify([...s]));
+function saveLastSeen(stuId, pageId) {
+  const data = loadLastSeen(stuId);
+  data[pageId] = Date.now();
+  localStorage.setItem(`es_lastseen_${stuId}`, JSON.stringify(data));
 }
 
-function buildNav(stuId, visited) {
+function buildNav(stuId, lastSeen) {
   const today = new Date().toISOString().slice(0,10);
-  const week7 = Date.now() - 7*24*3600*1000;
   return NAV_BASE.map(item => {
     if (item.id === 'announcements') return {
       ...item,
-      badge: () => visited.has('announcements') ? 0 : store.getStudentAnnouncements(stuId).filter(a => new Date(a.createdAt).getTime() > week7).length || 0,
+      badge: () => {
+        const since = lastSeen.announcements || 0;
+        return store.getStudentAnnouncements(stuId)
+          .filter(a => new Date(a.createdAt).getTime() > since).length || 0;
+      },
     };
     if (item.id === 'exams') return {
       ...item,
-      badge: () => visited.has('exams') ? 0 : store.getStudentExams(stuId).filter(e => e.date >= today).length || 0,
+      badge: () => {
+        const since = lastSeen.exams || 0;
+        return store.getStudentExams(stuId)
+          .filter(e => e.date >= today && new Date(e.createdAt || 0).getTime() > since).length || 0;
+      },
     };
     return item;
   });
@@ -187,14 +195,14 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
   const stu = store.getStudent(sid) || store.students[0];
   const stuId = stu?.id || sid;
 
-  const [visited, setVisited] = useState(() => loadSeen(stuId));
-  const nav = buildNav(stuId, visited);
+  const [lastSeen, setLastSeen] = useState(() => loadLastSeen(stuId));
+  const nav = buildNav(stuId, lastSeen);
 
   function navigate(id) {
     setPage(id);
     if (id === 'announcements' || id === 'exams') {
-      markSeen(stuId, id);
-      setVisited(prev => new Set([...prev, id]));
+      saveLastSeen(stuId, id);
+      setLastSeen(loadLastSeen(stuId));
     }
   }
 
