@@ -445,9 +445,13 @@ class DataStore {
   addCourse(data){
     const code=(data.code||`C${String(this.courses.length+1).padStart(3,'0')}`).toUpperCase();
     const doctor = this.getDoctor(data.doctorId||'');
+    const days = Array.isArray(data.days) && data.days.length ? data.days : [1,4];
+    const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const daysLabel = days.map(d=>DAY_NAMES[d]).join(' & ');
     const course={id:code,name:data.name||'New Course',code,room:data.room||'',
       color:data.color||'#3b82f6',time:data.time||'09:00',duration:parseInt(data.duration)||90,
       doctorId:data.doctorId||'',doctorName:doctor?doctor.name:'Unassigned',
+      days, daysLabel,
       weeks:data.weeks||Array.from({length:16},(_,k)=>k+1),
       semester:data.semester||'Fall 2024',enrolledCount:0};
     this.courses.push(course); this.courseEnrollments[code]=[]; this._persist(); return course;

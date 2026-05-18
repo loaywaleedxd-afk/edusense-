@@ -638,12 +638,17 @@ function AdminCourses({ theme: C }) {
   const [courses, setCourses]       = useState(store.courses);
   const [showAdd, setShowAdd]       = useState(false);
   const [weeksOpen, setWeeksOpen]   = useState(null); // courseId with weeks panel open
-  const [form, setForm] = useState({name:'',code:'',room:'',time:'09:00',duration:90,doctorId:'',color:'#3b82f6',semester:'Fall 2024'});
+  const [form, setForm] = useState({name:'',code:'',room:'',time:'09:00',duration:90,doctorId:'',color:'#3b82f6',semester:'Fall 2024',days:[1,4]});
 
   function addCourse() {
     if(!form.name.trim()||!form.code.trim()) { alert('Name and code required'); return; }
+    if(!form.days.length) { alert('Select at least one lecture day'); return; }
     store.addCourse(form); setCourses([...store.courses]); setShowAdd(false);
-    setForm({name:'',code:'',room:'',time:'09:00',duration:90,doctorId:'',color:'#3b82f6',semester:'Fall 2024'});
+    setForm({name:'',code:'',room:'',time:'09:00',duration:90,doctorId:'',color:'#3b82f6',semester:'Fall 2024',days:[1,4]});
+  }
+
+  function toggleDay(d) {
+    setForm(f => ({...f, days: f.days.includes(d) ? f.days.filter(x=>x!==d) : [...f.days,d].sort((a,b)=>a-b)}));
   }
 
   function deleteCourse(id) {
@@ -702,6 +707,25 @@ function AdminCourses({ theme: C }) {
                 style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 4px',cursor:'pointer'}}/>
             </div>
           </div>
+          {/* Day-of-week picker */}
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:10,color:C.text3,marginBottom:8,textTransform:'uppercase',fontWeight:700}}>Lecture Days</div>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+              {[['Sun',0],['Mon',1],['Tue',2],['Wed',3],['Thu',4]].map(([label,d])=>{
+                const active = form.days.includes(d);
+                return (
+                  <button key={d} onClick={()=>toggleDay(d)} type="button"
+                    style={{padding:'6px 14px',borderRadius:8,fontSize:12,fontWeight:700,cursor:'pointer',
+                      background: active ? C.blue3 : C.bg3,
+                      border: `1px solid ${active ? C.blue3 : C.border}`,
+                      color: active ? '#fff' : C.text2}}>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+            {form.days.length === 0 && <div style={{fontSize:10,color:C.red2,marginTop:4}}>Select at least one day</div>}
+          </div>
           <div style={{display:'flex',gap:8}}>
             <button onClick={addCourse} style={{background:C.green,border:'none',borderRadius:8,padding:'8px 20px',fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer'}}>✅ Add Course</button>
             <button onClick={()=>setShowAdd(false)} style={{background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 14px',fontSize:12,color:C.text2,cursor:'pointer'}}>Cancel</button>
@@ -721,7 +745,7 @@ function AdminCourses({ theme: C }) {
                 <div style={{padding:'14px 18px',flex:1,display:'flex',alignItems:'center',gap:16}}>
                   <div style={{flex:1}}>
                     <div style={{fontSize:14,fontWeight:700,color:C.text}}>{c.name}</div>
-                    <div style={{fontSize:11,color:C.text2,marginTop:2}}>{c.code} · {c.room} · {c.time} · {c.duration} min</div>
+                    <div style={{fontSize:11,color:C.text2,marginTop:2}}>{c.code} · {c.room} · {c.time} · {c.duration} min{c.daysLabel ? ` · 📅 ${c.daysLabel}` : ''}</div>
                     <div style={{fontSize:11,color:C.text3}}>👨‍🏫 {c.doctorName} · {c.semester}</div>
                   </div>
                   {/* Week count badge */}
@@ -788,24 +812,36 @@ function AdminCourses({ theme: C }) {
 /* ── ENROLLMENTS ── */
 function AdminEnrollments({ theme: C }) {
   const [selCourse, setSelCourse] = useState(store.courses[0]?.id||'');
+  const [search, setSearch]       = useState('');
   const [, forceUpdate] = useState(0);
 
-  const enrolled   = selCourse ? store.getEnrolledStudents(selCourse) : [];
-  const unenrolled = selCourse ? store.getUnenrolledStudents(selCourse) : [];
+  const q          = search.toLowerCase();
+  const filterList = list => q ? list.filter(s=>(s.name||'').toLowerCase().includes(q)||(s.id||'').toLowerCase().includes(q)) : list;
+
+  const enrolled   = filterList(selCourse ? store.getEnrolledStudents(selCourse)   : []);
+  const unenrolled = filterList(selCourse ? store.getUnenrolledStudents(selCourse) : []);
+  const totalEnrolled   = selCourse ? store.getEnrolledStudents(selCourse).length   : 0;
+  const totalUnenrolled = selCourse ? store.getUnenrolledStudents(selCourse).length : 0;
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
       <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>Enrollment Management</div>
 
-      <div style={{marginBottom:12}}>
+      <div style={{display:'flex',gap:10,marginBottom:12,flexWrap:'wrap'}}>
         <select value={selCourse} onChange={e=>setSelCourse(e.target.value)}
           style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 12px',fontSize:12,color:C.text}}>
           {store.courses.map(c=><option key={c.id} value={c.id}>{c.name} ({c.code})</option>)}
         </select>
+        <input
+          value={search} onChange={e=>setSearch(e.target.value)}
+          placeholder="Search by name or ID…"
+          style={{flex:1,minWidth:180,background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 12px',fontSize:12,color:C.text}}
+        />
+        {search && <button onClick={()=>setSearch('')} style={{background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 12px',fontSize:12,color:C.text2,cursor:'pointer'}}>✕ Clear</button>}
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-        <Card theme={C} title={`Enrolled (${enrolled.length})`} accentColor={C.green}>
+        <Card theme={C} title={`Enrolled (${enrolled.length}${q ? ` of ${totalEnrolled}` : ''})`} accentColor={C.green}>
           <div style={{padding:'4px 12px 12px',display:'flex',flexDirection:'column',gap:6,maxHeight:400,overflowY:'auto'}}>
             {enrolled.map((s,i)=>{
               const photo = s.capturedPhoto || store.getPhotoUrl(s);
@@ -829,7 +865,7 @@ function AdminEnrollments({ theme: C }) {
           </div>
         </Card>
 
-        <Card theme={C} title={`Available to Enroll (${unenrolled.length})`} accentColor={C.blue}>
+        <Card theme={C} title={`Available to Enroll (${unenrolled.length}${q ? ` of ${totalUnenrolled}` : ''})`} accentColor={C.blue}>
           <div style={{padding:'4px 12px 12px',display:'flex',flexDirection:'column',gap:6,maxHeight:400,overflowY:'auto'}}>
             {unenrolled.map((s,i)=>{
               const photo = s.capturedPhoto || store.getPhotoUrl(s);
