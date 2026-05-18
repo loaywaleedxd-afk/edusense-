@@ -12,7 +12,7 @@ import WebcamFeed from '../components/WebcamFeed';
 import store from '../dataStore';
 import { EMOTION_ICONS } from '../theme';
 
-const NAV = [
+const NAV_BASE = [
   { id:'dashboard',  icon:'📊', label:'Dashboard' },
   { id:'attendance', icon:'✅', label:'My Attendance' },
   { id:'emotions',   icon:'😊', label:'My Emotions' },
@@ -29,6 +29,22 @@ const NAV = [
   { id:'degreeaudit',   icon:'🏛️', label:'Degree Audit' },
   { id:'resources',     icon:'📖', label:'Study Resources' },
 ];
+
+function buildNav(stuId) {
+  const today = new Date().toISOString().slice(0,10);
+  const week7 = Date.now() - 7*24*3600*1000;
+  return NAV_BASE.map(item => {
+    if (item.id === 'announcements') return {
+      ...item,
+      badge: () => store.getStudentAnnouncements(stuId).filter(a => new Date(a.createdAt).getTime() > week7).length || 0,
+    };
+    if (item.id === 'exams') return {
+      ...item,
+      badge: () => store.getStudentExams(stuId).filter(e => e.date >= today).length || 0,
+    };
+    return item;
+  });
+}
 
 const PAGE_TITLES = {
   dashboard:'Dashboard', attendance:'My Attendance', emotions:'My Emotions',
@@ -161,10 +177,11 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
 
   const sid = user.studentId || user.id || '';
   const stu = store.getStudent(sid) || store.students[0];
+  const nav = buildNav(stu?.id || sid);
 
   return (
     <div style={{ display:'flex', height:'100%', background:C.bg, overflow:'hidden' }}>
-      <Sidebar theme={C} navItems={NAV} activeId={page} onNav={setPage}/>
+      <Sidebar theme={C} navItems={nav} activeId={page} onNav={setPage}/>
       <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', minWidth:0 }}>
         <Topbar theme={C} user={user} pageTitle={PAGE_TITLES[page]||page} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout}/>
         <div className="content-scroll" style={{ flex:1, background:C.bg, overflowY:'auto' }}>
