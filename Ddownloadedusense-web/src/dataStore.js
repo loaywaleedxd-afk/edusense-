@@ -583,13 +583,27 @@ class DataStore {
     const CRIT_PCT  = 60;  // below this → critical
     const today     = new Date().toISOString().slice(0,10);
     const courses   = this.getStudentCourses(studentId);
+    const stu       = this.getStudent(studentId);
     const newAlerts = [];
 
-    courses.forEach(course => {
-      const recs      = this.getStudentCourseAttendance(studentId, course.id);
-      const attended  = Object.values(recs).filter(r => r.status === 'present' || r.status === 'excused').length;
-      const totalWeeks= Math.max(1, course.weeks?.length || 16);
-      const pct       = Math.round((attended / totalWeeks) * 100);
+    // Use the same idHash fallback the attendance page uses
+    const idHash    = studentId.split('').reduce((a,c) => a + c.charCodeAt(0), 0);
+    const overallRate = stu?.attendanceRate ?? 0;
+
+    courses.forEach((course, i) => {
+      const recs       = this.getStudentCourseAttendance(studentId, course.id);
+      const recorded   = Object.keys(recs).length;
+      const totalWeeks = Math.max(1, course.weeks?.length || 16);
+
+      // Mirror the fallback logic from StudentAttendance
+      let attended;
+      if (recorded > 0) {
+        attended = Object.values(recs).filter(r => r.status === 'present' || r.status === 'excused').length;
+      } else {
+        attended = Math.max(0, Math.min(totalWeeks, Math.round(overallRate / 100 * totalWeeks + ((idHash + i * 7) % 5) - 2)));
+      }
+
+      const pct = Math.round((attended / totalWeeks) * 100);
 
       if (pct >= WARN_PCT) return; // fine, skip
 
