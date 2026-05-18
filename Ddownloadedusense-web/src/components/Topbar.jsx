@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import store from '../dataStore';
 
 const ROLE_COLORS = { doctor: '#8b5cf6', admin: '#10b981', student: '#3b82f6', parent: '#f59e0b' };
@@ -9,6 +9,12 @@ export default function Topbar({ theme: C, user, pageTitle, isDark, onToggleMode
   const initials  = user?.initials || user?.name?.split(' ').slice(0,2).map(w=>w[0]?.toUpperCase()||'').join('') || '??';
   const [notifOpen, setNotifOpen] = useState(false);
   const [, refresh] = useState(0);
+
+  // Poll every 2 seconds so the badge updates when other components add notifications
+  useEffect(() => {
+    const id = setInterval(() => refresh(n => n + 1), 2000);
+    return () => clearInterval(id);
+  }, []);
 
   const notifications = store.getUserNotifications(user) || [];
   const unread = notifications.filter(n => !n.read).length;
