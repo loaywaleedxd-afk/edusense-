@@ -586,24 +586,29 @@ class DataStore {
     const stu       = this.getStudent(studentId);
     const newAlerts = [];
 
-    // Use the same idHash fallback the attendance page uses
-    const idHash    = studentId.split('').reduce((a,c) => a + c.charCodeAt(0), 0);
     const overallRate = stu?.attendanceRate ?? 0;
+
+    // Remove stale attendance alerts for this student so outdated ones don't linger
+    if (this.systemAlerts) {
+      this.systemAlerts = this.systemAlerts.filter(a =>
+        !(a.studentId === studentId && a.alertKind === 'attendance')
+      );
+    }
 
     courses.forEach((course, i) => {
       const recs       = this.getStudentCourseAttendance(studentId, course.id);
       const recorded   = Object.keys(recs).length;
       const totalWeeks = Math.max(1, course.weeks?.length || 16);
 
-      // Mirror the fallback logic from StudentAttendance
-      let attended;
+      let attended, pct;
       if (recorded > 0) {
         attended = Object.values(recs).filter(r => r.status === 'present' || r.status === 'excused').length;
+        pct = Math.round((attended / totalWeeks) * 100);
       } else {
-        attended = Math.max(0, Math.min(totalWeeks, Math.round(overallRate / 100 * totalWeeks + ((idHash + i * 7) % 5) - 2)));
+        // No real records — use overall rate directly so alert logic matches the displayed stat
+        pct = Math.round(overallRate);
+        attended = Math.round(pct / 100 * totalWeeks);
       }
-
-      const pct = Math.round((attended / totalWeeks) * 100);
 
       if (pct >= WARN_PCT) return; // fine, skip
 
