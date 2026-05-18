@@ -98,6 +98,7 @@ class DataStore {
     this.courseWaitlists = {};
     this.announcements = [];
     this.examSchedule = [];
+    this.courseResources = [];
   }
 
   _loadStudents(){
@@ -376,6 +377,7 @@ class DataStore {
       if(data.courseWaitlists) this.courseWaitlists = data.courseWaitlists;
       if(data.announcements) this.announcements = data.announcements;
       if(data.examSchedule) this.examSchedule = data.examSchedule;
+      if(data.courseResources) this.courseResources = data.courseResources;
     } catch(e){ console.warn('DataStore load error',e); }
   }
 
@@ -396,6 +398,7 @@ class DataStore {
         courseWaitlists: this.courseWaitlists,
         announcements: this.announcements,
         examSchedule: this.examSchedule,
+        courseResources: this.courseResources,
       }));
     } catch(e){ console.warn('DataStore persist error',e); }
   }
@@ -876,6 +879,38 @@ class DataStore {
     const notifs=this.getUserNotifications(user);
     notifs.forEach(a=>{a.read=true;});
     this._persist();
+  }
+
+  // ── COURSE RESOURCES ─────────────────────────────────────────────────────
+  addResource(data){
+    if(!this.courseResources) this.courseResources=[];
+    const r={
+      id:`RES${Date.now()}`,
+      courseId:data.courseId||'', week:parseInt(data.week)||1,
+      title:data.title||'', url:data.url||'',
+      type:data.type||'link', description:data.description||'',
+      doctorId:data.doctorId||'', createdAt:new Date().toISOString(),
+    };
+    this.courseResources.push(r); this._persist(); return r;
+  }
+  getCourseResources(courseId){
+    if(!this.courseResources) this.courseResources=[];
+    return this.courseResources.filter(r=>r.courseId===courseId);
+  }
+  getCourseWeekResources(courseId,week){
+    if(!this.courseResources) this.courseResources=[];
+    return this.courseResources.filter(r=>r.courseId===courseId&&r.week===week);
+  }
+  getStudentResources(studentId){
+    if(!this.courseResources) this.courseResources=[];
+    const ids=new Set(Object.entries(this.courseEnrollments).filter(([,ids])=>ids.includes(studentId)).map(([cid])=>cid));
+    return this.courseResources.filter(r=>ids.has(r.courseId));
+  }
+  deleteResource(id){
+    if(!this.courseResources) this.courseResources=[];
+    const n=this.courseResources.length;
+    this.courseResources=this.courseResources.filter(r=>r.id!==id);
+    if(this.courseResources.length<n){this._persist();return true;} return false;
   }
 
   // ── ATTENDANCE MARKING (Doctor) ───────────────────────────────────────────

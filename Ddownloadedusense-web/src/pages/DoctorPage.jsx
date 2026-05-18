@@ -31,6 +31,7 @@ const NAV = [
   {id:'appeals',       icon:'📋', label:'Appeals'},
   {id:'announcements', icon:'📢', label:'Announcements'},
   {id:'examschedule',  icon:'🗓️', label:'Exam Schedule'},
+  {id:'resources',     icon:'📖', label:'Resources'},
 ];
 
 const PAGE_TITLES = {
@@ -39,6 +40,7 @@ const PAGE_TITLES = {
   chat:'Community Chat', analytics:'Analytics', detector:'AI Topic Detector',
   alerts:'Alerts', moodle:'Moodle', ranalysis:'R Analysis Reports',
   appeals:'Student Appeals', announcements:'Announcements', examschedule:'Exam Schedule',
+  resources:'Study Resources',
 };
 
 function letterGrade(g){if(g>=90)return'A+';if(g>=85)return'A';if(g>=80)return'B+';if(g>=75)return'B';if(g>=70)return'C+';if(g>=65)return'C';if(g>=60)return'D+';if(g>=50)return'D';return'F';}
@@ -71,6 +73,7 @@ export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLog
             {page==='appeals'       && <DocAppeals theme={C} doctor={doctor} myCourses={myCourses}/>}
             {page==='announcements' && <DocAnnouncements theme={C} doctor={doctor} myCourses={myCourses}/>}
             {page==='examschedule'  && <DocExamSchedule theme={C} doctor={doctor} myCourses={myCourses}/>}
+            {page==='resources'     && <DocResources theme={C} doctor={doctor} myCourses={myCourses}/>}
           </div>
         </div>
       </div>
@@ -1994,6 +1997,172 @@ function DocExamSchedule({ theme: C, doctor, myCourses }) {
               );
             })
           }
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── STUDY RESOURCES ── */
+function DocResources({ theme: C, doctor, myCourses }) {
+  const weeks = Array.from({length:14},(_,i)=>i+1);
+  const [selCourse, setSelCourse] = useState(myCourses[0]?.id||'');
+  const [selWeek,   setSelWeek]   = useState(1);
+  const [form, setForm] = useState({ title:'', url:'', type:'link', description:'' });
+  const [saved, setSaved] = useState(false);
+  const [refresh, setRefresh] = useState(0);
+
+  const existing = store.getCourseWeekResources(selCourse, selWeek);
+
+  const TYPE_CFG = {
+    link:  { icon:'🔗', label:'Link',    color:'#3b82f6' },
+    pdf:   { icon:'📄', label:'PDF',     color:'#ef4444' },
+    video: { icon:'🎬', label:'Video',   color:'#8b5cf6' },
+    note:  { icon:'📝', label:'Note',    color:'#f59e0b' },
+  };
+
+  function add() {
+    if (!form.title.trim() || !form.url.trim()) return;
+    store.addResource({
+      courseId: selCourse,
+      week: selWeek,
+      title: form.title.trim(),
+      url: form.url.trim(),
+      type: form.type,
+      description: form.description.trim(),
+      doctorId: doctor.id,
+    });
+    setForm({ title:'', url:'', type:'link', description:'' });
+    setSaved(true);
+    setTimeout(()=>setSaved(false), 2000);
+    setRefresh(n=>n+1);
+  }
+
+  function del(id) {
+    store.deleteResource(id);
+    setRefresh(n=>n+1);
+  }
+
+  return (
+    <div style={{ padding:'8px 20px 20px' }}>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>📖 Study Resources</div>
+      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Attach links, PDFs, videos, and notes per lecture week</div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:20 }}>
+        {/* Add form */}
+        <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, padding:18 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:14 }}>➕ Add Resource</div>
+
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+            <div>
+              <div style={{ fontSize:10, fontWeight:700, color:C.text3, marginBottom:4 }}>COURSE</div>
+              <select value={selCourse} onChange={e=>setSelCourse(e.target.value)}
+                style={{ width:'100%', height:36, background:C.bg3, border:`1px solid ${C.border}`, borderRadius:8, padding:'0 10px', fontSize:12, color:C.text }}>
+                {myCourses.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize:10, fontWeight:700, color:C.text3, marginBottom:4 }}>WEEK</div>
+              <select value={selWeek} onChange={e=>setSelWeek(Number(e.target.value))}
+                style={{ width:'100%', height:36, background:C.bg3, border:`1px solid ${C.border}`, borderRadius:8, padding:'0 10px', fontSize:12, color:C.text }}>
+                {weeks.map(w=><option key={w} value={w}>Week {w}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div style={{ marginBottom:10 }}>
+            <div style={{ fontSize:10, fontWeight:700, color:C.text3, marginBottom:4 }}>TYPE</div>
+            <div style={{ display:'flex', gap:6 }}>
+              {Object.entries(TYPE_CFG).map(([k,cfg])=>(
+                <button key={k} onClick={()=>setForm(f=>({...f,type:k}))}
+                  style={{ flex:1, padding:'6px 4px', borderRadius:8, border:`1.5px solid ${form.type===k?cfg.color:C.border}`,
+                    background:form.type===k?`${cfg.color}22`:'transparent', fontSize:11, fontWeight:700,
+                    color:form.type===k?cfg.color:C.text3, cursor:'pointer' }}>
+                  {cfg.icon} {cfg.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ marginBottom:10 }}>
+            <div style={{ fontSize:10, fontWeight:700, color:C.text3, marginBottom:4 }}>TITLE</div>
+            <input value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))}
+              placeholder="e.g. Lecture 3 Slides" maxLength={100}
+              style={{ width:'100%', height:36, background:C.bg3, border:`1px solid ${C.border}`, borderRadius:8, padding:'0 12px', fontSize:12, color:C.text, boxSizing:'border-box' }}/>
+          </div>
+
+          <div style={{ marginBottom:10 }}>
+            <div style={{ fontSize:10, fontWeight:700, color:C.text3, marginBottom:4 }}>URL</div>
+            <input value={form.url} onChange={e=>setForm(f=>({...f,url:e.target.value}))}
+              placeholder="https://..." maxLength={500}
+              style={{ width:'100%', height:36, background:C.bg3, border:`1px solid ${C.border}`, borderRadius:8, padding:'0 12px', fontSize:12, color:C.text, boxSizing:'border-box' }}/>
+          </div>
+
+          <div style={{ marginBottom:14 }}>
+            <div style={{ fontSize:10, fontWeight:700, color:C.text3, marginBottom:4 }}>DESCRIPTION <span style={{ fontWeight:400 }}>(optional)</span></div>
+            <textarea value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))}
+              placeholder="Brief description..." rows={2} maxLength={200}
+              style={{ width:'100%', background:C.bg3, border:`1px solid ${C.border}`, borderRadius:8, padding:10, fontSize:12, color:C.text, resize:'vertical', boxSizing:'border-box' }}/>
+          </div>
+
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <button onClick={add} disabled={!form.title.trim()||!form.url.trim()}
+              style={{ background:'linear-gradient(135deg,#3b82f6,#6366f1)', border:'none', borderRadius:9, padding:'9px 22px',
+                fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer', opacity:form.title.trim()&&form.url.trim()?1:0.5 }}>
+              📎 Attach Resource
+            </button>
+            {saved && <span style={{ fontSize:12, color:C.green, fontWeight:700 }}>✅ Added!</span>}
+          </div>
+        </div>
+
+        {/* Right: existing list */}
+        <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, padding:18, display:'flex', flexDirection:'column' }}>
+          <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:4 }}>
+            Week {selWeek} — {myCourses.find(c=>c.id===selCourse)?.name||''}
+          </div>
+          <div style={{ fontSize:11, color:C.text3, marginBottom:12 }}>{existing.length} resource{existing.length!==1?'s':''} attached</div>
+          <div style={{ flex:1, overflowY:'auto' }}>
+            {existing.length===0
+              ? <div style={{ textAlign:'center', color:C.text3, padding:40, fontSize:13 }}>No resources for this week yet.</div>
+              : existing.map((r,i)=>{
+                  const cfg = TYPE_CFG[r.type]||TYPE_CFG.link;
+                  return (
+                    <div key={i} style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'10px 0', borderBottom:i<existing.length-1?`1px solid ${C.border}`:'none' }}>
+                      <div style={{ width:34, height:34, borderRadius:8, background:`${cfg.color}22`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:17, flexShrink:0 }}>{cfg.icon}</div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <a href={r.url} target="_blank" rel="noreferrer"
+                          style={{ fontSize:13, fontWeight:700, color:cfg.color, textDecoration:'none', display:'block', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                          {r.title}
+                        </a>
+                        {r.description && <div style={{ fontSize:11, color:C.text3, marginTop:2 }}>{r.description}</div>}
+                        <div style={{ fontSize:10, color:C.text3, marginTop:2 }}>{new Date(r.createdAt).toLocaleDateString()}</div>
+                      </div>
+                      <button onClick={()=>del(r.id)} style={{ background:'none', border:'none', color:C.red2, fontSize:17, cursor:'pointer', flexShrink:0, lineHeight:1 }}>×</button>
+                    </div>
+                  );
+                })
+            }
+          </div>
+        </div>
+      </div>
+
+      {/* All weeks summary */}
+      <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, padding:18 }}>
+        <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:14 }}>All Weeks — {myCourses.find(c=>c.id===selCourse)?.name||''}</div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:8 }}>
+          {weeks.map(w=>{
+            const res = store.getCourseWeekResources(selCourse, w);
+            const active = w===selWeek;
+            return (
+              <button key={w} onClick={()=>setSelWeek(w)}
+                style={{ padding:'8px 4px', borderRadius:10, border:`1.5px solid ${active?C.blue:res.length>0?C.green:C.border}`,
+                  background:active?C.blue_dim:res.length>0?`${C.green}11`:'transparent',
+                  cursor:'pointer', textAlign:'center' }}>
+                <div style={{ fontSize:10, fontWeight:700, color:active?C.blue2:C.text3 }}>W{w}</div>
+                {res.length>0 && <div style={{ fontSize:9, color:active?C.blue:C.green, marginTop:2 }}>{res.length} 📎</div>}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

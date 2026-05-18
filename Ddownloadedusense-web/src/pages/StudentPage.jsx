@@ -27,6 +27,7 @@ const NAV = [
   { id:'announcements', icon:'📢', label:'Announcements' },
   { id:'exams',         icon:'🗓️', label:'Exam Schedule' },
   { id:'degreeaudit',   icon:'🏛️', label:'Degree Audit' },
+  { id:'resources',     icon:'📖', label:'Study Resources' },
 ];
 
 const PAGE_TITLES = {
@@ -35,6 +36,7 @@ const PAGE_TITLES = {
   portfolio:'My Portfolio', chat:'Community Chat', moodle:'Moodle',
   appeals:'My Appeals', transcript:'Academic Transcript',
   announcements:'Announcements', exams:'Exam Schedule', degreeaudit:'Degree Audit',
+  resources:'Study Resources',
 };
 
 function letterGrade(g) {
@@ -187,6 +189,7 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
             {page==='announcements' && <StudentAnnouncements theme={C} stu={stu}/>}
             {page==='exams'         && <StudentExamSchedule theme={C} stu={stu}/>}
             {page==='degreeaudit'   && <StudentDegreeAudit theme={C} stu={stu}/>}
+            {page==='resources'     && <StudentResources theme={C} stu={stu}/>}
           </div>
         </div>
       </div>
@@ -1279,6 +1282,122 @@ function StudentDegreeAudit({ theme: C, stu }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/* ══ STUDY RESOURCES ══ */
+function StudentResources({ theme: C, stu }) {
+  const myCourses = store.getStudentCourses(stu.id);
+  const [selCourse, setSelCourse] = useState('all');
+  const weeks = Array.from({length:14},(_,i)=>i+1);
+
+  const TYPE_CFG = {
+    link:  { icon:'🔗', label:'Link',  color:'#3b82f6' },
+    pdf:   { icon:'📄', label:'PDF',   color:'#ef4444' },
+    video: { icon:'🎬', label:'Video', color:'#8b5cf6' },
+    note:  { icon:'📝', label:'Note',  color:'#f59e0b' },
+  };
+
+  const coursesToShow = selCourse==='all' ? myCourses : myCourses.filter(c=>c.id===selCourse);
+
+  const totalResources = myCourses.reduce((sum,c)=>{
+    return sum + (store.getCourseResources(c.id)||[]).length;
+  }, 0);
+
+  return (
+    <div style={{ padding:'8px 20px 20px' }}>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>📖 Study Resources</div>
+      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Materials attached by your instructors — links, PDFs, videos, and notes</div>
+
+      {/* Filter bar */}
+      <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
+        <button onClick={()=>setSelCourse('all')}
+          style={{ padding:'6px 16px', borderRadius:20, border:`1.5px solid ${selCourse==='all'?C.blue:C.border}`,
+            background:selCourse==='all'?C.blue_dim:'transparent', fontSize:12, fontWeight:700,
+            color:selCourse==='all'?C.blue2:C.text3, cursor:'pointer' }}>
+          All Courses
+        </button>
+        {myCourses.map(c=>(
+          <button key={c.id} onClick={()=>setSelCourse(c.id)}
+            style={{ padding:'6px 14px', borderRadius:20, border:`1.5px solid ${selCourse===c.id?C.blue:C.border}`,
+              background:selCourse===c.id?C.blue_dim:'transparent', fontSize:12, fontWeight:selCourse===c.id?700:400,
+              color:selCourse===c.id?C.blue2:C.text3, cursor:'pointer' }}>
+            {c.name}
+          </button>
+        ))}
+        <span style={{ marginLeft:'auto', fontSize:11, color:C.text3 }}>{totalResources} total resource{totalResources!==1?'s':''}</span>
+      </div>
+
+      {coursesToShow.length===0 && (
+        <div style={{ textAlign:'center', color:C.text3, padding:60, fontSize:13 }}>No courses enrolled.</div>
+      )}
+
+      {coursesToShow.map(course=>{
+        const courseResources = store.getCourseResources(course.id)||[];
+        if (courseResources.length===0) return null;
+
+        const byWeek = {};
+        courseResources.forEach(r=>{ (byWeek[r.week]=byWeek[r.week]||[]).push(r); });
+        const usedWeeks = Object.keys(byWeek).map(Number).sort((a,b)=>a-b);
+
+        return (
+          <div key={course.id} style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, marginBottom:16, overflow:'hidden' }}>
+            {/* Course header */}
+            <div style={{ padding:'14px 18px', borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10,
+              background:`linear-gradient(90deg,${course.color||C.blue}22,transparent)` }}>
+              <div style={{ width:10, height:10, borderRadius:'50%', background:course.color||C.blue, flexShrink:0 }}/>
+              <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{course.name}</div>
+              <div style={{ fontSize:11, color:C.text3 }}>{course.code}</div>
+              <div style={{ marginLeft:'auto', fontSize:11, color:C.text3 }}>{courseResources.length} resource{courseResources.length!==1?'s':''}</div>
+            </div>
+
+            {/* Weeks */}
+            <div style={{ padding:'12px 18px' }}>
+              {usedWeeks.map(week=>{
+                const res = byWeek[week];
+                return (
+                  <div key={week} style={{ marginBottom:14 }}>
+                    <div style={{ fontSize:11, fontWeight:700, color:C.text3, textTransform:'uppercase', marginBottom:8, letterSpacing:'0.06em' }}>
+                      Week {week}
+                    </div>
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(240px,1fr))', gap:8 }}>
+                      {res.map((r,i)=>{
+                        const cfg = TYPE_CFG[r.type]||TYPE_CFG.link;
+                        return (
+                          <a key={i} href={r.url} target="_blank" rel="noreferrer"
+                            style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'10px 12px',
+                              background:C.bg3, borderRadius:10, border:`1px solid ${C.border}`,
+                              textDecoration:'none', transition:'border-color 0.15s', cursor:'pointer' }}
+                            onMouseEnter={e=>e.currentTarget.style.borderColor=cfg.color}
+                            onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+                            <div style={{ width:32, height:32, borderRadius:8, background:`${cfg.color}22`, display:'flex',
+                              alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>{cfg.icon}</div>
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ fontSize:12, fontWeight:700, color:cfg.color, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.title}</div>
+                              {r.description && <div style={{ fontSize:11, color:C.text3, marginTop:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.description}</div>}
+                              <div style={{ fontSize:10, color:C.text3, marginTop:2 }}>{cfg.label} · {new Date(r.createdAt).toLocaleDateString()}</div>
+                            </div>
+                            <span style={{ fontSize:10, color:C.text3, flexShrink:0, marginTop:2 }}>↗</span>
+                          </a>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
+      {totalResources===0 && (
+        <div style={{ textAlign:'center', color:C.text3, padding:60, fontSize:13 }}>
+          <div style={{ fontSize:48, marginBottom:12 }}>📭</div>
+          No resources have been attached by your instructors yet.<br/>
+          <span style={{ fontSize:11 }}>Check back after your next lecture.</span>
+        </div>
+      )}
     </div>
   );
 }
