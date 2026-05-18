@@ -351,7 +351,7 @@ function StudentAttendance({ theme: C, stu }) {
       <div style={{ display:'flex', gap:12, marginBottom:12 }}>
         <StatCard theme={C} label="Attendance Rate"  value={`${rate}%`}          sub="This semester"          icon="✅" accent="green"/>
         <StatCard theme={C} label="Courses Enrolled" value={myCourses.length}     sub="Active enrollments"    icon="📚" accent="blue"/>
-        <StatCard theme={C} label="Sessions Logged"  value={attRecs.length || Math.round(rate/100*16)*myCourses.length} sub="Recorded by system" icon="📊" accent="purple"/>
+        <StatCard theme={C} label="Sessions Logged"  value={Math.round(rate/100*16)*myCourses.length} sub={`${attRecs.length} QR/manual check-ins`} icon="📊" accent="purple"/>
         <StatCard theme={C} label="Standing"         value={rate>=75?'Good':'At Risk'} sub={rate>=75?'Continue this pace':'Attend more classes'} icon={rate>=75?'👍':'⚠️'} accent={rate>=75?'green':'red'}/>
       </div>
 
@@ -362,22 +362,28 @@ function StudentAttendance({ theme: C, stu }) {
       </div>
 
       {tab==='records' && (
-        <Card theme={C} title={useRecords ? 'Attendance Sessions' : 'Enrolled Courses — Attendance Summary'}>
-          <div style={{ padding:'4px 12px 12px' }}>
-            {useRecords
-              ? <DataTable theme={C} columns={[
+        <>
+          <Card theme={C} title="Enrolled Courses — Attendance Summary">
+            <div style={{ padding:'4px 12px 12px' }}>
+              <DataTable theme={C} columns={[
+                {key:'course',label:'Course',width:220},{key:'weeks',label:'Weeks Attended',width:120},
+                {key:'time',label:'Time',width:80},{key:'method',label:'Method',width:140},
+                {key:'status',label:'Status',width:140},
+              ]} rows={courseRows}/>
+            </div>
+          </Card>
+          {recRows.length > 0 && (
+            <Card theme={C} title={`QR / Manual Check-ins (${recRows.length})`} style={{marginTop:12}}>
+              <div style={{ padding:'4px 12px 12px' }}>
+                <DataTable theme={C} columns={[
                   {key:'course',label:'Course',width:200},{key:'date',label:'Date',width:100},
                   {key:'week',label:'Week',width:80},{key:'time',label:'Time',width:80},
                   {key:'method',label:'Method',width:140},{key:'status',label:'Status',width:120},
                 ]} rows={recRows}/>
-              : <DataTable theme={C} columns={[
-                  {key:'course',label:'Course',width:220},{key:'weeks',label:'Weeks Attended',width:120},
-                  {key:'time',label:'Time',width:80},{key:'method',label:'Method',width:140},
-                  {key:'status',label:'Status',width:140},
-                ]} rows={courseRows}/>
-            }
-          </div>
-        </Card>
+              </div>
+            </Card>
+          )}
+        </>
       )}
 
       {tab==='qr' && (
