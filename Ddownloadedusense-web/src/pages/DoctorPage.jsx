@@ -285,7 +285,18 @@ function DocAttendance({ theme: C, myCourses }) {
   const excuses  = store.getExcuses(selCourse).filter(e=>e.week===week);
   const pendingExcuses = excuses.filter(e=>e.status==='pending').length;
 
-  const presentCount = enrolled.filter(s=>attRecs[s.id]).length;
+  // Use real records only when ≥20% of enrolled students have checked in
+  // (a real session). If just 1-2 test records exist, fall back to
+  // attendanceRate so the doctor view matches the student's summary.
+  const realCount = Object.keys(attRecs).length;
+  const hasRealSession = enrolled.length > 0 && realCount >= Math.max(2, Math.floor(enrolled.length * 0.2));
+  const isPresent = (s) => {
+    if (attRecs[s.id]) return true;
+    if (!hasRealSession) return week <= Math.round((s.attendanceRate || 75) / 100 * 16);
+    return false;
+  };
+
+  const presentCount = enrolled.filter(s=>isPresent(s)).length;
   const absentCount  = enrolled.length - presentCount;
 
   function toggleStudent(s) {
@@ -359,7 +370,7 @@ function DocAttendance({ theme: C, myCourses }) {
           </div>
           {enrolled.length===0 && <div style={{padding:40,textAlign:'center',color:C.text3,fontSize:13}}>No students enrolled.</div>}
           {enrolled.map((s,i)=>{
-            const rec=attRecs[s.id]; const present=!!rec;
+            const rec=attRecs[s.id]; const present=isPresent(s);
             const photoUrl=s.capturedPhoto||store.getPhotoUrl(s);
             const isExcused=rec?.status==='excused';
             return (
