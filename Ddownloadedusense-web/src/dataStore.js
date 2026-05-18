@@ -289,6 +289,7 @@ class DataStore {
       }
       if(data.courseEnrollments) Object.assign(this.courseEnrollments, data.courseEnrollments);
       if(data.attendance) Object.assign(this.attendance, data.attendance);
+      if(data.systemAlerts) this.systemAlerts = data.systemAlerts;
     } catch(e){ console.warn('DataStore load error',e); }
   }
 
@@ -302,6 +303,7 @@ class DataStore {
         attendance: this.attendance,
         examResults: this.examResults,
         chatMessages: this.chatMessages,
+        systemAlerts: this.systemAlerts,
       }));
     } catch(e){ console.warn('DataStore persist error',e); }
   }
@@ -572,13 +574,72 @@ class DataStore {
     return {ok:true, courseId:s.courseId, week:s.week};
   }
 
+  // ── ATTENDANCE ALERT ENGINE ───────────────────────────────────────────────
+  // Called when a student logs in. Checks every enrolled course and fires
+  // a warning / danger alert if their attendance is below threshold.
+  // Deduplicates: only one alert per student+course per calendar day.
+  checkAttendanceAlerts(studentId){
+    const WARN_PCT  = 75;  // below this → warning
+    const CRIT_PCT  = 60;  // below this → critical
+    const today     = new Date().toISOString().slice(0,10);
+    const courses   = this.getStudentCourses(studentId);
+    const newAlerts = [];
+
+    courses.forEach(course => {
+      const recs      = this.getStudentCourseAttendance(studentId, course.id);
+      const attended  = Object.values(recs).filter(r => r.status === 'present' || r.status === 'excused').length;
+      const totalWeeks= Math.max(1, course.weeks?.length || 16);
+      const pct       = Math.round((attended / totalWeeks) * 100);
+
+      if (pct >= WARN_PCT) return; // fine, skip
+
+      // Dedup: skip if we already fired this alert today
+      const existing = (this.systemAlerts || []).find(a =>
+        a.studentId === studentId &&
+        a.courseId  === course.id &&
+        a.alertKind === 'attendance' &&
+        a.createdAt?.slice(0,10) === today
+      );
+      if (existing) return;
+
+      const isCritical = pct < CRIT_PCT;
+      const alert = this.addAlert({
+        type:      isCritical ? 'danger' : 'warning',
+        title:     isCritical
+          ? `Critical Attendance — ${course.name}`
+          : `Low Attendance Warning — ${course.name}`,
+        message:   `You have attended ${attended} of ${totalWeeks} weeks (${pct}%). ` +
+                   (isCritical
+                     ? 'You are at serious risk of failing due to absences. Immediate action required.'
+                     : 'Your attendance is below the 75% minimum required. Please attend upcoming sessions.'),
+        studentId,
+        courseId:  course.id,
+        alertKind: 'attendance',
+        pct,
+        attended,
+        totalWeeks,
+      });
+      newAlerts.push(alert);
+    });
+
+    return newAlerts;
+  }
+
+  // Returns only attendance alerts for a specific student (for the banner)
+  getStudentAttendanceAlerts(studentId){
+    if(!this.systemAlerts) return [];
+    return this.systemAlerts.filter(a =>
+      a.studentId === studentId && a.alertKind === 'attendance' && !a.read
+    );
+  }
+
   // ── SYSTEM ALERTS ─────────────────────────────────────────────────────────
   addAlert(data){
     if(!this.systemAlerts) this.systemAlerts=[];
     const alert={
+      ...data,
       id:`AL${Date.now()}_${Math.random().toString(36).slice(2,5)}`,
       type:data.type||'info',
-      title:data.title, message:data.message,
       studentId:data.studentId||null, courseId:data.courseId||null,
       read:false, createdAt:new Date().toISOString(),
     };

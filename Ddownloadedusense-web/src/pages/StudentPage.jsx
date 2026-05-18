@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import Topbar  from '../components/Topbar';
 import StatCard from '../components/StatCard';
@@ -36,6 +36,117 @@ function letterGrade(g) {
 }
 function gradeColor(g,C){ return g>=75?C.green:g>=50?C.amber:C.red; }
 
+/* ══ ATTENDANCE ALERT BANNER ══ */
+function AttendanceAlertBanner({ theme: C, studentId, onGoToAttendance }) {
+  const [alerts, setAlerts]     = useState([]);
+  const [dismissed, setDismiss] = useState(new Set());
+
+  // Fire the check once on mount
+  useEffect(() => {
+    store.checkAttendanceAlerts(studentId);
+    setAlerts(store.getStudentAttendanceAlerts(studentId));
+  }, [studentId]);
+
+  const visible = alerts.filter(a => !dismissed.has(a.id));
+  if (!visible.length) return null;
+
+  function dismiss(id) {
+    store.markAlertRead(id);
+    setDismiss(prev => new Set([...prev, id]));
+  }
+
+  function dismissAll() {
+    visible.forEach(a => store.markAlertRead(a.id));
+    setDismiss(prev => new Set([...prev, ...visible.map(a => a.id)]));
+  }
+
+  const hasCritical = visible.some(a => a.type === 'danger');
+
+  return (
+    <div style={{
+      margin: '12px 20px 0',
+      borderRadius: 14,
+      border: `1.5px solid ${hasCritical ? '#ef444466' : '#f59e0b66'}`,
+      background: hasCritical ? 'rgba(239,68,68,0.07)' : 'rgba(245,158,11,0.07)',
+      overflow: 'hidden',
+    }}>
+      {/* Header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '10px 16px',
+        background: hasCritical ? 'rgba(239,68,68,0.12)' : 'rgba(245,158,11,0.12)',
+        borderBottom: `1px solid ${hasCritical ? '#ef444433' : '#f59e0b33'}`,
+      }}>
+        <span style={{ fontSize: 18 }}>{hasCritical ? '🚨' : '⚠️'}</span>
+        <span style={{ fontWeight: 700, color: hasCritical ? '#ef4444' : '#f59e0b', fontSize: 14, flex: 1 }}>
+          {hasCritical ? 'Critical Attendance Alert' : 'Attendance Warning'}
+          {visible.length > 1 ? ` (${visible.length} courses)` : ''}
+        </span>
+        <button
+          onClick={onGoToAttendance}
+          style={{ background: hasCritical ? '#ef4444' : '#f59e0b', color: '#fff', border: 'none', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+        >
+          View Attendance →
+        </button>
+        <button
+          onClick={dismissAll}
+          style={{ background: 'transparent', border: 'none', color: C.text3, fontSize: 18, cursor: 'pointer', lineHeight: 1, padding: '0 4px' }}
+          title="Dismiss all"
+        >×</button>
+      </div>
+
+      {/* Alert rows */}
+      {visible.map(a => (
+        <div key={a.id} style={{
+          display: 'flex', alignItems: 'flex-start', gap: 12,
+          padding: '10px 16px',
+          borderBottom: `1px solid ${C.border}`,
+        }}>
+          {/* Severity pill */}
+          <span style={{
+            flexShrink: 0, marginTop: 2,
+            fontSize: 10, fontWeight: 700,
+            padding: '2px 8px', borderRadius: 20,
+            background: a.type === 'danger' ? '#ef444422' : '#f59e0b22',
+            color: a.type === 'danger' ? '#ef4444' : '#f59e0b',
+          }}>
+            {a.type === 'danger' ? 'CRITICAL' : 'WARNING'}
+          </span>
+
+          {/* Attendance bar */}
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600, color: C.text, fontSize: 13, marginBottom: 4 }}>
+              {a.title}
+            </div>
+            <div style={{ fontSize: 12, color: C.text2, marginBottom: 6 }}>{a.message}</div>
+            {/* Progress bar */}
+            <div style={{ background: C.border, borderRadius: 99, height: 6, width: '100%', maxWidth: 300 }}>
+              <div style={{
+                width: `${a.pct}%`, height: '100%', borderRadius: 99,
+                background: a.type === 'danger'
+                  ? 'linear-gradient(90deg,#ef4444,#dc2626)'
+                  : 'linear-gradient(90deg,#f59e0b,#d97706)',
+                transition: 'width 0.6s ease',
+              }}/>
+            </div>
+            <div style={{ fontSize: 11, color: C.text3, marginTop: 3 }}>
+              {a.attended}/{a.totalWeeks} weeks attended · {a.pct}%
+              {a.type === 'danger' ? ' — below 60% critical threshold' : ' — below 75% minimum'}
+            </div>
+          </div>
+
+          {/* Dismiss button */}
+          <button
+            onClick={() => dismiss(a.id)}
+            style={{ background: 'transparent', border: 'none', color: C.text3, fontSize: 16, cursor: 'pointer', flexShrink: 0 }}
+            title="Dismiss"
+          >×</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLogout }) {
   const [page, setPage] = useState('dashboard');
 
@@ -48,6 +159,12 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
       <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', minWidth:0 }}>
         <Topbar theme={C} user={user} pageTitle={PAGE_TITLES[page]||page} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout}/>
         <div className="content-scroll" style={{ flex:1, background:C.bg, overflowY:'auto' }}>
+          {/* Attendance alert banner — visible on all pages */}
+          <AttendanceAlertBanner
+            theme={C}
+            studentId={stu?.id}
+            onGoToAttendance={() => setPage('attendance')}
+          />
           <div className="animate-in" key={page}>
             {page==='dashboard'  && <StudentDashboard theme={C} user={user} stu={stu} isDark={isDark}/>}
             {page==='attendance' && <StudentAttendance theme={C} stu={stu}/>}
