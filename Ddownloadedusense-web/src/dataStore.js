@@ -69,6 +69,8 @@ class DataStore {
     this._rng = seededRandom(42);
     this._initDefaults();
     this._loadPersisted();
+    this._initEnrollments(); // run after localStorage restore to fix stale low-count data
+    this._syncStats();
   }
 
   _ri(a,b){ return Math.floor(this._rng()*(b-a+1))+a; }
@@ -90,7 +92,6 @@ class DataStore {
     this.currentWeek = 1;
     this.examResults = {};
     this.chatMessages = {};
-    this._initEnrollments();
   }
 
   _loadStudents(){
@@ -115,9 +116,9 @@ class DataStore {
       title: dc.title,
       email: dc.email,
       phone: dc.phone,
-      courses: 5,
-      students: 120,
-      engagement: this._ri(65, 85),
+      courses: 0,
+      students: 0,
+      engagement: 0,
       hasFace: false,
     }));
   }
@@ -166,21 +167,46 @@ class DataStore {
       time:times[i],duration:90,
       doctorId:doctors[i],doctorName:dnames[i],
       weeks:Array.from({length:16},(_,k)=>k+1),
-      semester:'Fall 2024',enrolledCount:this._ri(25,45),
+      semester:'Fall 2024',enrolledCount:0,
     }));
   }
 
   _initEnrollments(){
-    this.courses.forEach((course,i)=>{
+    const total = this.students.length;
+    this.courses.forEach((course, i) => {
       const cid = course.id;
-      if(!this.courseEnrollments[cid]){
-        const offset=(i*3)%this.students.length;
-        let enrolled = this.students.slice(offset,offset+10).map(s=>s.id);
-        if(enrolled.length<10){
-          enrolled = enrolled.concat(this.students.slice(0,10-enrolled.length).map(s=>s.id));
+      const existing = this.courseEnrollments[cid];
+      // Re-initialize if missing or has stale low-count data (< 20)
+      if (!existing || existing.length < 20) {
+        const count  = this._ri(25, 45);
+        const offset = (i * Math.floor(total / Math.max(this.courses.length, 1))) % total;
+        const ids = [];
+        for (let j = 0; j < count && j < total; j++) {
+          ids.push(this.students[(offset + j) % total].id);
         }
-        this.courseEnrollments[cid] = enrolled;
+        this.courseEnrollments[cid] = ids;
       }
+    });
+  }
+
+  _syncStats(){
+    // Sync course enrolledCount from actual enrollment data
+    this.courses.forEach(c => {
+      c.enrolledCount = (this.courseEnrollments[c.id] || []).length;
+    });
+    // Compute doctor stats dynamically from actual courses + enrollments
+    this.doctors.forEach(d => {
+      const docCourses = this.courses.filter(c => c.doctorId === d.id);
+      const studentIds = new Set();
+      docCourses.forEach(c => {
+        (this.courseEnrollments[c.id] || []).forEach(sid => studentIds.add(sid));
+      });
+      const stuList = this.students.filter(s => studentIds.has(s.id));
+      d.courses    = docCourses.length;
+      d.students   = studentIds.size;
+      d.engagement = stuList.length
+        ? Math.round(stuList.reduce((a, s) => a + (s.attendanceRate ?? s.engagement ?? 0), 0) / stuList.length)
+        : 0;
     });
   }
 
