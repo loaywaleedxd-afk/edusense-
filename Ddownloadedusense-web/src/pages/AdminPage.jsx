@@ -37,6 +37,10 @@ const NAV = [
   {section:'Reports'},
   {id:'r_reports',   icon:'📊', label:'R Reports'},
   {id:'settings',    icon:'⚙️', label:'Settings'},
+  {section:'New Features'},
+  {id:'__proctoring', icon:'🎥', label:'Exam Proctoring'},
+  {id:'__advising',   icon:'🎓', label:'Advising'},
+  {id:'__atrisk',     icon:'🚨', label:'Early Warning'},
 ];
 
 const PAGE_TITLES = {
@@ -46,12 +50,20 @@ const PAGE_TITLES = {
   appeals:'Appeals Management', registration:'Registration & Fees', examschedule:'Exam Schedule',
 };
 
-export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogout }) {
+export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogout,
+  onOpenProctoring, onOpenAdvising, onOpenAtRisk }) {
   const [page, setPage] = useState('dashboard');
+
+  function handleNav(id) {
+    if (id === '__proctoring') { onOpenProctoring?.(); return; }
+    if (id === '__advising')   { onOpenAdvising?.();   return; }
+    if (id === '__atrisk')     { onOpenAtRisk?.();     return; }
+    setPage(id);
+  }
 
   return (
     <div style={{display:'flex',height:'100%',background:C.bg,overflow:'hidden'}}>
-      <Sidebar theme={C} navItems={NAV} activeId={page} onNav={setPage}/>
+      <Sidebar theme={C} navItems={NAV} activeId={page} onNav={handleNav}/>
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
         <Topbar theme={C} user={user} pageTitle={PAGE_TITLES[page]||page} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout}/>
         <div className="content-scroll" style={{flex:1,overflowY:'auto',background:C.bg}}>

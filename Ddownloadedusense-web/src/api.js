@@ -6,7 +6,9 @@
  * Import `api` to call endpoints, `setToken`/`clearToken` to manage auth.
  */
 
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// In production the React app and FastAPI share the same domain via nginx proxy,
+// so we use a relative base (""). In dev we point to localhost:8000.
+const BASE = import.meta.env.VITE_API_URL ?? '';
 
 // ── Token management ──────────────────────────────────────────────────────────
 let _token = localStorage.getItem('edusense_token') || null;
@@ -31,10 +33,10 @@ async function req(method, path, body) {
   return res.json();
 }
 
-const get  = (path)       => req('GET',    path);
-const post = (path, body) => req('POST',   path, body);
-const put  = (path, body) => req('PUT',    path, body);
-const del  = (path)       => req('DELETE', path);
+export const get  = (path)       => req('GET',    path);
+export const post = (path, body) => req('POST',   path, body);
+export const put  = (path, body) => req('PUT',    path, body);
+export const del  = (path)       => req('DELETE', path);
 
 // ── API surface ───────────────────────────────────────────────────────────────
 export const api = {
@@ -127,6 +129,32 @@ export const api = {
   bulkEnrollments:  (data) => post('/api/enrollments/bulk', data),
   enroll:   (cid, sid)     => post(`/api/enrollments/${cid}/${sid}`),
   unenroll: (cid, sid)     => del(`/api/enrollments/${cid}/${sid}`),
+
+  // ── Exam Proctoring ────────────────────────────────────────────────────────
+  proctoringStart:      (data)       => post('/api/proctor/start', data),
+  proctoringVerify:     (data)       => post('/api/proctor/verify-identity', data),
+  proctoringCheck:      (data)       => post('/api/proctor/check-frame', data),
+  proctoringEnd:        (data)       => post('/api/proctor/end', data),
+  proctoringSessionList:(examId)     => get(`/api/proctor/sessions${examId ? `?exam_id=${examId}` : ''}`),
+  proctoringEvents:     (sessionId)  => get(`/api/proctor/events/${sessionId}`),
+  proctoringExamSummary:(examId)     => get(`/api/proctor/summary/${examId}`),
+
+  // ── Academic Advising ──────────────────────────────────────────────────────
+  getAppointments:       ()          => get('/api/advising/appointments'),
+  bookAppointment:       (data)      => post('/api/advising/appointments', data),
+  updateAppointment:     (id, data)  => put(`/api/advising/appointments/${id}`, data),
+  cancelAppointment:     (id)        => del(`/api/advising/appointments/${id}`),
+  getAdvisorNotes:       (studentId) => get(`/api/advising/notes/${studentId}`),
+  addAdvisorNote:        (data)      => post('/api/advising/notes', data),
+  deleteAdvisorNote:     (id)        => del(`/api/advising/notes/${id}`),
+  getDegreeAudit:        (studentId) => get(`/api/advising/degree-audit/${studentId}`),
+  getGraduationProgress: (studentId) => get(`/api/advising/graduation-progress/${studentId}`),
+
+  // ── At-Risk Early Warning ──────────────────────────────────────────────────
+  runRiskAssessment: ()           => post('/api/at-risk/assess', {}),
+  getAtRiskStudents: (minLevel)   => get(`/api/at-risk/students?min_level=${minLevel || 'medium'}`),
+  getStudentRisk:    (studentId)  => get(`/api/at-risk/student/${studentId}`),
+  notifyAtRisk:      (studentId)  => post(`/api/at-risk/notify/${studentId}?notify_advisor=true&notify_parent=true`, {}),
 };
 
 export default api;

@@ -29,6 +29,11 @@ const NAV_BASE = [
   { id:'degreeaudit',   icon:'🏛️', label:'Degree Audit' },
   { id:'resources',     icon:'📖', label:'Study Resources' },
   { id:'assignments',   icon:'📋', label:'Assignments' },
+  // ── New features ──────────────────────────────────────────────────────────
+  { section: 'New Features' },
+  { id:'__advising',    icon:'🎓', label:'Advising' },
+  { id:'__atrisk',      icon:'📊', label:'My Risk Status' },
+  { id:'__proctoring',  icon:'🎥', label:'Exam Session' },
 ];
 
 function loadLastSeen(stuId) {
@@ -224,7 +229,8 @@ function AttendanceAlertBanner({ theme: C, studentId, onGoToAttendance }) {
   );
 }
 
-export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLogout }) {
+export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLogout,
+  onOpenProctoring, onOpenAdvising, onOpenAtRisk }) {
   const [page, setPage] = useState('dashboard');
   const sid = user.studentId || user.id || '';
   const stu = store.getStudent(sid) || store.students[0];
@@ -234,6 +240,9 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
   const nav = buildNav(stuId, lastSeen);
 
   function navigate(id) {
+    if (id === '__proctoring') { onOpenProctoring?.(); return; }
+    if (id === '__advising')   { onOpenAdvising?.();   return; }
+    if (id === '__atrisk')     { onOpenAtRisk?.();     return; }
     setPage(id);
     if (id === 'announcements' || id === 'exams' || id === 'assignments') {
       saveLastSeen(stuId, id);

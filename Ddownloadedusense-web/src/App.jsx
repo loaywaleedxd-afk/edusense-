@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { DARK, LIGHT } from './theme';
-import LoginPage   from './pages/LoginPage';
-import StudentPage from './pages/StudentPage';
-import DoctorPage  from './pages/DoctorPage';
-import AdminPage   from './pages/AdminPage';
-import ParentPage  from './pages/ParentPage';
-import ChatWidget  from './components/ChatWidget';
-import store       from './dataStore';
+import LoginPage          from './pages/LoginPage';
+import StudentPage        from './pages/StudentPage';
+import DoctorPage         from './pages/DoctorPage';
+import AdminPage          from './pages/AdminPage';
+import ParentPage         from './pages/ParentPage';
+import ChatWidget         from './components/ChatWidget';
+import ExamProctoringPage from './pages/ExamProctoringPage';
+import AdvisingPage       from './pages/AdvisingPage';
+import AtRiskPage         from './pages/AtRiskPage';
+import store              from './dataStore';
 
 export default function App() {
   const [isDark, setIsDark] = useState(true);
@@ -33,7 +36,14 @@ export default function App() {
     }
   }
 
-  const commonProps = { theme: C, user, isDark, onToggleMode: toggleMode, onLogout };
+  const [overlay, setOverlay] = useState(null); // 'proctoring' | 'advising' | 'atrisk'
+
+  const commonProps = {
+    theme: C, user, isDark, onToggleMode: toggleMode, onLogout,
+    onOpenProctoring: () => setOverlay('proctoring'),
+    onOpenAdvising:   () => setOverlay('advising'),
+    onOpenAtRisk:     () => setOverlay('atrisk'),
+  };
 
   if (loading) {
     return (
@@ -72,6 +82,37 @@ export default function App() {
         <AdminPage {...commonProps} />
       )}
       {user && <ChatWidget user={user} />}
+
+      {/* ── Full-screen overlay pages ── */}
+      {overlay && (
+        <div style={{
+          position: 'fixed', inset: 0, background: C.bg, zIndex: 200,
+          display: 'flex', flexDirection: 'column',
+        }}>
+          {/* Overlay top-bar */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            padding: '10px 20px', background: C.sidebar || C.card,
+            borderBottom: `1px solid ${C.border}`,
+          }}>
+            <button onClick={() => setOverlay(null)} style={{
+              background: C.bg3, border: `1px solid ${C.border}`,
+              borderRadius: 8, padding: '5px 12px', fontSize: 12,
+              color: C.text, cursor: 'pointer', fontWeight: 600,
+            }}>← Back</button>
+            <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
+              {overlay === 'proctoring' ? '🎥 Exam Proctoring'
+               : overlay === 'advising' ? '🎓 Academic Advising'
+               : '🚨 Early Warning System'}
+            </span>
+          </div>
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            {overlay === 'proctoring' && <ExamProctoringPage theme={C} user={user} />}
+            {overlay === 'advising'   && <AdvisingPage       theme={C} user={user} />}
+            {overlay === 'atrisk'     && <AtRiskPage         theme={C} user={user} />}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

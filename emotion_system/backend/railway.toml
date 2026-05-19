@@ -1,0 +1,18 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+# PORT is injected by Railway automatically
+startCommand = "uvicorn main:app --host 0.0.0.0 --port $PORT"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+# Environment variables to set in Railway dashboard:
+#   JWT_SECRET      = (long random string)
+#   DB_PATH         = /data/emotion_system.db
+#   ALLOWED_ORIGINS = https://yourdomain.hostinger.com
+#   SMTP_USER       = edusense.system@gmail.com
+#   SMTP_PASS       = (your gmail app password)
+
+# Add a Railway Volume mounted at /data to persist the SQLite database.
+# In Railway dashboard: Settings → Volumes → Add Volume → mount path "/data"

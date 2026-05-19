@@ -289,6 +289,83 @@ async def init_db():
 
         INSERT OR IGNORE INTO registration_status (id, is_open, semester, deadline)
             VALUES (1, 1, 'Fall 2024', '2024-12-15');
+
+        -- ── Exam Proctoring ──────────────────────────────────────────────────
+        CREATE TABLE IF NOT EXISTS proctoring_sessions (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id          TEXT NOT NULL,
+            exam_id             TEXT NOT NULL,
+            started_at          TEXT DEFAULT (datetime('now')),
+            ended_at            TEXT,
+            identity_verified   INTEGER DEFAULT 0,
+            status              TEXT DEFAULT 'active',
+            suspicious_count    INTEGER DEFAULT 0,
+            total_checks        INTEGER DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS proctoring_events (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id  INTEGER REFERENCES proctoring_sessions(id),
+            student_id  TEXT NOT NULL,
+            exam_id     TEXT NOT NULL,
+            event_type  TEXT NOT NULL,
+            severity    TEXT DEFAULT 'warning',
+            details     TEXT,
+            timestamp   TEXT DEFAULT (datetime('now'))
+        );
+
+        -- ── Academic Advising ────────────────────────────────────────────────
+        CREATE TABLE IF NOT EXISTS advisor_appointments (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id      TEXT NOT NULL,
+            advisor_id      TEXT NOT NULL,
+            scheduled_date  TEXT NOT NULL,
+            scheduled_time  TEXT NOT NULL,
+            duration_min    INTEGER DEFAULT 30,
+            status          TEXT DEFAULT 'pending',
+            topic           TEXT,
+            student_notes   TEXT,
+            advisor_notes   TEXT,
+            meeting_link    TEXT,
+            created_at      TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS advisor_student_notes (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id  TEXT NOT NULL,
+            advisor_id  TEXT NOT NULL,
+            note        TEXT NOT NULL,
+            is_private  INTEGER DEFAULT 1,
+            created_at  TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS degree_requirements (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            program         TEXT NOT NULL,
+            department      TEXT,
+            course_code     TEXT NOT NULL,
+            course_name     TEXT NOT NULL,
+            credits         INTEGER DEFAULT 3,
+            category        TEXT DEFAULT 'core',
+            is_required     INTEGER DEFAULT 1,
+            semester_order  INTEGER DEFAULT 1
+        );
+
+        -- ── At-Risk Early Warning ────────────────────────────────────────────
+        CREATE TABLE IF NOT EXISTS at_risk_assessments (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id          TEXT UNIQUE NOT NULL,
+            risk_score          REAL NOT NULL DEFAULT 0,
+            risk_level          TEXT NOT NULL DEFAULT 'low',
+            attendance_factor   REAL DEFAULT 0,
+            grade_factor        REAL DEFAULT 0,
+            emotion_factor      REAL DEFAULT 0,
+            assignment_factor   REAL DEFAULT 0,
+            details             TEXT DEFAULT '{}',
+            advisor_notified    INTEGER DEFAULT 0,
+            parent_notified     INTEGER DEFAULT 0,
+            assessed_at         TEXT DEFAULT (datetime('now'))
+        );
         """)
         await db.commit()
     print("[OK] Database initialized")

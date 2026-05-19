@@ -5,7 +5,9 @@ import path from 'path'
 import nodemailer from 'nodemailer'
 import { spawn, execFile } from 'child_process'
 
-const PHOTOS_DIR = path.resolve('D:/download/portal/emotion_system/student_photos')
+// Student photos — resolve relative to project root in dev; unused in prod (served by backend)
+const PHOTOS_DIR = process.env.PHOTOS_DIR
+  || path.resolve(__dirname, '../../emotion_system/student_photos')
 
 // Email credentials must be set via environment variables — never hardcode them.
 // Create a .env file (git-ignored) with:
@@ -131,7 +133,8 @@ export default defineConfig({
         });
 
         // ── Emotion saver ─────────────────────────────────────────
-        const EMOTIONS_DIR = path.resolve('D:/download/portal/emotion_system/student_emotions');
+        const EMOTIONS_DIR = process.env.EMOTIONS_DIR
+          || path.resolve(__dirname, '../../emotion_system/student_emotions');
         if (!fs.existsSync(EMOTIONS_DIR)) fs.mkdirSync(EMOTIONS_DIR, { recursive: true });
 
         server.middlewares.use('/api/save-emotion', (req, res) => {
@@ -158,8 +161,9 @@ export default defineConfig({
         });
 
         // ── R Analysis runner ──────────────────────────────────────
-        const R_DIR = path.resolve('D:/download/portal/emotion_system/r_analysis');
-        const RSCRIPT = 'C:/Program Files/R/R-4.6.0/bin/Rscript.exe';
+        const R_DIR = process.env.R_ANALYSIS_DIR
+          || path.resolve(__dirname, '../../emotion_system/r_analysis');
+        const RSCRIPT = process.env.RSCRIPT_PATH || 'Rscript';
 
         server.middlewares.use('/api/run-r', (req, res) => {
           if (req.method === 'OPTIONS') {
@@ -200,7 +204,8 @@ export default defineConfig({
           req.on('end', () => {
             try {
               const { frame, index } = JSON.parse(body)
-              const FRAMES_DIR = path.resolve('D:/download/portal/demo_frames')
+              const FRAMES_DIR = process.env.FRAMES_DIR
+                || path.resolve(__dirname, '../../demo_frames')
               fs.mkdirSync(FRAMES_DIR, { recursive: true })
               const b64 = frame.split(',')[1] || frame
               const buf = Buffer.from(b64, 'base64')

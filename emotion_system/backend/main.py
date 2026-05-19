@@ -19,6 +19,7 @@ from routers import (
     announcements, exam_schedule, resources, assignments,
     notifications, complaints, fees, registration, waitlist,
     qr_sessions, enrollments, init_data,
+    proctoring, advising, at_risk,
 )
 from database import init_db
 import aiosqlite
@@ -87,6 +88,9 @@ app.include_router(waitlist.router,      prefix="/api/waitlist",      tags=["Wai
 app.include_router(qr_sessions.router,   prefix="/api/qr",            tags=["QR"])
 app.include_router(enrollments.router,   prefix="/api/enrollments",   tags=["Enrollments"])
 app.include_router(init_data.router,     prefix="/api/init",          tags=["Init"])
+app.include_router(proctoring.router,    prefix="/api/proctor",        tags=["Proctoring"])
+app.include_router(advising.router,      prefix="/api/advising",       tags=["Advising"])
+app.include_router(at_risk.router,       prefix="/api/at-risk",        tags=["AtRisk"])
 app.include_router(r_router)
 
 # Serve student photos as static files
@@ -103,7 +107,7 @@ async def root():
 @app.get("/api/analytics")
 async def analytics_summary(payload: dict = Depends(require_role("doctor", "admin"))):
     """Mobile-friendly analytics summary."""
-    DB_PATH = "emotion_system.db"
+    DB_PATH = os.getenv("DB_PATH", "emotion_system.db")
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         overview = dict(await (await db.execute(
