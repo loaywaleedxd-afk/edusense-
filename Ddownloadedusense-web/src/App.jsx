@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { DARK, LIGHT } from './theme';
 import LoginPage          from './pages/LoginPage';
 import StudentPage        from './pages/StudentPage';
@@ -84,35 +85,49 @@ export default function App() {
       {user && <ChatWidget user={user} />}
 
       {/* ── Full-screen overlay pages ── */}
-      {overlay && (
-        <div style={{
-          position: 'fixed', inset: 0, background: C.bg, zIndex: 200,
-          display: 'flex', flexDirection: 'column',
-        }}>
-          {/* Overlay top-bar */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            padding: '10px 20px', background: C.sidebar || C.card,
-            borderBottom: `1px solid ${C.border}`,
-          }}>
-            <button onClick={() => setOverlay(null)} style={{
-              background: C.bg3, border: `1px solid ${C.border}`,
-              borderRadius: 8, padding: '5px 12px', fontSize: 12,
-              color: C.text, cursor: 'pointer', fontWeight: 600,
-            }}>← Back</button>
-            <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
-              {overlay === 'proctoring' ? '🎥 Exam Proctoring'
-               : overlay === 'advising' ? '🎓 Academic Advising'
-               : '🚨 Early Warning System'}
-            </span>
-          </div>
-          <div style={{ flex: 1, overflowY: 'auto' }}>
-            {overlay === 'proctoring' && <ExamProctoringPage theme={C} user={user} />}
-            {overlay === 'advising'   && <AdvisingPage       theme={C} user={user} />}
-            {overlay === 'atrisk'     && <AtRiskPage         theme={C} user={user} />}
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {overlay && (
+          <motion.div
+            key="overlay"
+            initial={{ x: '100%', opacity: 0 }}
+            animate={{ x: 0,      opacity: 1 }}
+            exit={{    x: '100%', opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+            style={{
+              position: 'fixed', inset: 0, background: C.bg, zIndex: 200,
+              display: 'flex', flexDirection: 'column',
+            }}
+          >
+            {/* Overlay top-bar */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              padding: '10px 20px', background: C.sidebar || C.card,
+              borderBottom: `1px solid ${C.border}`,
+            }}>
+              <motion.button
+                onClick={() => setOverlay(null)}
+                whileHover={{ x: -2 }}
+                whileTap={{ scale: 0.95 }}
+                style={{
+                  background: C.bg3, border: `1px solid ${C.border}`,
+                  borderRadius: 8, padding: '5px 12px', fontSize: 12,
+                  color: C.text, cursor: 'pointer', fontWeight: 600,
+                }}
+              >← Back</motion.button>
+              <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
+                {overlay === 'proctoring' ? '🎥 Exam Proctoring'
+                 : overlay === 'advising' ? '🎓 Academic Advising'
+                 : '🚨 Early Warning System'}
+              </span>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {overlay === 'proctoring' && <ExamProctoringPage theme={C} user={user} />}
+              {overlay === 'advising'   && <AdvisingPage       theme={C} user={user} />}
+              {overlay === 'atrisk'     && <AtRiskPage         theme={C} user={user} />}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

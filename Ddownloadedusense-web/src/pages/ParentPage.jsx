@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import Topbar  from '../components/Topbar';
+import AnimatedPage from '../components/AnimatedPage';
 import StatCard from '../components/StatCard';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
@@ -50,7 +51,7 @@ export default function ParentPage({ theme: C, user, isDark, onToggleMode, onLog
           <span style={{fontSize:11,color:'#a78bfa',fontWeight:600}}>Parent View — Read Only · Monitoring {child?.name?.split(' ')[0]}'s academic progress</span>
         </div>
         <div className="content-scroll" style={{flex:1,overflowY:'auto',background:C.bg}}>
-          <div className="animate-in" key={page}>
+          <AnimatedPage pageKey={page}>
             {page==='overview'    && <ParentOverview    theme={C} child={child}/>}
             {page==='grades'      && <ParentGrades      theme={C} child={child}/>}
             {page==='attendance'  && <ParentAttendance  theme={C} child={child}/>}
@@ -60,7 +61,7 @@ export default function ParentPage({ theme: C, user, isDark, onToggleMode, onLog
             {page==='emotions'    && <ParentEmotions    theme={C} child={child}/>}
             {page==='schedule'    && <ParentSchedule    theme={C} child={child}/>}
             {page==='riskstatus'  && <ParentChildRisk   theme={C} child={child}/>}
-          </div>
+          </AnimatedPage>
         </div>
       </div>
     </div>

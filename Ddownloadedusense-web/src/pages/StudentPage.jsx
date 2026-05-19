@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import Topbar  from '../components/Topbar';
+import AnimatedPage from '../components/AnimatedPage';
 import StatCard from '../components/StatCard';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
@@ -262,7 +263,7 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
             studentId={stu?.id}
             onGoToAttendance={() => setPage('attendance')}
           />
-          <div className="animate-in" key={page}>
+          <AnimatedPage pageKey={page}>
             {page==='dashboard'  && <StudentDashboard theme={C} user={user} stu={stu} isDark={isDark}/>}
             {page==='attendance' && <StudentAttendance theme={C} stu={stu}/>}
             {page==='emotions'   && <StudentEmotions theme={C} stu={stu}/>}
@@ -279,7 +280,7 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
             {page==='degreeaudit'   && <StudentDegreeAudit theme={C} stu={stu}/>}
             {page==='resources'     && <StudentResources theme={C} stu={stu}/>}
             {page==='assignments'   && <StudentAssignments theme={C} stu={stu}/>}
-          </div>
+          </AnimatedPage>
         </div>
       </div>
     </div>

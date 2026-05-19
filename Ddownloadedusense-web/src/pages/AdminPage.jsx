@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import Sidebar from '../components/Sidebar';
 import Topbar  from '../components/Topbar';
+import AnimatedPage from '../components/AnimatedPage';
 import StatCard from '../components/StatCard';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
@@ -67,7 +68,7 @@ export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogo
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
         <Topbar theme={C} user={user} pageTitle={PAGE_TITLES[page]||page} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout}/>
         <div className="content-scroll" style={{flex:1,overflowY:'auto',background:C.bg}}>
-          <div className="animate-in" key={page}>
+          <AnimatedPage pageKey={page}>
             {page==='dashboard'   && <AdminDashboard theme={C}/>}
             {page==='analytics'   && <AdminAnalytics theme={C}/>}
             {page==='students'    && <AdminStudents theme={C}/>}
@@ -80,7 +81,7 @@ export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogo
             {page==='parents'     && <AdminParents theme={C}/>}
             {page==='r_reports'   && <AdminRReports theme={C}/>}
             {page==='settings'    && <AdminSettings theme={C}/>}
-          </div>
+          </AnimatedPage>
         </div>
       </div>
     </div>

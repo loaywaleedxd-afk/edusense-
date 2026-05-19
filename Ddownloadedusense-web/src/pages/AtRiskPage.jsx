@@ -4,6 +4,7 @@
  * Student: see their own risk card (personal view)
  */
 import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { get, post } from '../api.js';
 import store from '../dataStore.js';
 
@@ -103,15 +104,22 @@ function RiskCard({ student, theme: C, onNotify }) {
   }
 
   return (
-    <div style={{
-      background: C.card,
-      border: `1px solid ${meta.color}40`,
-      borderLeft: `4px solid ${meta.color}`,
-      borderRadius: 12, marginBottom: 12, overflow: 'hidden',
-    }}>
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, ease: 'easeOut' }}
+      style={{
+        background: C.card,
+        border: `1px solid ${meta.color}40`,
+        borderLeft: `4px solid ${meta.color}`,
+        borderRadius: 12, marginBottom: 12, overflow: 'hidden',
+      }}
+    >
       {/* Header row */}
-      <div
+      <motion.div
         onClick={() => setExpanded(e => !e)}
+        whileHover={{ backgroundColor: meta.color + '08' }}
         style={{
           display: 'flex', alignItems: 'center', gap: 12,
           padding: '14px 16px', cursor: 'pointer',
@@ -144,11 +152,24 @@ function RiskCard({ student, theme: C, onNotify }) {
           <div style={{ fontSize: 9, color: C.text3 }}>/ 100</div>
         </div>
 
-        <div style={{ fontSize: 12, color: C.text3 }}>{expanded ? '▲' : '▼'}</div>
-      </div>
+        <motion.div
+          animate={{ rotate: expanded ? 180 : 0 }}
+          transition={{ duration: 0.2 }}
+          style={{ fontSize: 12, color: C.text3 }}
+        >▼</motion.div>
+      </motion.div>
 
       {/* Expanded details */}
+      <AnimatePresence initial={false}>
       {expanded && (
+        <motion.div
+          key="details"
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{    height: 0, opacity: 0 }}
+          transition={{ duration: 0.25, ease: 'easeInOut' }}
+          style={{ overflow: 'hidden' }}
+        >
         <div style={{ padding: '0 16px 16px', borderTop: `1px solid ${C.border}` }}>
           <div style={{ paddingTop: 14, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
             {/* Factor bars */}
@@ -225,8 +246,10 @@ function RiskCard({ student, theme: C, onNotify }) {
             )}
           </div>
         </div>
+        </motion.div>
       )}
-    </div>
+      </AnimatePresence>
+    </motion.div>
   );
 }
 
@@ -385,9 +408,15 @@ function AdminAtRisk({ theme: C }) {
           </div>
         </div>
       ) : (
-        students.map(s => (
-          <RiskCard key={s.student_id} student={s} theme={C} onNotify={() => {}} />
-        ))
+        <motion.div
+          initial="hidden"
+          animate="visible"
+          variants={{ visible: { transition: { staggerChildren: 0.06 } } }}
+        >
+          {students.map(s => (
+            <RiskCard key={s.student_id} student={s} theme={C} onNotify={() => {}} />
+          ))}
+        </motion.div>
       )}
     </div>
   );

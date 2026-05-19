@@ -4,6 +4,7 @@
  * Doctor view:   manage appointments · add notes · view student degree status
  */
 import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { get, post, put, del } from '../api.js';
 import store from '../dataStore.js';
 
@@ -410,12 +411,28 @@ export default function AdvisingPage({ theme: C, user }) {
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
         {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
-            background: tab === t.id ? C.blue2 : C.card,
-            color:      tab === t.id ? '#fff'  : C.text2,
-            border: `1px solid ${tab === t.id ? C.blue2 : C.border}`,
-            borderRadius: 8, padding: '7px 16px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
-          }}>{t.label}</button>
+          <motion.button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            whileHover={{ y: -1 }}
+            whileTap={{ scale: 0.96 }}
+            style={{
+              background: tab === t.id ? C.blue2 : C.card,
+              color:      tab === t.id ? '#fff'  : C.text2,
+              border: `1px solid ${tab === t.id ? C.blue2 : C.border}`,
+              borderRadius: 8, padding: '7px 16px', fontSize: 12, fontWeight: 600,
+              cursor: 'pointer', position: 'relative',
+            }}
+          >
+            {t.label}
+            {tab === t.id && (
+              <motion.div
+                layoutId="tab-active"
+                style={{ position: 'absolute', inset: 0, borderRadius: 8, background: C.blue2, zIndex: -1 }}
+                transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+              />
+            )}
+          </motion.button>
         ))}
       </div>
 
@@ -441,12 +458,28 @@ export default function AdvisingPage({ theme: C, user }) {
             ? <div style={{ color: C.text2, fontSize: 13 }}>
                 {loading ? 'Loading…' : 'No appointments yet.'}
               </div>
-            : appts.map(a => (
-                <ApptCard
-                  key={a.id} appt={a} role={user?.role} theme={C}
-                  onUpdate={handleUpdate} onCancel={handleCancel}
-                />
-              ))
+            : (
+              <motion.div
+                initial="hidden"
+                animate="visible"
+                variants={{ visible: { transition: { staggerChildren: 0.07 } } }}
+              >
+                {appts.map(a => (
+                  <motion.div
+                    key={a.id}
+                    variants={{
+                      hidden:  { opacity: 0, y: 14 },
+                      visible: { opacity: 1, y: 0, transition: { duration: 0.22 } },
+                    }}
+                  >
+                    <ApptCard
+                      appt={a} role={user?.role} theme={C}
+                      onUpdate={handleUpdate} onCancel={handleCancel}
+                    />
+                  </motion.div>
+                ))}
+              </motion.div>
+            )
           }
         </div>
       )}

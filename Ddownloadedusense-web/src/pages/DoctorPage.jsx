@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import Sidebar from '../components/Sidebar';
 import Topbar  from '../components/Topbar';
+import AnimatedPage from '../components/AnimatedPage';
 import StatCard from '../components/StatCard';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
@@ -114,7 +115,7 @@ export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLog
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
         <Topbar theme={C} user={user} pageTitle={PAGE_TITLES[page]||page} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout}/>
         <div className="content-scroll" style={{flex:1,overflowY:'auto',background:C.bg}}>
-          <div className="animate-in" key={page}>
+          <AnimatedPage pageKey={page}>
             {page==='dashboard'  && <DocDashboard theme={C} user={user} doctor={doctor} myCourses={myCourses}/>}
             {page==='live'       && <DocLive theme={C} doctor={doctor} myCourses={myCourses}/>}
             {page==='attendance' && <DocAttendance theme={C} doctor={doctor} myCourses={myCourses}/>}
@@ -132,7 +133,7 @@ export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLog
             {page==='examschedule'  && <DocExamSchedule theme={C} doctor={doctor} myCourses={myCourses}/>}
             {page==='resources'     && <DocResources theme={C} doctor={doctor} myCourses={myCourses}/>}
             {page==='assignments'   && <DocAssignments theme={C} doctor={doctor} myCourses={myCourses}/>}
-          </div>
+          </AnimatedPage>
         </div>
       </div>
     </div>
