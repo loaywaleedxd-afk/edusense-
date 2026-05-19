@@ -1,5 +1,6 @@
 import storeData from './data/store.json';
 import { STUDENT_CREDS, DOCTOR_CREDS } from './data/credentials.js';
+import { api, setToken, clearToken } from './api.js';
 
 const EMOTIONS = ['happy','neutral','confused','bored','surprise','sad','angry','fear'];
 const DEPARTMENTS = ['Computer Science','Engineering','Mathematics','Physics','Data Science'];
@@ -411,26 +412,57 @@ class DataStore {
     } catch(e){ console.warn('DataStore persist error',e); }
   }
 
-  authenticate(username, password){
-    const u = this.users.find(u=>
-      u.username.toLowerCase()===username.toLowerCase().trim() &&
-      u.password===password.trim()
-    );
-    if(!u) return null;
-    const nameParts = (u.name||u.username).split(' ');
-    let photoUrl = null;
-    if (u.role === 'student' && u.studentId) {
-      const s = this.getStudent(u.studentId);
-      if (s) photoUrl = this.getPhotoUrl(s);
+  /** Authenticate — tries the real backend first, falls back to local auth. */
+  async authenticate(username, password){
+    try {
+      const result = await api.login(username, password);
+      setToken(result.token);
+      // Bulk-load all user-relevant data from the backend
+      try {
+        const initData = await api.init();
+        this._loadFromAPI(initData);
+      } catch(e){ console.warn('[dataStore] init load failed:', e.message); }
+      const u = result.user;
+      const nameParts = (u.name||u.username).split(' ');
+      let photoUrl = null;
+      if (u.role === 'student') {
+        const s = this.getStudent(u.id) || this.students.find(x=>x.email?.startsWith(u.username));
+        if (s) photoUrl = this.getPhotoUrl(s);
+      }
+      return {
+        username: u.username, name: u.name||u.username, role: u.role,
+        email: u.email||'', id: u.id||'ADM',
+        studentId: u.role==='student' ? (u.id||'') : '',
+        doctorId:  u.role==='doctor'  ? (u.id||'') : '',
+        initials:  nameParts.slice(0,2).map(w=>w[0]?.toUpperCase()||'').join(''),
+        photoUrl,
+      };
+    } catch(apiErr){
+      // Backend unreachable — fall back to local credential check
+      console.warn('[dataStore] Backend login failed, using local auth:', apiErr.message);
+      const u = this.users.find(u=>
+        u.username.toLowerCase()===username.toLowerCase().trim() &&
+        u.password===password.trim()
+      );
+      if(!u) return null;
+      const nameParts = (u.name||u.username).split(' ');
+      let photoUrl = null;
+      if (u.role === 'student' && u.studentId) {
+        const s = this.getStudent(u.studentId);
+        if (s) photoUrl = this.getPhotoUrl(s);
+      }
+      return {
+        username:u.username, name:u.name||u.username, role:u.role,
+        email:u.email||'', id:u.studentId||u.doctorId||'ADM',
+        studentId:u.studentId||'', doctorId:u.doctorId||'',
+        initials:nameParts.slice(0,2).map(w=>w[0]?.toUpperCase()||'').join(''),
+        photoUrl,
+      };
     }
-    return {
-      username:u.username, name:u.name||u.username, role:u.role,
-      email:u.email||'', id:u.studentId||u.doctorId||'ADM',
-      studentId:u.studentId||'', doctorId:u.doctorId||'',
-      initials:nameParts.slice(0,2).map(w=>w[0]?.toUpperCase()||'').join(''),
-      photoUrl,
-    };
   }
+
+  /** Clear JWT token on logout. */
+  signOut(){ clearToken(); }
 
   nextStudentId(){
     const nums = this.students.map(s=>parseInt(s.id.replace(/\D/g,''))||0);
@@ -547,6 +579,7 @@ class DataStore {
   addExamResult(studentId,courseId,grade,doctorId){
     if(!this.examResults[studentId]) this.examResults[studentId]={};
     this.examResults[studentId][courseId]={grade:+parseFloat(grade).toFixed(1),addedBy:doctorId,date:new Date().toISOString().slice(0,10)};
+    this._callAPI(()=>api.saveCourseGrade({student_id:studentId,course_code:courseId,course_name:this.getCourse(courseId)?.name||courseId,grade:+parseFloat(grade).toFixed(1),doctor_id:doctorId}));
     // Notify student — skip when called from system/bulk publish to avoid spamming
     if(doctorId && doctorId!=='system' && doctorId!=='publish'){
       const course=this.getCourse(courseId);
@@ -565,7 +598,9 @@ class DataStore {
   postMessage(courseId,sender,senderId,role,text,type='message'){
     if(!this.chatMessages[courseId]) this.chatMessages[courseId]=[];
     const msg={id:`${courseId}_${this.chatMessages[courseId].length+1}`,sender,senderId,role,text:text.trim(),type,timestamp:new Date().toLocaleString('en-GB',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}),reactions:{}};
-    this.chatMessages[courseId].push(msg); this._persist(); return msg;
+    this.chatMessages[courseId].push(msg);
+    this._callAPI(()=>api.sendMessage({course_code:courseId,sender_id:senderId,sender_name:sender,sender_role:role,text:text.trim()}));
+    this._persist(); return msg;
   }
 
   getMessages(courseId){ return this.chatMessages[courseId]||[]; }
@@ -779,6 +814,7 @@ class DataStore {
     };
     this.systemAlerts.unshift(alert);
     if(this.systemAlerts.length>100) this.systemAlerts=this.systemAlerts.slice(0,100);
+    this._callAPI(()=>api.addNotification({id:alert.id,type:alert.type,title:alert.title,message:alert.message,studentId:alert.studentId,doctorId:alert.doctorId,courseId:alert.courseId,alertKind:alert.alertKind,createdAt:alert.createdAt}));
     this._persist(); return alert;
   }
 
@@ -810,6 +846,7 @@ class DataStore {
       doctorId:data.doctorId||'',doctorResponse:'',adminResponse:'',
       createdAt:new Date().toISOString().slice(0,10),updatedAt:new Date().toISOString().slice(0,10)};
     this.complaints.push(c);
+    this._callAPI(()=>api.upsertComplaint({id:c.id,studentId:c.studentId,studentName:c.studentName,type:c.type,courseId:c.courseId,courseName:c.courseName,description:c.description,status:c.status,doctorId:c.doctorId,doctorResponse:'',adminResponse:'',createdAt:c.createdAt,updatedAt:c.updatedAt}));
     // Notify doctor of new appeal
     if(data.doctorId){
       this.addAlert({alertKind:'new_appeal',type:'warning',doctorId:data.doctorId,studentId:null,
@@ -823,6 +860,7 @@ class DataStore {
     if(c){
       const prevStatus=c.status;
       Object.assign(c,updates,{updatedAt:new Date().toISOString().slice(0,10)});
+      this._callAPI(()=>api.updateComplaint(id,{status:c.status,doctorResponse:c.doctorResponse||'',adminResponse:c.adminResponse||''}));
       // Notify student when status changes
       if(updates.status && updates.status!==prevStatus && c.studentId){
         const label=updates.status==='reviewed'?'Reviewed by Lecturer':'Resolved by Admin';
@@ -900,7 +938,9 @@ class DataStore {
       doctorId:data.doctorId||'', createdAt:new Date().toISOString(),
       fileData:data.fileData||null, fileName:data.fileName||'', fileSize:data.fileSize||0,
     };
-    this.courseResources.push(r); this._persist(); return r;
+    this.courseResources.push(r);
+    this._callAPI(()=>api.addResource({id:r.id,courseId:r.courseId,week:r.week,title:r.title,url:r.url,type:r.type,description:r.description,doctorId:r.doctorId,fileName:r.fileName,fileSize:r.fileSize,fileData:r.fileData,createdAt:r.createdAt}));
+    this._persist(); return r;
   }
   getCourseResources(courseId){
     if(!this.courseResources) this.courseResources=[];
@@ -919,7 +959,7 @@ class DataStore {
     if(!this.courseResources) this.courseResources=[];
     const n=this.courseResources.length;
     this.courseResources=this.courseResources.filter(r=>r.id!==id);
-    if(this.courseResources.length<n){this._persist();return true;} return false;
+    if(this.courseResources.length<n){this._callAPI(()=>api.deleteResource(id));this._persist();return true;} return false;
   }
 
   // ── ATTENDANCE MARKING (Doctor) ───────────────────────────────────────────
@@ -948,6 +988,7 @@ class DataStore {
       createdAt:new Date().toISOString(),
     };
     this.announcements.unshift(a);
+    this._callAPI(()=>api.addAnnouncement({id:a.id,courseId:a.courseId,courseName:a.courseName,doctorId:a.doctorId,doctorName:a.doctorName,title:a.title,body:a.body,createdAt:a.createdAt}));
     // Notify all enrolled students
     const enrolled=this.getEnrolledStudents(data.courseId||'');
     enrolled.forEach(s=>{
@@ -967,7 +1008,7 @@ class DataStore {
     if(!this.announcements) this.announcements=[];
     const n=this.announcements.length;
     this.announcements=this.announcements.filter(a=>a.id!==id);
-    if(this.announcements.length<n){this._persist();return true;} return false;
+    if(this.announcements.length<n){this._callAPI(()=>api.deleteAnnouncement(id));this._persist();return true;} return false;
   }
 
   // ── EXAM SCHEDULE ─────────────────────────────────────────────────────────
@@ -982,6 +1023,7 @@ class DataStore {
       createdAt:new Date().toISOString(),
     };
     this.examSchedule.push(e);
+    this._callAPI(()=>api.addExam({id:e.id,courseId:e.courseId,courseName:e.courseName,type:e.type,date:e.date,time:e.time,room:e.room,duration:e.duration,notes:e.notes,createdAt:e.createdAt}));
     this._persist(); return e;
   }
   getStudentExams(studentId){
@@ -999,7 +1041,7 @@ class DataStore {
     if(!this.examSchedule) this.examSchedule=[];
     const n=this.examSchedule.length;
     this.examSchedule=this.examSchedule.filter(e=>e.id!==id);
-    if(this.examSchedule.length<n){this._persist();return true;} return false;
+    if(this.examSchedule.length<n){this._callAPI(()=>api.deleteExam(id));this._persist();return true;} return false;
   }
 
   // ── ASSIGNMENTS ───────────────────────────────────────────────────────────
@@ -1016,6 +1058,7 @@ class DataStore {
       attachmentData:data.attachmentData||null, attachmentName:data.attachmentName||'', attachmentSize:data.attachmentSize||0,
     };
     this.assignments.unshift(a);
+    this._callAPI(()=>api.addAssignment({id:a.id,courseId:a.courseId,courseName:a.courseName,doctorId:a.doctorId,title:a.title,description:a.description,deadline:a.deadline,maxScore:a.maxScore,attachmentName:a.attachmentName,attachmentSize:a.attachmentSize,attachmentData:a.attachmentData,createdAt:a.createdAt}));
     // Notify enrolled students
     const enrolled=this.getEnrolledStudents(data.courseId||'');
     enrolled.forEach(s=>{
@@ -1042,6 +1085,7 @@ class DataStore {
     if(this.assignments.length<n){
       if(!this.submissions) this.submissions=[];
       this.submissions=this.submissions.filter(s=>s.assignmentId!==id);
+      this._callAPI(()=>api.deleteAssignment(id));
       this._persist(); return true;
     } return false;
   }
@@ -1064,7 +1108,9 @@ class DataStore {
       submittedAt:new Date().toISOString(),
       grade:null, feedback:'', gradedAt:null, gradedBy:'',
     };
-    this.submissions.push(sub); this._persist(); return sub;
+    this.submissions.push(sub);
+    this._callAPI(()=>api.upsertSubmission({id:sub.id,assignmentId,studentId,courseId:sub.courseId,content,fileName,fileSize,fileData,submittedAt:sub.submittedAt,grade:null,feedback:'',gradedAt:null,gradedBy:''}));
+    this._persist(); return sub;
   }
   getSubmission(assignmentId, studentId){
     return (this.submissions||[]).find(s=>s.assignmentId===assignmentId&&s.studentId===studentId)||null;
@@ -1078,12 +1124,113 @@ class DataStore {
     if(!sub) return false;
     sub.grade=parseFloat(grade); sub.feedback=feedback||'';
     sub.gradedAt=new Date().toISOString(); sub.gradedBy=doctorId||'';
+    this._callAPI(()=>api.gradeSubmission({assignmentId,studentId,grade:sub.grade,feedback:sub.feedback,gradedAt:sub.gradedAt,gradedBy:sub.gradedBy}));
     const asn=this.getAssignment(assignmentId);
     this.addAlert({alertKind:'grade',type:'success',studentId,courseId:asn?.courseId||'',
       title:`✅ Assignment Graded: ${asn?.title||''}`,
       message:`Score: ${sub.grade}/${asn?.maxScore||100}${feedback?` — ${feedback}`:''}`,
     });
     this._persist(); return true;
+  }
+
+  // ── API BRIDGE ────────────────────────────────────────────────────────────
+
+  /** Fire-and-forget: call an API method, log but don't throw on failure. */
+  _callAPI(fn){ fn().catch(e => console.warn('[API sync]', e.message)); }
+
+  /**
+   * Merge data returned from /api/init into the in-memory store.
+   * Maps snake_case API keys → camelCase store keys.
+   */
+  _loadFromAPI(d){
+    const sc2cc = obj => {
+      if(!obj || typeof obj !== 'object') return obj;
+      const map = {
+        course_id:'courseId', course_name:'courseName', doctor_id:'doctorId',
+        doctor_name:'doctorName', student_id:'studentId', student_name:'studentName',
+        created_at:'createdAt', updated_at:'updatedAt', submitted_at:'submittedAt',
+        graded_at:'gradedAt', graded_by:'gradedBy', assignment_id:'assignmentId',
+        file_name:'fileName', file_size:'fileSize', file_data:'fileData',
+        max_score:'maxScore', attachment_name:'attachmentName',
+        attachment_size:'attachmentSize', attachment_data:'attachmentData',
+        alert_kind:'alertKind', is_read:'read', doctor_response:'doctorResponse',
+        admin_response:'adminResponse', due_date:'dueDate', lecture_id:'id',
+        course_code:'code', duration_min:'duration', days_label:'daysLabel',
+      };
+      const out = {};
+      for (const [k, v] of Object.entries(obj)) {
+        const key = map[k] || k;
+        out[key] = v;
+      }
+      return out;
+    };
+    const mapArr = arr => (arr||[]).map(sc2cc);
+
+    // Courses — map lecture rows to course format
+    if (d.courses?.length) {
+      const mapped = d.courses.map(c => {
+        const r = sc2cc(c);
+        const code = r.code || r.course_code || r.lecture_id || r.id || '';
+        let days = [];
+        try { days = typeof r.days === 'string' ? JSON.parse(r.days) : (r.days||[]); } catch{}
+        return {
+          id: code, code, name: r.course_name || r.name || code,
+          room: r.room||'', color: r.color||'#3b82f6',
+          time: r.scheduled_at ? (r.scheduled_at.split(' ')[1]||'09:00').slice(0,5) : (r.time||'09:00'),
+          duration: r.duration_min || r.duration || 90,
+          doctorId: r.doctor_id || r.doctorId || '',
+          doctorName: r.doctor_name || r.doctorName || '',
+          days, daysLabel: r.days_label || r.daysLabel || '',
+          weeks: Array.from({length:16},(_,i)=>i+1),
+          semester: r.semester || 'Fall 2024',
+          enrolledCount: 0, capacity: r.capacity || 300,
+        };
+      });
+      // Merge: keep existing entries for fields not in DB
+      const byId = {};
+      this.courses.forEach(c => { byId[c.id] = c; });
+      mapped.forEach(c => { byId[c.id] = { ...(byId[c.id]||{}), ...c }; });
+      this.courses = Object.values(byId);
+    }
+
+    if (d.courseEnrollments) Object.assign(this.courseEnrollments, d.courseEnrollments);
+    if (d.announcements)  this.announcements  = mapArr(d.announcements);
+    if (d.examSchedule)   this.examSchedule   = mapArr(d.examSchedule);
+    if (d.courseResources)this.courseResources = mapArr(d.courseResources);
+    if (d.assignments)    this.assignments     = mapArr(d.assignments);
+    if (d.submissions)    this.submissions     = mapArr(d.submissions);
+    if (d.complaints)     this.complaints      = mapArr(d.complaints);
+    if (d.examResults)    Object.assign(this.examResults, d.examResults);
+    if (d.attendance)     Object.assign(this.attendance,  d.attendance);
+    if (d.chatMessages)   Object.assign(this.chatMessages, d.chatMessages);
+    if (d.registrationStatus) Object.assign(this.registrationStatus, d.registrationStatus);
+    if (d.studentFees)    Object.assign(this.studentFees, d.studentFees);
+
+    // System alerts — map is_read → read boolean
+    if (d.systemAlerts) {
+      this.systemAlerts = d.systemAlerts.map(a => ({
+        ...sc2cc(a), read: Boolean(a.is_read ?? a.read),
+      }));
+    }
+
+    // Students from API (merge with seed data)
+    if (d.students?.length) {
+      const apiStudents = d.students.map(s => ({
+        id: s.student_id||s.id, name: s.full_name||s.name,
+        email: s.email||'', dept: s.department||s.dept||'',
+        year: s.year||1, emoji:'👦', color:'#3b82f6',
+        emotion:'neutral', attention:'moderate', engagement:50,
+        attentionScore:50, attendanceRate:0, gpa:0,
+        present:false, confidence:0, hasFace:false, registeredAt:'',
+      }));
+      const byId = {};
+      this.students.forEach(s => { byId[s.id] = s; });
+      apiStudents.forEach(s => { byId[s.id] = { ...(byId[s.id]||{}), ...s }; });
+      this.students = Object.values(byId);
+    }
+
+    this._syncStats();
+    this._persist();
   }
 
   // ── GPA & ACADEMIC STANDING ───────────────────────────────────────────────

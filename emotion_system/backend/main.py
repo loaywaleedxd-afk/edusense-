@@ -13,8 +13,13 @@ import os
 from datetime import datetime
 from contextlib import asynccontextmanager
 
-from routers import attendance, emotions, students, lectures, analytics, auth, grades, messages, excuses, users
-from routers import email_router
+from routers import (
+    attendance, emotions, students, lectures, analytics, auth,
+    grades, messages, excuses, users, email_router,
+    announcements, exam_schedule, resources, assignments,
+    notifications, complaints, fees, registration, waitlist,
+    qr_sessions, enrollments, init_data,
+)
 from database import init_db
 import aiosqlite
 from websocket_manager import ConnectionManager
@@ -67,9 +72,21 @@ app.include_router(emotions.router,   prefix="/api/emotions",   tags=["Emotions"
 app.include_router(analytics.router,  prefix="/api/analytics",  tags=["Analytics"])
 app.include_router(grades.router,     prefix="/api/grades",     tags=["Grades"])
 app.include_router(messages.router,   prefix="/api/messages",   tags=["Messages"])
-app.include_router(excuses.router,       prefix="/api/excuses",    tags=["Excuses"])
-app.include_router(users.router,         prefix="/api/users",      tags=["Users"])
-app.include_router(email_router.router,  prefix="/api/email",      tags=["Email"])
+app.include_router(excuses.router,       prefix="/api/excuses",       tags=["Excuses"])
+app.include_router(users.router,         prefix="/api/users",         tags=["Users"])
+app.include_router(email_router.router,  prefix="/api/email",         tags=["Email"])
+app.include_router(announcements.router, prefix="/api/announcements", tags=["Announcements"])
+app.include_router(exam_schedule.router, prefix="/api/exams",         tags=["ExamSchedule"])
+app.include_router(resources.router,     prefix="/api/resources",     tags=["Resources"])
+app.include_router(assignments.router,   prefix="/api/assignments",   tags=["Assignments"])
+app.include_router(notifications.router, prefix="/api/notifications", tags=["Notifications"])
+app.include_router(complaints.router,    prefix="/api/complaints",    tags=["Complaints"])
+app.include_router(fees.router,          prefix="/api/fees",          tags=["Fees"])
+app.include_router(registration.router,  prefix="/api/registration",  tags=["Registration"])
+app.include_router(waitlist.router,      prefix="/api/waitlist",      tags=["Waitlist"])
+app.include_router(qr_sessions.router,   prefix="/api/qr",            tags=["QR"])
+app.include_router(enrollments.router,   prefix="/api/enrollments",   tags=["Enrollments"])
+app.include_router(init_data.router,     prefix="/api/init",          tags=["Init"])
 app.include_router(r_router)
 
 # Serve student photos as static files

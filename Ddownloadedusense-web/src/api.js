@@ -1,0 +1,132 @@
+/**
+ * api.js — Thin async wrapper around the FastAPI backend.
+ * All methods return parsed JSON or throw on HTTP error.
+ *
+ * Token is stored in localStorage under "edusense_token".
+ * Import `api` to call endpoints, `setToken`/`clearToken` to manage auth.
+ */
+
+const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+// ── Token management ──────────────────────────────────────────────────────────
+let _token = localStorage.getItem('edusense_token') || null;
+
+export function setToken(t)  { _token = t; if (t) localStorage.setItem('edusense_token', t); }
+export function clearToken() { _token = null; localStorage.removeItem('edusense_token'); }
+export function getToken()   { return _token; }
+
+// ── Core fetch wrapper ────────────────────────────────────────────────────────
+async function req(method, path, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (_token) headers['Authorization'] = `Bearer ${_token}`;
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(detail?.detail || `${method} ${path} → ${res.status}`);
+  }
+  return res.json();
+}
+
+const get  = (path)       => req('GET',    path);
+const post = (path, body) => req('POST',   path, body);
+const put  = (path, body) => req('PUT',    path, body);
+const del  = (path)       => req('DELETE', path);
+
+// ── API surface ───────────────────────────────────────────────────────────────
+export const api = {
+  // Auth
+  login:          (username, password) => post('/api/auth/login', { username, password }),
+  me:             ()                   => get('/api/auth/me'),
+  changePassword: (old_password, new_password) =>
+                    post('/api/auth/change-password', { old_password, new_password }),
+
+  // Init — bulk data load after login
+  init: () => get('/api/init/'),
+
+  // Students
+  getStudents:    ()   => get('/api/students/'),
+  getStudent:     (id) => get(`/api/students/${id}`),
+
+  // Announcements
+  getAnnouncements:   ()     => get('/api/announcements/'),
+  addAnnouncement:    (data) => post('/api/announcements/', data),
+  deleteAnnouncement: (id)   => del(`/api/announcements/${id}`),
+
+  // Exam schedule
+  getExams:   ()     => get('/api/exams/'),
+  addExam:    (data) => post('/api/exams/', data),
+  deleteExam: (id)   => del(`/api/exams/${id}`),
+
+  // Course resources
+  getResources:   ()     => get('/api/resources/'),
+  addResource:    (data) => post('/api/resources/', data),
+  deleteResource: (id)   => del(`/api/resources/${id}`),
+
+  // Assignments
+  getAssignments:   ()     => get('/api/assignments/'),
+  addAssignment:    (data) => post('/api/assignments/', data),
+  deleteAssignment: (id)   => del(`/api/assignments/${id}`),
+
+  // Submissions
+  getSubmissions:  ()     => get('/api/assignments/submissions'),
+  upsertSubmission:(data) => post('/api/assignments/submissions', data),
+  gradeSubmission: (data) => put('/api/assignments/submissions/grade', data),
+
+  // Notifications
+  getNotifications:    ()       => get('/api/notifications/'),
+  addNotification:     (data)   => post('/api/notifications/', data),
+  bulkNotifications:   (items)  => post('/api/notifications/bulk', items),
+  markNotifRead:       (id)     => put(`/api/notifications/${id}/read`),
+  markAllNotifsRead:   ()       => put('/api/notifications/read-all'),
+
+  // Complaints
+  getComplaints:   ()           => get('/api/complaints/'),
+  upsertComplaint: (data)       => post('/api/complaints/', data),
+  updateComplaint: (id, data)   => put(`/api/complaints/${id}`, data),
+
+  // Grades
+  getStudentGrades: (id)   => get(`/api/grades/student/${id}`),
+  saveCourseGrade:  (data) => post('/api/grades/', data),
+
+  // Attendance
+  markAttendance:      (data)   => post('/api/attendance/mark', data),
+  getStudentAttendance:(id)     => get(`/api/attendance/student/${id}`),
+
+  // Messages
+  getMessages:  (code) => get(`/api/messages/?course_code=${encodeURIComponent(code)}`),
+  sendMessage:  (data) => post('/api/messages/', data),
+
+  // Excuses
+  submitExcuse:      (data) => post('/api/excuses/', data),
+  getStudentExcuses: (id)   => get(`/api/excuses/student/${id}`),
+  updateExcuse:      (id, data) => put(`/api/excuses/${id}`, data),
+
+  // Fees
+  getFeeStatus: (id)        => get(`/api/fees/${id}`),
+  setFeeStatus: (id, data)  => put(`/api/fees/${id}`, data),
+
+  // Registration
+  getRegistration:   ()     => get('/api/registration/'),
+  setRegistration:   (data) => put('/api/registration/', data),
+
+  // Waitlist
+  getWaitlist:   (courseId)             => get(`/api/waitlist/${courseId}`),
+  joinWaitlist:  (courseId, studentId)  => post(`/api/waitlist/${courseId}/${studentId}`),
+  leaveWaitlist: (courseId, studentId)  => del(`/api/waitlist/${courseId}/${studentId}`),
+
+  // QR sessions
+  createQR: (data) => post('/api/qr/create', data),
+  useQR:    (data) => post('/api/qr/use', data),
+
+  // Enrollments
+  getEnrollments:   ()     => get('/api/enrollments/'),
+  bulkEnrollments:  (data) => post('/api/enrollments/bulk', data),
+  enroll:   (cid, sid)     => post(`/api/enrollments/${cid}/${sid}`),
+  unenroll: (cid, sid)     => del(`/api/enrollments/${cid}/${sid}`),
+};
+
+export default api;
