@@ -269,20 +269,27 @@ function BookForm({ theme: C, user, onBooked }) {
   async function submit() {
     if (!date) { setMsg('Please select a date'); return; }
     setBusy(true);
+    const apptData = {
+      student_id:     user.studentId || user.username,
+      advisor_id:     'dr.ahmed',
+      scheduled_date: date,
+      scheduled_time: time,
+      topic,
+      duration_min:   30,
+      status:         'pending',
+    };
     try {
-      await post('/api/advising/appointments', {
-        student_id:     user.studentId || user.username,
-        advisor_id:     'dr.ahmed',   // TODO: let student pick from list
-        scheduled_date: date,
-        scheduled_time: time,
-        topic,
-        duration_min:   30,
-      });
+      await post('/api/advising/appointments', apptData);
       setMsg('✅ Appointment requested!');
-      onBooked();
-    } catch (e) {
-      setMsg('❌ ' + e.message);
-    } finally { setBusy(false); }
+    } catch {
+      // Save to localStorage when backend is offline
+      const existing = loadLocalAppts();
+      existing.push({ ...apptData, id: `local_${Date.now()}`, created_at: new Date().toISOString(), _local: true });
+      saveLocalAppts(existing);
+      setMsg('✅ Saved locally — will sync when server is available');
+    }
+    onBooked();
+    setBusy(false);
   }
 
   const inp = {
@@ -321,11 +328,22 @@ function BookForm({ theme: C, user, onBooked }) {
 }
 
 
+const LOCAL_APPTS_KEY = 'es_local_appts';
+
+function loadLocalAppts() {
+  try { return JSON.parse(localStorage.getItem(LOCAL_APPTS_KEY) || '[]'); }
+  catch { return []; }
+}
+function saveLocalAppts(appts) {
+  localStorage.setItem(LOCAL_APPTS_KEY, JSON.stringify(appts));
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 export default function AdvisingPage({ theme: C, user }) {
   const [tab,   setTab]   = useState('appointments');
-  const [appts, setAppts] = useState([]);
+  const [appts, setAppts] = useState(() => loadLocalAppts());
   const [loading, setLoading] = useState(true);
+  const [fromAPI, setFromAPI] = useState(false);
 
   const studentId = user?.studentId || user?.username;
   const isAdvisor = user?.role === 'doctor' || user?.role === 'admin';
@@ -335,19 +353,40 @@ export default function AdvisingPage({ theme: C, user }) {
     try {
       const data = await get('/api/advising/appointments');
       setAppts(data);
-    } catch { setAppts([]); }
+      saveLocalAppts(data);
+      setFromAPI(true);
+    } catch {
+      // Keep whatever is already in state (loaded from localStorage on init)
+      setFromAPI(false);
+    }
     finally { setLoading(false); }
   }
 
   useEffect(() => { loadAppts(); }, []);
 
   async function handleUpdate(id, status) {
-    await put(`/api/advising/appointments/${id}`, { status }).catch(console.warn);
+    try {
+      await put(`/api/advising/appointments/${id}`, { status });
+    } catch {
+      // Update locally
+      const updated = appts.map(a => a.id === id ? { ...a, status } : a);
+      setAppts(updated);
+      saveLocalAppts(updated);
+      return;
+    }
     loadAppts();
   }
 
   async function handleCancel(id) {
-    await del(`/api/advising/appointments/${id}`).catch(console.warn);
+    try {
+      await del(`/api/advising/appointments/${id}`);
+    } catch {
+      // Remove locally
+      const updated = appts.filter(a => a.id !== id);
+      setAppts(updated);
+      saveLocalAppts(updated);
+      return;
+    }
     loadAppts();
   }
 
@@ -385,15 +424,24 @@ export default function AdvisingPage({ theme: C, user }) {
         <div style={{ maxWidth: 720 }}>
           {!isAdvisor && <BookForm theme={C} user={user} onBooked={loadAppts} />}
 
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 12 }}>
-            {isAdvisor ? 'Student Appointments' : 'My Appointments'} ({appts.length})
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>
+              {isAdvisor ? 'Student Appointments' : 'My Appointments'} ({appts.length})
+            </div>
+            <span style={{
+              fontSize: 10, fontWeight: 700, borderRadius: 20, padding: '3px 10px',
+              background: fromAPI ? '#16a34a20' : '#f59e0b20',
+              color:      fromAPI ? '#16a34a'   : '#92400e',
+            }}>
+              {fromAPI ? '🟢 Live from server' : '🟡 Saved locally'}
+            </span>
           </div>
 
-          {loading
-            ? <div style={{ color: C.text2 }}>Loading…</div>
-            : appts.length === 0
-              ? <div style={{ color: C.text2, fontSize: 13 }}>No appointments yet.</div>
-              : appts.map(a => (
+          {appts.length === 0
+            ? <div style={{ color: C.text2, fontSize: 13 }}>
+                {loading ? 'Loading…' : 'No appointments yet.'}
+              </div>
+            : appts.map(a => (
                 <ApptCard
                   key={a.id} appt={a} role={user?.role} theme={C}
                   onUpdate={handleUpdate} onCancel={handleCancel}

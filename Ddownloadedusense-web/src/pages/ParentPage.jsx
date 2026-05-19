@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Sidebar from '../components/Sidebar';
 import Topbar  from '../components/Topbar';
 import StatCard from '../components/StatCard';
@@ -9,6 +9,7 @@ import { BarChart, LineChart, DonutChart } from '../components/Charts';
 import EmotionBarsWidget from '../components/EmotionBars';
 import store from '../dataStore';
 import { EMOTION_ICONS } from '../theme';
+import { get } from '../api.js';
 
 const NAV = [
   {id:'overview',    icon:'📊', label:'Overview'},
@@ -19,12 +20,15 @@ const NAV = [
   {id:'performance', icon:'📈', label:'Performance'},
   {id:'emotions',    icon:'😊', label:'Emotions'},
   {id:'schedule',    icon:'📅', label:'Schedule'},
+  { section: 'New Features' },
+  {id:'riskstatus',  icon:'🚨', label:'Child Risk Status'},
 ];
 
 const PAGE_TITLES = {
   overview:'Child Overview', grades:'Grades', attendance:'Attendance',
   exams:'Exam Schedule', alerts:'Academic Alerts',
   performance:'Performance', emotions:'Emotions', schedule:'Schedule',
+  riskstatus:'Child Risk Status',
 };
 
 function letterGrade(g){if(g>=90)return'A+';if(g>=85)return'A';if(g>=80)return'B+';if(g>=75)return'B';if(g>=70)return'C+';if(g>=65)return'C';if(g>=60)return'D+';if(g>=50)return'D';return'F';}
@@ -55,6 +59,7 @@ export default function ParentPage({ theme: C, user, isDark, onToggleMode, onLog
             {page==='performance' && <ParentPerformance theme={C} child={child}/>}
             {page==='emotions'    && <ParentEmotions    theme={C} child={child}/>}
             {page==='schedule'    && <ParentSchedule    theme={C} child={child}/>}
+            {page==='riskstatus'  && <ParentChildRisk   theme={C} child={child}/>}
           </div>
         </div>
       </div>
@@ -548,6 +553,155 @@ function ParentSchedule({ theme: C, child }) {
           }
         </div>
       </Card>
+    </div>
+  );
+}
+
+/* ── CHILD RISK STATUS ── */
+function ParentChildRisk({ theme: C, child }) {
+  const sid = child?.id || '';
+
+  function calcRisk() {
+    const grades   = (store.grades || []).filter(g => g.studentId === sid);
+    const att      = store.getStudentAttendance?.(sid) || (store.attendance || []).filter(a => a.studentId === sid);
+    const emotions = (store.emotions || []).filter(e => e.studentId === sid);
+    const subs     = (store.submissions || []).filter(s => s.studentId === sid);
+    const assigns  = store.assignments || [];
+
+    const totalAtt   = att.length || 1;
+    const presentAtt = att.filter(a => a.status === 'present').length;
+    const attRate    = Math.round(presentAtt / totalAtt * 100);
+    const avgGrade   = grades.length
+      ? Math.round(grades.reduce((s, g) => s + (g.grade || g.score || 0), 0) / grades.length)
+      : 85;
+    const negEmotions = ['sad', 'bored', 'angry', 'disgust', 'fear'];
+    const negRate = emotions.length
+      ? Math.round(emotions.filter(e => negEmotions.includes(e.emotion)).length / emotions.length * 100)
+      : 10;
+    const subRate = assigns.length
+      ? Math.round(subs.length / assigns.length * 100)
+      : 100;
+
+    const attFactor   = attRate  < 50 ? 30 : attRate  < 70 ? 20 : attRate  < 80 ? 10 : 0;
+    const gradeFactor = avgGrade < 50 ? 30 : avgGrade < 60 ? 20 : avgGrade < 70 ? 10 : 0;
+    const emFactor    = negRate  > 70 ? 20 : negRate  > 50 ? 12 : negRate  > 30 ?  6 : 0;
+    const subFactor   = subRate  < 50 ? 20 : subRate  < 70 ? 12 : subRate  < 85 ?  6 : 0;
+    const score       = attFactor + gradeFactor + emFactor + subFactor;
+    const level       = score >= 60 ? 'critical' : score >= 40 ? 'high' : score >= 20 ? 'medium' : 'low';
+    return { score, level, attRate, avgGrade, negRate, subRate };
+  }
+
+  const [risk, setRisk]     = useState(() => calcRisk());
+  const [fromAPI, setFromAPI] = useState(false);
+
+  useEffect(() => {
+    get(`/api/at-risk/student/${sid}`)
+      .then(res => {
+        if (res && res.risk_score !== undefined) {
+          const det = typeof res.details === 'string'
+            ? JSON.parse(res.details || '{}') : (res.details || {});
+          setRisk({
+            score:    res.risk_score,
+            level:    res.risk_level,
+            attRate:  det.attendance_rate  ?? risk.attRate,
+            avgGrade: det.avg_grade        ?? risk.avgGrade,
+            negRate:  det.negative_emotion ?? risk.negRate,
+            subRate:  det.submission_rate  ?? risk.subRate,
+          });
+          setFromAPI(true);
+        }
+      })
+      .catch(() => {});
+  }, [sid]);
+
+  const LEVEL_META = {
+    critical: { color: '#dc2626', bg: '#fef2f2', icon: '🚨', label: 'CRITICAL' },
+    high:     { color: '#f97316', bg: '#fff7ed', icon: '⚠️',  label: 'HIGH' },
+    medium:   { color: '#eab308', bg: '#fefce8', icon: '📊',  label: 'MEDIUM' },
+    low:      { color: '#16a34a', bg: '#f0fdf4', icon: '✅',  label: 'LOW' },
+  };
+  const meta  = LEVEL_META[risk.level] || LEVEL_META.low;
+  const fname = child?.name?.split(' ')[0] || 'Your child';
+
+  const advice = {
+    low:      `${fname} is on track. Keep up the great work!`,
+    medium:   `Some areas need attention. Consider contacting ${fname}'s advisor.`,
+    high:     `Important: ${fname} should meet with their academic advisor soon.`,
+    critical: `🚨 Critical: Immediate action required. Contact the advisor today.`,
+  }[risk.level];
+
+  const items = [
+    { label: '📅 Attendance Rate',   val: `${risk.attRate}%`,  ok: risk.attRate  >= 80 },
+    { label: '📝 Average Grade',      val: `${risk.avgGrade}%`, ok: risk.avgGrade >= 70 },
+    { label: '😔 Negative Emotions', val: `${risk.negRate}%`,  ok: risk.negRate  <  30 },
+    { label: '📋 Submission Rate',    val: `${risk.subRate}%`,  ok: risk.subRate  >= 85 },
+  ];
+
+  return (
+    <div style={{padding:'8px 20px 20px'}}>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:4}}>🚨 Child Risk Status</div>
+      <div style={{fontSize:12,color:C.text2,marginBottom:16}}>
+        AI early-warning indicators for {child?.name}
+      </div>
+
+      <div style={{textAlign:'right',marginBottom:12}}>
+        <span style={{
+          fontSize:10,fontWeight:700,borderRadius:20,padding:'3px 10px',
+          background: fromAPI ? '#16a34a20' : '#f59e0b20',
+          color:      fromAPI ? '#16a34a'   : '#92400e',
+        }}>
+          {fromAPI ? '🟢 Live from server' : '🟡 Estimated from local data'}
+        </span>
+      </div>
+
+      <div style={{
+        background:meta.bg, border:`2px solid ${meta.color}40`,
+        borderRadius:16, padding:28, textAlign:'center', marginBottom:20, maxWidth:480,
+      }}>
+        <div style={{fontSize:48}}>{meta.icon}</div>
+        <div style={{fontSize:32,fontWeight:900,color:meta.color,marginTop:8}}>{risk.score}/100</div>
+        <div style={{fontSize:16,fontWeight:700,color:meta.color}}>{meta.label} RISK</div>
+        <div style={{fontSize:12,color:'#64748b',marginTop:8,lineHeight:1.6}}>{advice}</div>
+      </div>
+
+      <div style={{background:C.card,borderRadius:12,border:`1px solid ${C.border}`,padding:20,maxWidth:480}}>
+        <div style={{fontSize:11,fontWeight:700,color:C.text3,marginBottom:14,letterSpacing:'0.05em'}}>
+          PERFORMANCE BREAKDOWN
+        </div>
+        {items.map(item => (
+          <div key={item.label} style={{
+            display:'flex', justifyContent:'space-between', alignItems:'center',
+            padding:'9px 12px', borderRadius:8, marginBottom:6,
+            background: item.ok ? '#16a34a08' : '#dc262608',
+          }}>
+            <span style={{fontSize:12,color:C.text2}}>{item.label}</span>
+            <span style={{fontSize:13,fontWeight:700,color:item.ok?'#16a34a':'#dc2626'}}>
+              {item.ok ? '✅' : '⚠️'} {item.val}
+            </span>
+          </div>
+        ))}
+        <div style={{marginTop:14,fontSize:11,color:C.text3,textAlign:'center'}}>
+          Last checked: {new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}
+        </div>
+      </div>
+
+      {(risk.level === 'high' || risk.level === 'critical') && (
+        <div style={{
+          marginTop:16, maxWidth:480,
+          background: risk.level==='critical'?'#fef2f2':'#fff7ed',
+          border:`1px solid ${meta.color}44`, borderRadius:12, padding:'16px 20px',
+        }}>
+          <div style={{fontSize:13,fontWeight:700,color:meta.color,marginBottom:6}}>
+            {meta.icon} What to do next
+          </div>
+          <ul style={{margin:0,padding:'0 0 0 18px',fontSize:12,color:'#374151',lineHeight:1.8}}>
+            <li>Contact {fname}'s academic advisor to schedule a meeting</li>
+            <li>Review {fname}'s attendance and encourage regular class attendance</li>
+            <li>Check if any assignments or exams were missed</li>
+            <li>Ask {fname} about any difficulties they may be experiencing</li>
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

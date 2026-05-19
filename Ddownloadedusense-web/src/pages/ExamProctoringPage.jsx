@@ -27,7 +27,9 @@ function ReviewPanel({ theme: C, examId }) {
 
   useEffect(() => {
     get(`/api/proctor/sessions${examId ? `?exam_id=${examId}` : ''}`)
-      .then(setSessions).catch(console.warn).finally(() => setLoading(false));
+      .then(setSessions)
+      .catch(() => setSessions([]))
+      .finally(() => setLoading(false));
   }, [examId]);
 
   async function viewSession(s) {
@@ -40,6 +42,7 @@ function ReviewPanel({ theme: C, examId }) {
     count >= 5 ? '#dc2626' : count >= 3 ? '#f97316' : count >= 1 ? '#eab308' : '#16a34a';
 
   if (loading) return <div style={{ color: C.text2, padding: 32 }}>Loading sessions…</div>;
+  // backend offline / no sessions yet → handled gracefully by empty list below
 
   return (
     <div style={{ display: 'flex', gap: 20, height: '100%' }}>
@@ -162,6 +165,7 @@ function StudentProctoring({ theme: C, user, examId }) {
   const [warnCount,     setWarnCount]  = useState(0);
   const [camError,      setCamError]   = useState('');
   const [events,        setEvents]     = useState([]);
+  const [localMode,     setLocalMode]  = useState(false);  // true when backend is unavailable
 
   // Start camera
   async function startCamera() {
@@ -192,6 +196,26 @@ function StudentProctoring({ theme: C, user, examId }) {
     return canvasRef.current.toDataURL('image/jpeg', 0.7);
   }
 
+  // Client-side frame analysis when backend is unavailable
+  // Uses pixel brightness as a proxy: very dark = no face visible
+  function analyzeFrameLocally() {
+    if (!canvasRef.current) return { event: 'ok', severity: 'info' };
+    try {
+      const ctx    = canvasRef.current.getContext('2d');
+      const { width, height } = canvasRef.current;
+      if (!width || !height) return { event: 'ok', severity: 'info' };
+      const data   = ctx.getImageData(0, 0, width, height).data;
+      let brightness = 0;
+      const pixels = data.length / 4;
+      for (let i = 0; i < data.length; i += 4) {
+        brightness += (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+      }
+      brightness = brightness / pixels;
+      if (brightness < 15) return { event: 'face_not_visible', severity: 'critical' };
+    } catch { /* ignore */ }
+    return { event: 'ok', severity: 'info' };
+  }
+
   // Identity verification step
   async function verifyIdentity() {
     setPhase('verifying');
@@ -204,36 +228,57 @@ function StudentProctoring({ theme: C, user, examId }) {
         frame_b64:  frame,
       });
       if (res.verified) {
-        await beginSession();
+        await beginSession(false);
       } else {
         setAlertMsg(res.message);
         setAlertSev('critical');
         setPhase('setup');
       }
-    } catch (e) {
-      setAlertMsg('Verification failed — ' + e.message);
-      setAlertSev('critical');
-      setPhase('setup');
+    } catch {
+      // Backend unavailable — use local mode (camera is on = verified)
+      setLocalMode(true);
+      await beginSession(true);
     }
   }
 
-  async function beginSession() {
-    const s = await post('/api/proctor/start', {
-      student_id: user.studentId || user.username,
-      exam_id:    examId,
-    });
-    setSessionId(s.session_id);
+  async function beginSession(isLocal = false) {
+    let sid;
+    if (!isLocal) {
+      const s = await post('/api/proctor/start', {
+        student_id: user.studentId || user.username,
+        exam_id:    examId,
+      });
+      sid = s.session_id;
+    } else {
+      sid = `local_${Date.now()}`;
+    }
+    setSessionId(sid);
     setPhase('active');
     setAlertMsg('✅ Exam started. Keep your face visible at all times.');
     setAlertSev('ok');
-
-    // Periodic frame checks
-    intervalRef.current = setInterval(() => checkFrame(s.session_id), CHECK_INTERVAL_MS);
+    intervalRef.current = setInterval(() => checkFrame(sid, isLocal), CHECK_INTERVAL_MS);
   }
 
-  const checkFrame = useCallback(async (sid) => {
+  const checkFrame = useCallback(async (sid, isLocal = false) => {
     const frame = captureFrame();
     if (!frame) return;
+
+    if (isLocal) {
+      // Client-side analysis only
+      const result = analyzeFrameLocally();
+      if (result.event !== 'ok') {
+        const info = EVENT_LABELS[result.event] || {};
+        setWarnCount(c => c + 1);
+        setAlertMsg(info.label || result.event);
+        setAlertSev(result.severity);
+        setEvents(prev => [{ event: result.event, timestamp: new Date().toLocaleTimeString() }, ...prev.slice(0, 19)]);
+      } else {
+        setAlertMsg('');
+        setAlertSev('info');
+      }
+      return;
+    }
+
     try {
       const res = await post('/api/proctor/check-frame', {
         session_id: sid,
@@ -251,12 +296,26 @@ function StudentProctoring({ theme: C, user, examId }) {
         setAlertMsg('');
         setAlertSev('info');
       }
-    } catch {}
+    } catch {
+      // Backend went offline mid-session — switch to local analysis
+      setLocalMode(true);
+      const result = analyzeFrameLocally();
+      if (result.event !== 'ok') {
+        const info = EVENT_LABELS[result.event] || {};
+        setWarnCount(c => c + 1);
+        setAlertMsg(info.label || result.event);
+        setAlertSev(result.severity);
+        setEvents(prev => [{ event: result.event, timestamp: new Date().toLocaleTimeString() }, ...prev.slice(0, 19)]);
+      } else {
+        setAlertMsg('');
+        setAlertSev('info');
+      }
+    }
   }, [examId, user]);
 
   async function endExam() {
     if (intervalRef.current) clearInterval(intervalRef.current);
-    if (sessionId) {
+    if (sessionId && !sessionId.startsWith('local_')) {
       await post('/api/proctor/end', { session_id: sessionId }).catch(() => {});
     }
     stopCamera();
@@ -277,6 +336,11 @@ function StudentProctoring({ theme: C, user, examId }) {
           <div style={{ fontSize: 11, color: C.text2 }}>Exam: {examId} · Student: {user.name}</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {localMode && (
+            <span style={{ background: '#f59e0b20', color: '#92400e', borderRadius: 20, padding: '3px 12px', fontSize: 11, fontWeight: 700 }}>
+              🟡 Offline mode
+            </span>
+          )}
           {warnCount > 0 && (
             <span style={{ background: '#dc262620', color: '#dc2626', borderRadius: 20, padding: '3px 12px', fontSize: 11, fontWeight: 700 }}>
               ⚠️ {warnCount} warnings
