@@ -231,44 +231,95 @@ function RiskCard({ student, theme: C, onNotify }) {
 }
 
 
+// ── Build local risk list for ALL students from dataStore ─────────────────────
+function buildLocalRiskList() {
+  return (store.students || []).map(stu => {
+    const risk = calcLocalRisk(stu.id || stu.student_id);
+    return {
+      ...risk,
+      student_name:     stu.name || stu.full_name || stu.id,
+      student_email:    stu.email || '',
+      department:       stu.department || 'N/A',
+      advisor_notified: false,
+      parent_notified:  false,
+      assessed_at:      new Date().toISOString(),
+      _source:          'local',
+    };
+  }).sort((a, b) => b.risk_score - a.risk_score);
+}
+
 // ── Doctor/Admin dashboard ────────────────────────────────────────────────────
 function AdminAtRisk({ theme: C }) {
-  const [students, setStudents] = useState([]);
-  const [filter,   setFilter]   = useState('medium');
-  const [assessing, setAssessing] = useState(false);
-  const [loading,   setLoading]   = useState(true);
-  const [lastRun,   setLastRun]   = useState(null);
+  const [allStudents, setAllStudents] = useState(() => buildLocalRiskList());
+  const [filter,      setFilter]      = useState('medium');
+  const [assessing,   setAssessing]   = useState(false);
+  const [fromAPI,     setFromAPI]     = useState(false);
+  const [lastRun,     setLastRun]     = useState(null);
 
-  async function load() {
-    setLoading(true);
-    try {
-      const data = await get(`/api/at-risk/students?min_level=${filter}`);
-      setStudents(data);
-    } catch { setStudents([]); }
-    finally { setLoading(false); }
-  }
+  // Try to load from backend silently on mount
+  useEffect(() => {
+    get('/api/at-risk/students?min_level=low')
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          data.forEach(s => {
+            if (typeof s.details === 'string') {
+              try { s.details = JSON.parse(s.details); } catch { s.details = {}; }
+            }
+          });
+          setAllStudents(data);
+          setFromAPI(true);
+        }
+      })
+      .catch(() => {}); // keep local data silently
+  }, []);
 
   async function runAssessment() {
     setAssessing(true);
     try {
       const res = await post('/api/at-risk/assess', {});
-      setLastRun(`Assessed ${res.assessed} students`);
-      await load();
-    } catch (e) {
-      setLastRun('Error: ' + e.message);
+      setLastRun(`✅ Assessed ${res.assessed} students on server`);
+      // Reload from backend after assessment
+      const data = await get('/api/at-risk/students?min_level=low');
+      data.forEach(s => {
+        if (typeof s.details === 'string') {
+          try { s.details = JSON.parse(s.details); } catch { s.details = {}; }
+        }
+      });
+      setAllStudents(data);
+      setFromAPI(true);
+    } catch {
+      // Backend not available — run locally
+      const local = buildLocalRiskList();
+      setAllStudents(local);
+      setLastRun(`✅ Assessed ${local.length} students locally (backend offline)`);
     } finally { setAssessing(false); }
   }
 
-  useEffect(() => { load(); }, [filter]);
+  const levelOrder = { low: 0, medium: 1, high: 2, critical: 3 };
+  const minIdx = levelOrder[filter] ?? 1;
+  const students = allStudents.filter(s => (levelOrder[s.risk_level] ?? 0) >= minIdx);
 
   const counts = {
-    critical: students.filter(s => s.risk_level === 'critical').length,
-    high:     students.filter(s => s.risk_level === 'high').length,
-    medium:   students.filter(s => s.risk_level === 'medium').length,
+    critical: allStudents.filter(s => s.risk_level === 'critical').length,
+    high:     allStudents.filter(s => s.risk_level === 'high').length,
+    medium:   allStudents.filter(s => s.risk_level === 'medium').length,
   };
 
   return (
     <div>
+      {/* Data source badge */}
+      <div style={{ textAlign: 'right', marginBottom: 10 }}>
+        <span style={{
+          fontSize: 10, fontWeight: 700, borderRadius: 20, padding: '3px 10px',
+          background: fromAPI ? '#16a34a20' : '#f59e0b20',
+          color:      fromAPI ? '#16a34a'   : '#92400e',
+        }}>
+          {fromAPI
+            ? `🟢 Live from server (${allStudents.length} students)`
+            : `🟡 Local estimate — ${allStudents.length} students`}
+        </span>
+      </div>
+
       {/* Summary cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 20 }}>
         {Object.entries(counts).map(([level, count]) => {
@@ -323,25 +374,21 @@ function AdminAtRisk({ theme: C }) {
       </div>
 
       {/* Student cards */}
-      {loading
-        ? <div style={{ color: C.text2 }}>Loading…</div>
-        : students.length === 0
-          ? (
-            <div style={{ textAlign: 'center', padding: 40, color: C.text2 }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>📊</div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>No results yet</div>
-              <div style={{ fontSize: 12, marginTop: 4, marginBottom: 16 }}>
-                Click <strong>⟳ Run Assessment</strong> to calculate risk scores for all students.
-              </div>
-              <div style={{ fontSize: 11, color: C.text3 }}>
-                ⚠️ Requires the backend server to be running on port 8000
-              </div>
-            </div>
-          )
-          : students.map(s => (
-            <RiskCard key={s.student_id} student={s} theme={C} onNotify={load} />
-          ))
-      }
+      {students.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: 40, color: C.text2 }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
+            No {filter}+ risk students found
+          </div>
+          <div style={{ fontSize: 12, marginTop: 4 }}>
+            Try selecting "All students" to see everyone.
+          </div>
+        </div>
+      ) : (
+        students.map(s => (
+          <RiskCard key={s.student_id} student={s} theme={C} onNotify={() => {}} />
+        ))
+      )}
     </div>
   );
 }
