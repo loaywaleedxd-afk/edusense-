@@ -5,6 +5,64 @@
  */
 import { useState, useEffect } from 'react';
 import { get, post, put, del } from '../api.js';
+import store from '../dataStore.js';
+
+// ── Build local degree audit from dataStore (no backend needed) ───────────────
+function buildLocalAudit(studentId) {
+  const stu    = store.getStudent?.(studentId) || store.students?.[0];
+  const sid    = stu?.id || studentId;
+  const grades = (store.grades || []).filter(g => g.studentId === sid);
+  const enroll = (store.courses || store.lectures || []);
+
+  // Courses the student has passed (grade ≥ 60)
+  const passed = grades.filter(g => (g.grade || g.score || 0) >= 60);
+  const passedCodes = new Set(passed.map(g => g.courseCode || g.course_code || ''));
+
+  // Build "completed" category from passed courses
+  const completedCourses = passed.map(g => ({
+    course_code: g.courseCode || g.course_code,
+    course_name: g.courseName || g.course_name || g.courseCode,
+    credits: 3,
+    category: 'completed',
+    is_required: 1,
+    completed: true,
+    grade: g.grade || g.score,
+    semester_order: 1,
+  }));
+
+  // Build "in progress" from enrolled courses not yet passed
+  const inProgress = enroll
+    .filter(c => !passedCodes.has(c.courseCode || c.course_code || c.id))
+    .slice(0, 8)
+    .map(c => ({
+      course_code: c.courseCode || c.course_code || c.id,
+      course_name: c.courseName || c.course_name || c.name,
+      credits: 3,
+      category: 'in_progress',
+      is_required: 1,
+      completed: false,
+      grade: null,
+      semester_order: 2,
+    }));
+
+  const totalReq = completedCourses.length + inProgress.length;
+  const done     = completedCourses.length;
+  const pct      = totalReq > 0 ? Math.round(done / totalReq * 100) : 0;
+
+  return {
+    student_id:         sid,
+    total_required:     totalReq,
+    completed_required: done,
+    electives_done:     0,
+    graduation_pct:     pct,
+    currently_enrolled: inProgress,
+    categories: {
+      completed:   { total: done,          completed: done,         courses: completedCourses },
+      in_progress: { total: inProgress.length, completed: 0,        courses: inProgress },
+    },
+    _source: 'local',
+  };
+}
 
 // ── Circular progress ring ────────────────────────────────────────────────────
 function Ring({ pct, size = 120, stroke = 10, color = '#3b82f6', label, C }) {
@@ -35,30 +93,33 @@ function Ring({ pct, size = 120, stroke = 10, color = '#3b82f6', label, C }) {
 
 // ── Degree Audit view ─────────────────────────────────────────────────────────
 function DegreeAudit({ theme: C, studentId }) {
-  const [audit,   setAudit]   = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [audit,   setAudit]   = useState(() => buildLocalAudit(studentId));
+  const [fromAPI, setFromAPI] = useState(false);
 
   useEffect(() => {
     get(`/api/advising/degree-audit/${studentId}`)
-      .then(setAudit).catch(console.warn).finally(() => setLoading(false));
+      .then(data => { setAudit(data); setFromAPI(true); })
+      .catch(() => {}); // keep local data silently
   }, [studentId]);
 
-  if (loading) return <div style={{ color: C.text2, padding: 20 }}>Loading degree audit…</div>;
-  if (!audit)  return (
-    <div style={{ textAlign: 'center', padding: 40, color: C.text2 }}>
-      <div style={{ fontSize: 36, marginBottom: 12 }}>🏛️</div>
-      <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Degree audit unavailable</div>
-      <div style={{ fontSize: 12, marginTop: 6 }}>
-        The backend server must be running to load degree requirements.<br/>
-        Start it with <code style={{ background: '#1e293b', padding: '2px 6px', borderRadius: 4 }}>start_backend.bat</code>
-      </div>
-    </div>
-  );
-
-  const catColors = { core: '#3b82f6', elective: '#8b5cf6', general: '#10b981' };
+  const catColors = {
+    core: '#3b82f6', elective: '#8b5cf6', general: '#10b981',
+    completed: '#16a34a', in_progress: '#f59e0b',
+  };
 
   return (
     <div>
+      {/* Data source badge */}
+      <div style={{ textAlign: 'right', marginBottom: 10 }}>
+        <span style={{
+          fontSize: 10, fontWeight: 700, borderRadius: 20, padding: '3px 10px',
+          background: fromAPI ? '#16a34a20' : '#f59e0b20',
+          color:      fromAPI ? '#16a34a'   : '#92400e',
+        }}>
+          {fromAPI ? '🟢 Full degree audit from server' : '🟡 Estimated from your grades & courses'}
+        </span>
+      </div>
+
       {/* Graduation progress */}
       <div style={{ display: 'flex', justifyContent: 'center', gap: 40, marginBottom: 28, flexWrap: 'wrap' }}>
         <Ring pct={audit.graduation_pct} color="#3b82f6" label="Graduation Progress" C={C} />
@@ -360,13 +421,18 @@ export default function AdvisingPage({ theme: C, user }) {
 }
 
 function GraduationProgressCard({ theme: C, studentId }) {
-  const [data, setData] = useState(null);
+  // Local fallback: count passed grades as "done"
+  const localAudit = buildLocalAudit(studentId);
+  const [data, setData] = useState({
+    done:    localAudit.completed_required,
+    total:   localAudit.total_required || 20,
+    percent: localAudit.graduation_pct,
+  });
+
   useEffect(() => {
     get(`/api/advising/graduation-progress/${studentId}`)
-      .then(setData).catch(console.warn);
+      .then(setData).catch(() => {});
   }, [studentId]);
-
-  if (!data) return <div style={{ color: C.text2 }}>Loading…</div>;
 
   const pct = data.percent;
   const color = pct >= 75 ? '#16a34a' : pct >= 50 ? '#3b82f6' : pct >= 25 ? '#f97316' : '#dc2626';
