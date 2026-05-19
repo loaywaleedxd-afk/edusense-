@@ -242,4 +242,26 @@ export default defineConfig({
       }
     }
   ],
+
+  server: {
+    proxy: {
+      // Forward all /api/* calls to the FastAPI backend during dev
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        // Don't rewrite the path — FastAPI already has /api/* routes
+      },
+      // WebSocket proxy for live emotion sessions
+      '/ws': {
+        target: 'ws://localhost:8000',
+        ws: true,
+        changeOrigin: true,
+      },
+      // Student photos served by backend
+      '/photos': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
+    },
+  },
 })

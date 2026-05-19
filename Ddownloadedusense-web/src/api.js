@@ -6,9 +6,10 @@
  * Import `api` to call endpoints, `setToken`/`clearToken` to manage auth.
  */
 
-// In production the React app and FastAPI share the same domain via nginx proxy,
-// so we use a relative base (""). In dev we point to localhost:8000.
-const BASE = import.meta.env.VITE_API_URL ?? '';
+// In dev:  Vite proxies /api/* → localhost:8000  (see vite.config.js server.proxy)
+// In prod: nginx proxies /api/* → backend container (same domain, relative path)
+// VITE_API_URL can override both (e.g. for Railway or external backend)
+const BASE = import.meta.env.VITE_API_URL || '';
 
 // ── Token management ──────────────────────────────────────────────────────────
 let _token = localStorage.getItem('edusense_token') || null;
