@@ -896,6 +896,7 @@ class DataStore {
       title:data.title||'', url:data.url||'',
       type:data.type||'link', description:data.description||'',
       doctorId:data.doctorId||'', createdAt:new Date().toISOString(),
+      fileData:data.fileData||null, fileName:data.fileName||'', fileSize:data.fileSize||0,
     };
     this.courseResources.push(r); this._persist(); return r;
   }
@@ -1010,6 +1011,7 @@ class DataStore {
       description:data.description||'', deadline:data.deadline||'',
       maxScore:parseInt(data.maxScore)||100,
       createdAt:new Date().toISOString(),
+      attachmentData:data.attachmentData||null, attachmentName:data.attachmentName||'', attachmentSize:data.attachmentSize||0,
     };
     this.assignments.unshift(a);
     // Notify enrolled students
@@ -1043,11 +1045,12 @@ class DataStore {
   }
 
   // ── SUBMISSIONS ───────────────────────────────────────────────────────────
-  submitAssignment(assignmentId, studentId, content){
+  submitAssignment(assignmentId, studentId, content, fileData=null, fileName='', fileSize=0){
     if(!this.submissions) this.submissions=[];
     const existing=this.submissions.find(s=>s.assignmentId===assignmentId&&s.studentId===studentId);
     if(existing){
       existing.content=content; existing.submittedAt=new Date().toISOString();
+      existing.fileData=fileData; existing.fileName=fileName; existing.fileSize=fileSize;
       existing.grade=null; existing.feedback=''; existing.gradedAt=null;
       this._persist(); return existing;
     }
@@ -1055,6 +1058,7 @@ class DataStore {
     const sub={
       id:`SUB${Date.now()}`, assignmentId, studentId,
       courseId:asn?.courseId||'', content,
+      fileData, fileName, fileSize,
       submittedAt:new Date().toISOString(),
       grade:null, feedback:'', gradedAt:null, gradedBy:'',
     };

@@ -72,6 +72,32 @@ function buildNav(stuId, lastSeen) {
   });
 }
 
+/* ── FILE HELPERS (student) ── */
+const ACCEPT_FILES = '.pdf,.jpg,.jpeg,.png,.doc,.docx,.ppt,.pptx';
+const MAX_FILE_BYTES = 3 * 1024 * 1024;
+function fileIcon(name=''){
+  const ext=(name.split('.').pop()||'').toLowerCase();
+  if(ext==='pdf')                        return {icon:'📄',color:'#ef4444',label:'PDF'};
+  if(['jpg','jpeg','png'].includes(ext)) return {icon:'🖼️',color:'#8b5cf6',label:'Image'};
+  if(['doc','docx'].includes(ext))       return {icon:'📝',color:'#3b82f6',label:'Word'};
+  if(['ppt','pptx'].includes(ext))       return {icon:'📊',color:'#f97316',label:'PowerPoint'};
+  return {icon:'📎',color:'#64748b',label:'File'};
+}
+function openFile(fileData, fileName){
+  const ext=(fileName.split('.').pop()||'').toLowerCase();
+  if(['pdf','jpg','jpeg','png','gif','webp'].includes(ext)){ window.open(fileData,'_blank'); }
+  else { const a=document.createElement('a'); a.href=fileData; a.download=fileName; a.click(); }
+}
+async function readFile(file){
+  if(file.size>MAX_FILE_BYTES) throw new Error(`File too large — max 3 MB (got ${(file.size/1048576).toFixed(1)} MB)`);
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=e=>res({data:e.target.result,name:file.name,size:file.size});
+    r.onerror=()=>rej(new Error('Could not read file'));
+    r.readAsDataURL(file);
+  });
+}
+
 const PAGE_TITLES = {
   dashboard:'Dashboard', attendance:'My Attendance', emotions:'My Emotions',
   schedule:'Schedule', performance:'Performance', grades:'My Grades',
@@ -1459,16 +1485,29 @@ function StudentResources({ theme: C, stu }) {
 /* ══ ASSIGNMENTS ══ */
 function StudentAssignments({ theme: C, stu }) {
   const assignments = store.getStudentAssignments(stu.id);
-  const [expanded,  setExpanded]  = useState(null);
-  const [content,   setContent]   = useState({});
-  const [submitted, setSubmitted] = useState({});
+  const [expanded,   setExpanded]  = useState(null);
+  const [content,    setContent]   = useState({});
+  const [fileState,  setFileState] = useState({}); // {[asnId]: {data,name,size}}
+  const [fileErrors, setFileErrors]= useState({});
+  const [submitted,  setSubmitted] = useState({});
   const [, refresh] = useState(0);
   const today = new Date().toISOString().slice(0,10);
 
+  async function handleFile(asnId, e) {
+    const file = e.target.files?.[0]; if(!file) return;
+    setFileErrors(p=>({...p,[asnId]:''}));
+    try {
+      const {data,name,size} = await readFile(file);
+      setFileState(p=>({...p,[asnId]:{data,name,size}}));
+    } catch(err) { setFileErrors(p=>({...p,[asnId]:err.message})); }
+    e.target.value='';
+  }
+
   function submit(asnId) {
     const text = (content[asnId]||'').trim();
-    if (!text) return;
-    store.submitAssignment(asnId, stu.id, text);
+    const fs   = fileState[asnId];
+    if (!text && !fs) return;
+    store.submitAssignment(asnId, stu.id, text, fs?.data||null, fs?.name||'', fs?.size||0);
     setSubmitted(prev=>({...prev,[asnId]:true}));
     setTimeout(()=>setSubmitted(prev=>({...prev,[asnId]:false})),2500);
     refresh(n=>n+1);
@@ -1566,13 +1605,23 @@ function StudentAssignments({ theme: C, stu }) {
             {/* Expanded body */}
             {isOpen && (
               <div style={{ borderTop:`1px solid ${C.border}`, padding:'14px 18px' }}>
+                {/* Doctor's description */}
                 {asn.description && (
-                  <div style={{ fontSize:12, color:C.text2, background:C.bg3, borderRadius:8, padding:'10px 14px', marginBottom:14, lineHeight:1.6 }}>
+                  <div style={{ fontSize:12, color:C.text2, background:C.bg3, borderRadius:8, padding:'10px 14px', marginBottom:10, lineHeight:1.6 }}>
                     {asn.description}
                   </div>
                 )}
 
-                {/* If graded — show result */}
+                {/* Doctor's attachment */}
+                {asn.attachmentData && asn.attachmentName && (
+                  <button onClick={()=>openFile(asn.attachmentData, asn.attachmentName)}
+                    style={{ display:'flex', alignItems:'center', gap:8, background:`${fileIcon(asn.attachmentName).color}18`, border:`1px solid ${fileIcon(asn.attachmentName).color}44`, borderRadius:9, padding:'7px 14px', marginBottom:14, fontSize:12, fontWeight:700, color:fileIcon(asn.attachmentName).color, cursor:'pointer' }}>
+                    {fileIcon(asn.attachmentName).icon} {asn.attachmentName}
+                    <span style={{ fontSize:10, fontWeight:400, opacity:0.7 }}>({(asn.attachmentSize/1024).toFixed(0)} KB) — click to open</span>
+                  </button>
+                )}
+
+                {/* Graded result */}
                 {sub?.grade!=null && (
                   <div style={{ background:`${C.green}15`, border:`1px solid ${C.green}44`, borderRadius:10, padding:'12px 16px', marginBottom:14 }}>
                     <div style={{ fontSize:13, fontWeight:700, color:C.green, marginBottom:4 }}>
@@ -1583,16 +1632,22 @@ function StudentAssignments({ theme: C, stu }) {
                   </div>
                 )}
 
-                {/* Submitted but not graded */}
+                {/* Submitted — awaiting grade */}
                 {sub && sub.grade==null && (
                   <div style={{ background:`${C.blue}15`, border:`1px solid ${C.blue}44`, borderRadius:10, padding:'10px 14px', marginBottom:14 }}>
                     <div style={{ fontSize:12, fontWeight:700, color:C.blue2 }}>📤 Submitted — awaiting grade</div>
                     <div style={{ fontSize:11, color:C.text3, marginTop:2 }}>{new Date(sub.submittedAt).toLocaleString()}</div>
-                    <div style={{ fontSize:12, color:C.text2, marginTop:8 }}>{sub.content}</div>
+                    {sub.content && <div style={{ fontSize:12, color:C.text2, marginTop:6 }}>{sub.content}</div>}
+                    {sub.fileData && sub.fileName && (
+                      <button onClick={()=>openFile(sub.fileData, sub.fileName)}
+                        style={{ marginTop:8, display:'flex', alignItems:'center', gap:6, background:`${fileIcon(sub.fileName).color}18`, border:`1px solid ${fileIcon(sub.fileName).color}44`, borderRadius:8, padding:'5px 10px', fontSize:11, fontWeight:700, color:fileIcon(sub.fileName).color, cursor:'pointer' }}>
+                        {fileIcon(sub.fileName).icon} {sub.fileName}
+                      </button>
+                    )}
                   </div>
                 )}
 
-                {/* Submit / resubmit */}
+                {/* Submit / resubmit form */}
                 {status !== 'graded' && (
                   <div>
                     <div style={{ fontSize:10, fontWeight:700, color:C.text3, marginBottom:6, textTransform:'uppercase' }}>
@@ -1601,15 +1656,31 @@ function StudentAssignments({ theme: C, stu }) {
                     <textarea
                       value={content[asn.id]||''}
                       onChange={e=>setContent(prev=>({...prev,[asn.id]:e.target.value}))}
-                      placeholder="Write your answer, paste a link, or describe your submission..."
-                      rows={4}
+                      placeholder="Write your answer or paste a link... (optional if uploading a file)"
+                      rows={3}
                       style={{ width:'100%', background:C.bg3, border:`1px solid ${C.border}`, borderRadius:8, padding:10, fontSize:12, color:C.text, resize:'vertical', boxSizing:'border-box', marginBottom:8 }}
                     />
+
+                    {/* File upload */}
+                    <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', background:C.bg3, border:`1.5px dashed ${fileState[asn.id]?C.green:C.border}`, borderRadius:8, padding:'7px 12px', marginBottom:8 }}>
+                      <input type="file" accept={ACCEPT_FILES} onChange={e=>handleFile(asn.id,e)} style={{ display:'none' }}/>
+                      <span style={{ fontSize:14 }}>{fileState[asn.id] ? fileIcon(fileState[asn.id].name).icon : '📎'}</span>
+                      <span style={{ fontSize:12, color:fileState[asn.id]?C.green:C.text3, flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {fileState[asn.id] ? `${fileState[asn.id].name} (${(fileState[asn.id].size/1024).toFixed(0)} KB)` : 'Attach a file — PDF, Word, PPT, image — max 3 MB'}
+                      </span>
+                      {fileState[asn.id] && (
+                        <button onClick={e=>{e.preventDefault();setFileState(p=>({...p,[asn.id]:null}));}}
+                          style={{ background:'none', border:'none', color:C.red2, fontSize:14, cursor:'pointer', flexShrink:0 }}>×</button>
+                      )}
+                    </label>
+                    {fileErrors[asn.id] && <div style={{ fontSize:11, color:C.red, marginBottom:6 }}>⚠️ {fileErrors[asn.id]}</div>}
+
                     <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                      <button onClick={()=>submit(asn.id)} disabled={!(content[asn.id]||'').trim()}
+                      <button onClick={()=>submit(asn.id)}
+                        disabled={!(content[asn.id]||'').trim() && !fileState[asn.id]}
                         style={{ background:'linear-gradient(135deg,#3b82f6,#6366f1)', border:'none', borderRadius:8,
                           padding:'9px 22px', fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer',
-                          opacity:(content[asn.id]||'').trim()?1:0.5 }}>
+                          opacity:((content[asn.id]||'').trim()||fileState[asn.id])?1:0.5 }}>
                         📤 {sub?'Resubmit':'Submit'}
                       </button>
                       {submitted[asn.id] && <span style={{ fontSize:12, color:C.green, fontWeight:700 }}>✅ Submitted!</span>}

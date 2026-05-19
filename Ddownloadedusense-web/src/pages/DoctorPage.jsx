@@ -47,6 +47,43 @@ const PAGE_TITLES = {
 function letterGrade(g){if(g>=90)return'A+';if(g>=85)return'A';if(g>=80)return'B+';if(g>=75)return'B';if(g>=70)return'C+';if(g>=65)return'C';if(g>=60)return'D+';if(g>=50)return'D';return'F';}
 function gradeColor(g,C){return g>=75?C.green:g>=50?C.amber:C.red;}
 
+/* ── FILE HELPERS ── */
+const MAX_FILE_BYTES = 3 * 1024 * 1024; // 3 MB cap
+const ACCEPT_FILES = '.pdf,.jpg,.jpeg,.png,.doc,.docx,.ppt,.pptx';
+function fileIcon(name=''){
+  const ext=(name.split('.').pop()||'').toLowerCase();
+  if(ext==='pdf')              return {icon:'📄',color:'#ef4444',label:'PDF'};
+  if(['jpg','jpeg','png'].includes(ext)) return {icon:'🖼️',color:'#8b5cf6',label:'Image'};
+  if(['doc','docx'].includes(ext))       return {icon:'📝',color:'#3b82f6',label:'Word'};
+  if(['ppt','pptx'].includes(ext))       return {icon:'📊',color:'#f97316',label:'PowerPoint'};
+  return {icon:'📎',color:'#64748b',label:'File'};
+}
+function openFile(fileData, fileName){
+  const ext=(fileName.split('.').pop()||'').toLowerCase();
+  if(['pdf','jpg','jpeg','png','gif','webp'].includes(ext)){ window.open(fileData,'_blank'); }
+  else { const a=document.createElement('a'); a.href=fileData; a.download=fileName; a.click(); }
+}
+async function readFile(file){
+  if(file.size>MAX_FILE_BYTES) throw new Error(`File too large — max 3 MB (got ${(file.size/1048576).toFixed(1)} MB)`);
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=e=>res({data:e.target.result,name:file.name,size:file.size});
+    r.onerror=()=>rej(new Error('Could not read file'));
+    r.readAsDataURL(file);
+  });
+}
+function FilePill({ fileData, fileName, onRemove, theme: C }){
+  if(!fileData||!fileName) return null;
+  const fi=fileIcon(fileName);
+  return (
+    <div style={{display:'flex',alignItems:'center',gap:8,background:`${fi.color}18`,border:`1px solid ${fi.color}44`,borderRadius:8,padding:'5px 10px',marginTop:6}}>
+      <span style={{fontSize:16}}>{fi.icon}</span>
+      <span style={{fontSize:11,fontWeight:700,color:fi.color,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{fileName}</span>
+      {onRemove && <button onClick={onRemove} style={{background:'none',border:'none',color:C?.red2||'#f87171',fontSize:14,cursor:'pointer',lineHeight:1}}>×</button>}
+    </div>
+  );
+}
+
 export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLogout }) {
   const [page, setPage] = useState('dashboard');
   const doctor = store.getDoctor(user.doctorId||'') || store.doctors[0];
@@ -2016,45 +2053,51 @@ function DocResources({ theme: C, doctor, myCourses }) {
   const weeks = Array.from({length:14},(_,i)=>i+1);
   const [selCourse, setSelCourse] = useState(myCourses[0]?.id||'');
   const [selWeek,   setSelWeek]   = useState(1);
-  const [form, setForm] = useState({ title:'', url:'', type:'link', description:'' });
+  const [form, setForm] = useState({ title:'', url:'', type:'link', description:'', fileData:null, fileName:'', fileSize:0 });
+  const [fileError, setFileError] = useState('');
   const [saved, setSaved] = useState(false);
   const [refresh, setRefresh] = useState(0);
 
   const existing = store.getCourseWeekResources(selCourse, selWeek);
+  const canAdd = form.title.trim() && (form.url.trim() || form.fileData);
 
   const TYPE_CFG = {
-    link:  { icon:'🔗', label:'Link',    color:'#3b82f6' },
-    pdf:   { icon:'📄', label:'PDF',     color:'#ef4444' },
-    video: { icon:'🎬', label:'Video',   color:'#8b5cf6' },
-    note:  { icon:'📝', label:'Note',    color:'#f59e0b' },
+    link:  { icon:'🔗', label:'Link',  color:'#3b82f6' },
+    pdf:   { icon:'📄', label:'PDF',   color:'#ef4444' },
+    video: { icon:'🎬', label:'Video', color:'#8b5cf6' },
+    note:  { icon:'📝', label:'Note',  color:'#f59e0b' },
   };
 
+  async function handleFile(e) {
+    const file = e.target.files?.[0]; if(!file) return;
+    setFileError('');
+    try {
+      const {data,name,size} = await readFile(file);
+      setForm(f=>({...f, fileData:data, fileName:name, fileSize:size, url:''}));
+    } catch(err) { setFileError(err.message); }
+    e.target.value='';
+  }
+
   function add() {
-    if (!form.title.trim() || !form.url.trim()) return;
+    if (!canAdd) return;
     store.addResource({
-      courseId: selCourse,
-      week: selWeek,
-      title: form.title.trim(),
-      url: form.url.trim(),
-      type: form.type,
-      description: form.description.trim(),
-      doctorId: doctor.id,
+      courseId:selCourse, week:selWeek,
+      title:form.title.trim(), url:form.url.trim(),
+      type:form.type, description:form.description.trim(),
+      doctorId:doctor.id,
+      fileData:form.fileData, fileName:form.fileName, fileSize:form.fileSize,
     });
-    setForm({ title:'', url:'', type:'link', description:'' });
-    setSaved(true);
-    setTimeout(()=>setSaved(false), 2000);
+    setForm({ title:'', url:'', type:'link', description:'', fileData:null, fileName:'', fileSize:0 });
+    setSaved(true); setTimeout(()=>setSaved(false),2000);
     setRefresh(n=>n+1);
   }
 
-  function del(id) {
-    store.deleteResource(id);
-    setRefresh(n=>n+1);
-  }
+  function del(id) { store.deleteResource(id); setRefresh(n=>n+1); }
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
       <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>📖 Study Resources</div>
-      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Attach links, PDFs, videos, and notes per lecture week</div>
+      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Attach links, PDFs, videos, Word docs, PowerPoints, or images per lecture week</div>
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:20 }}>
         {/* Add form */}
@@ -2099,11 +2142,26 @@ function DocResources({ theme: C, doctor, myCourses }) {
               style={{ width:'100%', height:36, background:C.bg3, border:`1px solid ${C.border}`, borderRadius:8, padding:'0 12px', fontSize:12, color:C.text, boxSizing:'border-box' }}/>
           </div>
 
+          {/* URL or File */}
           <div style={{ marginBottom:10 }}>
             <div style={{ fontSize:10, fontWeight:700, color:C.text3, marginBottom:4 }}>URL</div>
-            <input value={form.url} onChange={e=>setForm(f=>({...f,url:e.target.value}))}
-              placeholder="https://..." maxLength={500}
-              style={{ width:'100%', height:36, background:C.bg3, border:`1px solid ${C.border}`, borderRadius:8, padding:'0 12px', fontSize:12, color:C.text, boxSizing:'border-box' }}/>
+            <input value={form.url} onChange={e=>setForm(f=>({...f,url:e.target.value,fileData:null,fileName:'',fileSize:0}))}
+              placeholder="https://..." maxLength={500} disabled={!!form.fileData}
+              style={{ width:'100%', height:36, background:C.bg3, border:`1px solid ${C.border}`, borderRadius:8, padding:'0 12px', fontSize:12, color:C.text, boxSizing:'border-box', opacity:form.fileData?0.4:1 }}/>
+            <div style={{ display:'flex', alignItems:'center', gap:8, margin:'8px 0' }}>
+              <div style={{ flex:1, height:1, background:C.border }}/>
+              <span style={{ fontSize:10, color:C.text3, whiteSpace:'nowrap' }}>— or upload a file —</span>
+              <div style={{ flex:1, height:1, background:C.border }}/>
+            </div>
+            <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', background:C.bg3, border:`1.5px dashed ${C.border}`, borderRadius:8, padding:'8px 12px' }}>
+              <input type="file" accept={ACCEPT_FILES} onChange={handleFile} style={{ display:'none' }}/>
+              <span style={{ fontSize:13 }}>📎</span>
+              <span style={{ fontSize:12, color:C.text3 }}>{form.fileName || 'PDF, JPG, PNG, Word, PowerPoint — max 3 MB'}</span>
+              {form.fileData && <button onClick={e=>{e.preventDefault();setForm(f=>({...f,fileData:null,fileName:'',fileSize:0}));}}
+                style={{ marginLeft:'auto', background:'none', border:'none', color:C.red2, fontSize:14, cursor:'pointer' }}>×</button>}
+            </label>
+            {fileError && <div style={{ fontSize:11, color:C.red, marginTop:4 }}>⚠️ {fileError}</div>}
+            <FilePill fileData={form.fileData} fileName={form.fileName} onRemove={()=>setForm(f=>({...f,fileData:null,fileName:'',fileSize:0}))} theme={C}/>
           </div>
 
           <div style={{ marginBottom:14 }}>
@@ -2114,9 +2172,9 @@ function DocResources({ theme: C, doctor, myCourses }) {
           </div>
 
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-            <button onClick={add} disabled={!form.title.trim()||!form.url.trim()}
+            <button onClick={add} disabled={!canAdd}
               style={{ background:'linear-gradient(135deg,#3b82f6,#6366f1)', border:'none', borderRadius:9, padding:'9px 22px',
-                fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer', opacity:form.title.trim()&&form.url.trim()?1:0.5 }}>
+                fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer', opacity:canAdd?1:0.5 }}>
               📎 Attach Resource
             </button>
             {saved && <span style={{ fontSize:12, color:C.green, fontWeight:700 }}>✅ Added!</span>}
@@ -2134,14 +2192,24 @@ function DocResources({ theme: C, doctor, myCourses }) {
               ? <div style={{ textAlign:'center', color:C.text3, padding:40, fontSize:13 }}>No resources for this week yet.</div>
               : existing.map((r,i)=>{
                   const cfg = TYPE_CFG[r.type]||TYPE_CFG.link;
+                  const fi  = r.fileData ? fileIcon(r.fileName) : null;
+                  const iconColor = fi ? fi.color : cfg.color;
+                  const iconChar  = fi ? fi.icon  : cfg.icon;
                   return (
                     <div key={i} style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'10px 0', borderBottom:i<existing.length-1?`1px solid ${C.border}`:'none' }}>
-                      <div style={{ width:34, height:34, borderRadius:8, background:`${cfg.color}22`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:17, flexShrink:0 }}>{cfg.icon}</div>
+                      <div style={{ width:34, height:34, borderRadius:8, background:`${iconColor}22`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:17, flexShrink:0 }}>{iconChar}</div>
                       <div style={{ flex:1, minWidth:0 }}>
-                        <a href={r.url} target="_blank" rel="noreferrer"
-                          style={{ fontSize:13, fontWeight:700, color:cfg.color, textDecoration:'none', display:'block', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                          {r.title}
-                        </a>
+                        {r.fileData
+                          ? <button onClick={()=>openFile(r.fileData,r.fileName)}
+                              style={{ background:'none', border:'none', padding:0, cursor:'pointer', fontSize:13, fontWeight:700, color:iconColor, textAlign:'left', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'100%' }}>
+                              {r.title} ↗
+                            </button>
+                          : <a href={r.url} target="_blank" rel="noreferrer"
+                              style={{ fontSize:13, fontWeight:700, color:iconColor, textDecoration:'none', display:'block', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                              {r.title} ↗
+                            </a>
+                        }
+                        {r.fileName && <div style={{ fontSize:10, color:C.text3, marginTop:1 }}>{fi?.label} · {(r.fileSize/1024).toFixed(0)} KB</div>}
                         {r.description && <div style={{ fontSize:11, color:C.text3, marginTop:2 }}>{r.description}</div>}
                         <div style={{ fontSize:10, color:C.text3, marginTop:2 }}>{new Date(r.createdAt).toLocaleDateString()}</div>
                       </div>
@@ -2180,7 +2248,8 @@ function DocResources({ theme: C, doctor, myCourses }) {
 /* ── ASSIGNMENTS ── */
 function DocAssignments({ theme: C, doctor, myCourses }) {
   const [selCourse, setSelCourse] = useState(myCourses[0]?.id||'');
-  const [form, setForm] = useState({ title:'', description:'', deadline:'', maxScore:'100' });
+  const [form, setForm] = useState({ title:'', description:'', deadline:'', maxScore:'100', attachmentData:null, attachmentName:'', attachmentSize:0 });
+  const [attachError, setAttachError] = useState('');
   const [saved, setSaved]   = useState(false);
   const [expanded, setExpanded] = useState(null);
   const [gradeInputs, setGradeInputs] = useState({});
@@ -2188,11 +2257,22 @@ function DocAssignments({ theme: C, doctor, myCourses }) {
 
   const assignments = store.getCourseAssignments(selCourse);
   const enrolled    = store.getEnrolledStudents(selCourse);
+  const today       = new Date().toISOString().slice(0,10);
+
+  async function handleAttach(e) {
+    const file = e.target.files?.[0]; if(!file) return;
+    setAttachError('');
+    try {
+      const {data,name,size} = await readFile(file);
+      setForm(f=>({...f, attachmentData:data, attachmentName:name, attachmentSize:size}));
+    } catch(err) { setAttachError(err.message); }
+    e.target.value='';
+  }
 
   function create() {
     if (!form.title.trim()) return;
     store.addAssignment({ ...form, courseId: selCourse, doctorId: doctor.id });
-    setForm({ title:'', description:'', deadline:'', maxScore:'100' });
+    setForm({ title:'', description:'', deadline:'', maxScore:'100', attachmentData:null, attachmentName:'', attachmentSize:0 });
     setSaved(true); setTimeout(()=>setSaved(false),2000);
     refresh(n=>n+1);
   }
@@ -2207,12 +2287,10 @@ function DocAssignments({ theme: C, doctor, myCourses }) {
     refresh(n=>n+1);
   }
 
-  const today = new Date().toISOString().slice(0,10);
-
   return (
     <div style={{ padding:'8px 20px 20px' }}>
       <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>📋 Assignments</div>
-      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Create assignments, view submissions, and grade students</div>
+      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Create assignments with file attachments, view submissions, and grade students</div>
 
       {/* Course selector */}
       <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
@@ -2231,22 +2309,34 @@ function DocAssignments({ theme: C, doctor, myCourses }) {
         <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, padding:18 }}>
           <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:14 }}>➕ New Assignment</div>
 
-          {[
-            ['TITLE', 'title', 'e.g. Lab Report Week 3', 'input'],
-            ['DESCRIPTION', 'description', 'Instructions, requirements...', 'textarea'],
-          ].map(([lbl, key, ph, type])=>(
-            <div key={key} style={{ marginBottom:10 }}>
-              <div style={{ fontSize:10, fontWeight:700, color:C.text3, marginBottom:4 }}>{lbl}</div>
-              {type==='textarea'
-                ? <textarea value={form[key]} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))}
-                    placeholder={ph} rows={3}
-                    style={{ width:'100%', background:C.bg3, border:`1px solid ${C.border}`, borderRadius:8, padding:8, fontSize:12, color:C.text, resize:'vertical', boxSizing:'border-box' }}/>
-                : <input value={form[key]} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))}
-                    placeholder={ph}
-                    style={{ width:'100%', height:36, background:C.bg3, border:`1px solid ${C.border}`, borderRadius:8, padding:'0 10px', fontSize:12, color:C.text, boxSizing:'border-box' }}/>
-              }
-            </div>
-          ))}
+          <div style={{ marginBottom:10 }}>
+            <div style={{ fontSize:10, fontWeight:700, color:C.text3, marginBottom:4 }}>TITLE</div>
+            <input value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))} placeholder="e.g. Lab Report Week 3"
+              style={{ width:'100%', height:36, background:C.bg3, border:`1px solid ${C.border}`, borderRadius:8, padding:'0 10px', fontSize:12, color:C.text, boxSizing:'border-box' }}/>
+          </div>
+
+          <div style={{ marginBottom:10 }}>
+            <div style={{ fontSize:10, fontWeight:700, color:C.text3, marginBottom:4 }}>DESCRIPTION / INSTRUCTIONS</div>
+            <textarea value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="Instructions, requirements..." rows={3}
+              style={{ width:'100%', background:C.bg3, border:`1px solid ${C.border}`, borderRadius:8, padding:8, fontSize:12, color:C.text, resize:'vertical', boxSizing:'border-box' }}/>
+          </div>
+
+          {/* File attachment */}
+          <div style={{ marginBottom:10 }}>
+            <div style={{ fontSize:10, fontWeight:700, color:C.text3, marginBottom:4 }}>ATTACHMENT <span style={{ fontWeight:400 }}>(optional — PDF, Word, PPT, image)</span></div>
+            <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', background:C.bg3, border:`1.5px dashed ${form.attachmentData?C.green:C.border}`, borderRadius:8, padding:'8px 12px' }}>
+              <input type="file" accept={ACCEPT_FILES} onChange={handleAttach} style={{ display:'none' }}/>
+              <span style={{ fontSize:14 }}>{form.attachmentData ? fileIcon(form.attachmentName).icon : '📎'}</span>
+              <span style={{ fontSize:12, color:form.attachmentData?C.green:C.text3, flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                {form.attachmentData ? form.attachmentName : 'Click to attach a file — max 3 MB'}
+              </span>
+              {form.attachmentData && (
+                <button onClick={e=>{e.preventDefault();setForm(f=>({...f,attachmentData:null,attachmentName:'',attachmentSize:0}));}}
+                  style={{ background:'none', border:'none', color:C.red2, fontSize:14, cursor:'pointer', flexShrink:0 }}>×</button>
+              )}
+            </label>
+            {attachError && <div style={{ fontSize:11, color:C.red, marginTop:4 }}>⚠️ {attachError}</div>}
+          </div>
 
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14 }}>
             <div>
@@ -2256,8 +2346,7 @@ function DocAssignments({ theme: C, doctor, myCourses }) {
             </div>
             <div>
               <div style={{ fontSize:10, fontWeight:700, color:C.text3, marginBottom:4 }}>MAX SCORE</div>
-              <input type="number" value={form.maxScore} onChange={e=>setForm(f=>({...f,maxScore:e.target.value}))}
-                min={1} max={1000}
+              <input type="number" value={form.maxScore} onChange={e=>setForm(f=>({...f,maxScore:e.target.value}))} min={1} max={1000}
                 style={{ width:'100%', height:36, background:C.bg3, border:`1px solid ${C.border}`, borderRadius:8, padding:'0 10px', fontSize:12, color:C.text, boxSizing:'border-box' }}/>
             </div>
           </div>
@@ -2278,9 +2367,9 @@ function DocAssignments({ theme: C, doctor, myCourses }) {
             ? <div style={{ textAlign:'center', color:C.text3, padding:60, background:C.card, borderRadius:14, border:`1px solid ${C.border}`, fontSize:13 }}>
                 No assignments yet for this course.
               </div>
-            : assignments.map((asn,i)=>{
-                const subs   = store.getAssignmentSubmissions(asn.id);
-                const graded = subs.filter(s=>s.grade!==null).length;
+            : assignments.map((asn)=>{
+                const subs    = store.getAssignmentSubmissions(asn.id);
+                const graded  = subs.filter(s=>s.grade!==null).length;
                 const overdue = asn.deadline && asn.deadline < today;
                 const isOpen  = expanded===asn.id;
 
@@ -2291,13 +2380,17 @@ function DocAssignments({ theme: C, doctor, myCourses }) {
                       style={{ padding:'14px 18px', cursor:'pointer', display:'flex', alignItems:'center', gap:12 }}>
                       <div style={{ flex:1 }}>
                         <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{asn.title}</div>
-                        <div style={{ fontSize:11, color:C.text3, marginTop:2 }}>
-                          {asn.deadline
-                            ? <span style={{ color:overdue?C.red:C.amber }}>
-                                {overdue?'⚠️ Overdue':'📅'} {asn.deadline}
-                              </span>
-                            : '📅 No deadline'}
-                          {' · '}Max {asn.maxScore} pts
+                        <div style={{ fontSize:11, color:C.text3, marginTop:2, display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
+                          <span style={{ color:overdue?C.red:C.amber }}>
+                            {asn.deadline ? `${overdue?'⚠️ Overdue':'📅'} ${asn.deadline}` : '📅 No deadline'}
+                          </span>
+                          <span>Max {asn.maxScore} pts</span>
+                          {asn.attachmentName && (
+                            <button onClick={e=>{e.stopPropagation();openFile(asn.attachmentData,asn.attachmentName);}}
+                              style={{ background:`${fileIcon(asn.attachmentName).color}18`, border:`1px solid ${fileIcon(asn.attachmentName).color}44`, borderRadius:6, padding:'1px 8px', fontSize:10, color:fileIcon(asn.attachmentName).color, cursor:'pointer', fontWeight:700 }}>
+                              {fileIcon(asn.attachmentName).icon} {asn.attachmentName}
+                            </button>
+                          )}
                         </div>
                       </div>
                       <div style={{ display:'flex', gap:8, alignItems:'center' }}>
@@ -2317,7 +2410,7 @@ function DocAssignments({ theme: C, doctor, myCourses }) {
                             {asn.description}
                           </div>
                         )}
-                        <div style={{ fontSize:12, fontWeight:700, color:C.text3, margin:'10px 0 8px', textTransform:'uppercase', fontSize:10, letterSpacing:'0.06em' }}>
+                        <div style={{ fontSize:10, fontWeight:700, color:C.text3, margin:'10px 0 8px', textTransform:'uppercase', letterSpacing:'0.06em' }}>
                           Submissions ({subs.length}/{enrolled.length})
                         </div>
                         {enrolled.map(stu=>{
@@ -2325,7 +2418,6 @@ function DocAssignments({ theme: C, doctor, myCourses }) {
                           const key = `${asn.id}_${stu.id}`;
                           const gi  = gradeInputs[key]||{ score: sub?.grade!=null?String(sub.grade):'', feedback: sub?.feedback||'' };
                           const isGraded = sub?.grade!=null;
-
                           return (
                             <div key={stu.id} style={{ borderBottom:`1px solid ${C.border}`, padding:'10px 0' }}>
                               <div style={{ display:'flex', alignItems:'flex-start', gap:10 }}>
@@ -2336,9 +2428,17 @@ function DocAssignments({ theme: C, doctor, myCourses }) {
                                     ? <div style={{ fontSize:11, color:C.text3 }}>Not submitted</div>
                                     : <>
                                         <div style={{ fontSize:11, color:C.text3 }}>Submitted {new Date(sub.submittedAt).toLocaleString()}</div>
-                                        <div style={{ fontSize:12, color:C.text2, background:C.bg3, borderRadius:8, padding:'6px 10px', marginTop:6 }}>
-                                          {sub.content}
-                                        </div>
+                                        {sub.content && (
+                                          <div style={{ fontSize:12, color:C.text2, background:C.bg3, borderRadius:8, padding:'6px 10px', marginTop:6 }}>
+                                            {sub.content}
+                                          </div>
+                                        )}
+                                        {sub.fileData && sub.fileName && (
+                                          <button onClick={()=>openFile(sub.fileData,sub.fileName)}
+                                            style={{ marginTop:6, display:'flex', alignItems:'center', gap:6, background:`${fileIcon(sub.fileName).color}18`, border:`1px solid ${fileIcon(sub.fileName).color}44`, borderRadius:8, padding:'5px 10px', fontSize:11, fontWeight:700, color:fileIcon(sub.fileName).color, cursor:'pointer' }}>
+                                            {fileIcon(sub.fileName).icon} {sub.fileName} <span style={{ fontWeight:400, opacity:0.7 }}>({(sub.fileSize/1024).toFixed(0)} KB)</span>
+                                          </button>
+                                        )}
                                       </>
                                   }
                                 </div>
@@ -2351,12 +2451,10 @@ function DocAssignments({ theme: C, doctor, myCourses }) {
                                         style={{ width:70, height:30, background:C.bg3, border:`1px solid ${isGraded?C.green:C.border}`, borderRadius:6, padding:'0 8px', fontSize:12, color:C.text, textAlign:'center' }}/>
                                       <span style={{ fontSize:12, color:C.text3, lineHeight:'30px' }}>/ {asn.maxScore}</span>
                                     </div>
-                                    <input placeholder="Feedback (optional)"
-                                      value={gi.feedback}
+                                    <input placeholder="Feedback (optional)" value={gi.feedback}
                                       onChange={e=>setGradeInputs(prev=>({...prev,[key]:{...gi,feedback:e.target.value}}))}
                                       style={{ height:28, background:C.bg3, border:`1px solid ${C.border}`, borderRadius:6, padding:'0 8px', fontSize:11, color:C.text }}/>
-                                    <button onClick={()=>saveGrade(asn.id, stu.id)}
-                                      disabled={gi.score===''}
+                                    <button onClick={()=>saveGrade(asn.id, stu.id)} disabled={gi.score===''}
                                       style={{ background:isGraded?C.green:'linear-gradient(135deg,#10b981,#059669)', border:'none', borderRadius:6,
                                         padding:'5px 12px', fontSize:11, fontWeight:700, color:'#fff', cursor:'pointer', opacity:gi.score!==''?1:0.5 }}>
                                       {isGraded?'✅ Update':'💾 Grade'}
