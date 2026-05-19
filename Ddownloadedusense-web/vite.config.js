@@ -7,13 +7,17 @@ import { spawn, execFile } from 'child_process'
 
 const PHOTOS_DIR = path.resolve('D:/download/portal/emotion_system/student_photos')
 
+// Email credentials must be set via environment variables — never hardcode them.
+// Create a .env file (git-ignored) with:
+//   VITE_SMTP_USER=edusense.system@gmail.com
+//   VITE_SMTP_PASS=your_app_password_here
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 587,
   secure: false,
   auth: {
-    user: 'edusense.system@gmail.com',
-    pass: 'gowrcymosvgywsjk',
+    user: process.env.VITE_SMTP_USER || '',
+    pass: process.env.VITE_SMTP_PASS || '',
   },
   tls: { rejectUnauthorized: false },
 })
@@ -101,7 +105,7 @@ export default defineConfig({
 
     <!-- Login button -->
     <div style="text-align:center;margin-bottom:20px">
-      <a href="http://localhost:5173" style="background:#1a237e;color:#ffffff;padding:14px 40px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:700;display:inline-block;letter-spacing:0.5px">🔐 Login to EduSense</a>
+      <a href="${process.env.VITE_APP_URL || 'http://localhost:5173'}" style="background:#1a237e;color:#ffffff;padding:14px 40px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:700;display:inline-block;letter-spacing:0.5px">🔐 Login to EduSense</a>
     </div>
 
     <p style="color:#e53935;font-size:12px;text-align:center;margin:0">⚠️ Please change your password after your first login for security.</p>
