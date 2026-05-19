@@ -44,7 +44,16 @@ function DegreeAudit({ theme: C, studentId }) {
   }, [studentId]);
 
   if (loading) return <div style={{ color: C.text2, padding: 20 }}>Loading degree audit…</div>;
-  if (!audit)  return <div style={{ color: C.text2, padding: 20 }}>No degree data available</div>;
+  if (!audit)  return (
+    <div style={{ textAlign: 'center', padding: 40, color: C.text2 }}>
+      <div style={{ fontSize: 36, marginBottom: 12 }}>🏛️</div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Degree audit unavailable</div>
+      <div style={{ fontSize: 12, marginTop: 6 }}>
+        The backend server must be running to load degree requirements.<br/>
+        Start it with <code style={{ background: '#1e293b', padding: '2px 6px', borderRadius: 4 }}>start_backend.bat</code>
+      </div>
+    </div>
+  );
 
   const catColors = { core: '#3b82f6', elective: '#8b5cf6', general: '#10b981' };
 

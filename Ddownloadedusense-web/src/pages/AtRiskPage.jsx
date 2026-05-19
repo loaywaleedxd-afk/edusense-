@@ -5,6 +5,59 @@
  */
 import { useState, useEffect } from 'react';
 import { get, post } from '../api.js';
+import store from '../dataStore.js';
+
+// ── Calculate risk locally from dataStore (works without backend) ─────────────
+function calcLocalRisk(studentId) {
+  const stu       = store.getStudent(studentId) || store.students[0];
+  const sid       = stu?.id || studentId;
+  const grades    = store.getStudentGrades?.(sid) || store.grades?.filter(g => g.studentId === sid) || [];
+  const att       = store.getStudentAttendance?.(sid) || store.attendance?.filter(a => a.studentId === sid) || [];
+  const emotions  = store.emotions?.filter(e => e.studentId === sid) || [];
+  const subs      = store.submissions?.filter(s => s.studentId === sid) || [];
+  const assigns   = store.assignments || [];
+
+  // Attendance rate
+  const totalAtt    = att.length || 1;
+  const presentAtt  = att.filter(a => a.status === 'present').length;
+  const attRate     = Math.round(presentAtt / totalAtt * 100);
+
+  // Average grade
+  const avgGrade = grades.length
+    ? Math.round(grades.reduce((s, g) => s + (g.grade || g.score || 0), 0) / grades.length)
+    : 85;
+
+  // Negative emotion rate
+  const negEmotions = ['sad', 'bored', 'angry', 'disgust', 'fear'];
+  const negRate     = emotions.length
+    ? Math.round(emotions.filter(e => negEmotions.includes(e.emotion)).length / emotions.length * 100)
+    : 10;
+
+  // Submission rate
+  const subRate = assigns.length
+    ? Math.round(subs.length / assigns.length * 100)
+    : 100;
+
+  // Score factors
+  const attFactor  = attRate  < 50 ? 30 : attRate  < 70 ? 20 : attRate  < 80 ? 10 : 0;
+  const gradeFactor= avgGrade < 50 ? 30 : avgGrade < 60 ? 20 : avgGrade < 70 ? 10 : 0;
+  const emFactor   = negRate  > 70 ? 20 : negRate  > 50 ? 12 : negRate  > 30 ?  6 : 0;
+  const subFactor  = subRate  < 50 ? 20 : subRate  < 70 ? 12 : subRate  < 85 ?  6 : 0;
+  const score      = attFactor + gradeFactor + emFactor + subFactor;
+  const level      = score >= 60 ? 'critical' : score >= 40 ? 'high' : score >= 20 ? 'medium' : 'low';
+
+  return {
+    student_id: sid,
+    risk_score:  score,
+    risk_level:  level,
+    attendance_factor:  attFactor,
+    grade_factor:       gradeFactor,
+    emotion_factor:     emFactor,
+    assignment_factor:  subFactor,
+    details: { attendance_rate: attRate, avg_grade: avgGrade, negative_emotion: negRate, submission_rate: subRate },
+    _source: 'local',
+  };
+}
 
 const LEVEL_META = {
   critical: { color: '#dc2626', bg: '#fef2f2', icon: '🚨', label: 'CRITICAL' },
@@ -275,9 +328,14 @@ function AdminAtRisk({ theme: C }) {
         : students.length === 0
           ? (
             <div style={{ textAlign: 'center', padding: 40, color: C.text2 }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>No at-risk students at this level</div>
-              <div style={{ fontSize: 12, marginTop: 4 }}>Run an assessment first if results are empty.</div>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>📊</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>No results yet</div>
+              <div style={{ fontSize: 12, marginTop: 4, marginBottom: 16 }}>
+                Click <strong>⟳ Run Assessment</strong> to calculate risk scores for all students.
+              </div>
+              <div style={{ fontSize: 11, color: C.text3 }}>
+                ⚠️ Requires the backend server to be running on port 8000
+              </div>
             </div>
           )
           : students.map(s => (
@@ -291,19 +349,41 @@ function AdminAtRisk({ theme: C }) {
 
 // ── Student self-view ─────────────────────────────────────────────────────────
 function StudentSelfRisk({ theme: C, studentId }) {
-  const [data, setData] = useState(null);
+  // Start immediately with local data — no loading spinner needed
+  const [data, setData] = useState(() => calcLocalRisk(studentId));
+  const [fromAPI, setFromAPI] = useState(false);
 
   useEffect(() => {
-    get(`/api/at-risk/student/${studentId}`).then(setData).catch(console.warn);
+    // Try to upgrade with real backend data silently
+    get(`/api/at-risk/student/${studentId}`)
+      .then(res => {
+        if (res && res.risk_score !== undefined) {
+          if (typeof res.details === 'string') {
+            try { res.details = JSON.parse(res.details); } catch { res.details = {}; }
+          }
+          setData(res);
+          setFromAPI(true);
+        }
+      })
+      .catch(() => {}); // silently keep local data
   }, [studentId]);
-
-  if (!data) return <div style={{ color: C.text2, padding: 20 }}>Loading your status…</div>;
 
   const meta    = LEVEL_META[data.risk_level] || LEVEL_META.low;
   const details = data.details || {};
 
   return (
     <div style={{ maxWidth: 520 }}>
+      {/* Data source badge */}
+      <div style={{ textAlign: 'right', marginBottom: 8 }}>
+        <span style={{
+          fontSize: 10, fontWeight: 700, borderRadius: 20, padding: '3px 10px',
+          background: fromAPI ? '#16a34a20' : '#f59e0b20',
+          color:      fromAPI ? '#16a34a'   : '#92400e',
+        }}>
+          {fromAPI ? '🟢 Live from server' : '🟡 Estimated from local data'}
+        </span>
+      </div>
+
       <div style={{ background: meta.bg, border: `2px solid ${meta.color}40`, borderRadius: 16, padding: 28, textAlign: 'center', marginBottom: 20 }}>
         <div style={{ fontSize: 48 }}>{meta.icon}</div>
         <div style={{ fontSize: 28, fontWeight: 900, color: meta.color, marginTop: 8 }}>{data.risk_score}/100</div>
