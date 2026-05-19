@@ -1,5 +1,6 @@
 """Email router — SMTP attendance reports and config management."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from auth_utils import require_role
 from pydantic import BaseModel
 import smtplib, ssl
 from email.mime.text import MIMEText
@@ -33,14 +34,14 @@ def _load_cfg():
 
 
 @router.post("/config")
-async def save_config(config: EmailConfig):
+async def save_config(config: EmailConfig, payload: dict = Depends(require_role("admin"))):
     with open(CONFIG_FILE, "w") as f:
         json.dump(config.dict(), f, indent=2)
     return {"message": "Email configuration saved"}
 
 
 @router.get("/config")
-async def get_config():
+async def get_config(payload: dict = Depends(require_role("admin"))):
     cfg = _load_cfg()
     if not cfg:
         return {"configured": False}
@@ -54,7 +55,7 @@ async def get_config():
 
 
 @router.post("/send-attendance")
-async def send_attendance_email(req: AttendanceEmailRequest):
+async def send_attendance_email(req: AttendanceEmailRequest, payload: dict = Depends(require_role("doctor", "admin"))):
     cfg = _load_cfg()
     if not cfg:
         raise HTTPException(400, "Email not configured. Go to Admin → Settings → Email Setup first.")

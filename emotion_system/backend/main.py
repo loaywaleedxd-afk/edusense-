@@ -19,6 +19,7 @@ from database import init_db
 import aiosqlite
 from websocket_manager import ConnectionManager
 from r_runner import r_router
+from auth_utils import require_auth, require_role
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -41,12 +42,20 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# ── CORS ──────────────────────────────────────────────────────────────────────
+# List the exact origins that should be allowed. Override via env var in prod.
+_RAW_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173"
+)
+ALLOWED_ORIGINS = [o.strip() for o in _RAW_ORIGINS.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Include routers
@@ -75,7 +84,7 @@ async def root():
 
 
 @app.get("/api/analytics")
-async def analytics_summary():
+async def analytics_summary(payload: dict = Depends(require_role("doctor", "admin"))):
     """Mobile-friendly analytics summary."""
     DB_PATH = "emotion_system.db"
     async with aiosqlite.connect(DB_PATH) as db:

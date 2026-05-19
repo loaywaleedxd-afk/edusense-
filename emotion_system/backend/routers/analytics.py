@@ -2,9 +2,11 @@
 Analytics router — engagement scoring, clustering, trend analysis
 Integrates with R via subprocess or rpy2
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from typing import List, Dict, Any
 import aiosqlite, os, json, subprocess, tempfile
+
+from auth_utils import require_role
 
 router = APIRouter()
 DB_PATH = os.getenv("DB_PATH", "emotion_system.db")
@@ -17,7 +19,7 @@ EMOTION_SCORE = {
 
 
 @router.get("/engagement-overview")
-async def engagement_overview():
+async def engagement_overview(payload: dict = Depends(require_role("doctor", "admin"))):
     """Overall platform engagement metrics."""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -41,7 +43,7 @@ async def engagement_overview():
 
 
 @router.get("/lecture-comparison")
-async def lecture_comparison():
+async def lecture_comparison(payload: dict = Depends(require_role("doctor", "admin"))):
     """Compare engagement across all lectures."""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -64,7 +66,7 @@ async def lecture_comparison():
 
 
 @router.get("/student-clusters")
-async def student_clusters():
+async def student_clusters(payload: dict = Depends(require_role("doctor", "admin"))):
     """
     Cluster students by engagement/attention behavior.
     Simplified k-means style bucketing (3 clusters).
@@ -99,7 +101,7 @@ async def student_clusters():
 
 
 @router.get("/time-trends")
-async def time_trends():
+async def time_trends(payload: dict = Depends(require_role("doctor", "admin"))):
     """Engagement trends over time across all lectures."""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -118,7 +120,7 @@ async def time_trends():
 
 
 @router.get("/alerts/low-engagement/{lecture_id}")
-async def low_engagement_alerts(lecture_id: str, threshold: float = 0.35):
+async def low_engagement_alerts(lecture_id: str, threshold: float = 0.35, payload: dict = Depends(require_role("doctor", "admin"))):
     """Identify students with low engagement in recent window."""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -148,7 +150,7 @@ async def low_engagement_alerts(lecture_id: str, threshold: float = 0.35):
 
 
 @router.post("/run-r-analysis")
-async def run_r_analysis(lecture_id: str = None):
+async def run_r_analysis(lecture_id: str = None, payload: dict = Depends(require_role("doctor", "admin"))):
     """
     Trigger R analysis script and return results.
     The R script reads from CSV exported from DB.
