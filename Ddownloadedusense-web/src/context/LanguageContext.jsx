@@ -11,6 +11,10 @@ export const TRANSLATIONS = {
     assignments: 'Assignments', gpa_calc: 'GPA Calculator', timetable: 'Timetable',
     digital_id: 'Digital ID Card', fee_history: 'Fee History', office_hours: 'Office Hours',
     notifications: 'Notifications',
+    // Doctor nav
+    live: 'Live Session', lectures: 'My Lectures', students: 'Students',
+    analytics: 'Analytics', detector: 'Topic Detector', alerts: 'Alerts',
+    ranalysis: 'R Analysis',
     // Labels
     new_features: 'New Features', sign_out: 'Sign Out', light: 'Light', dark: 'Dark',
     welcome_back: 'Welcome back', no_notifications: 'No notifications yet',
@@ -56,6 +60,10 @@ export const TRANSLATIONS = {
     assignments: 'الواجبات', gpa_calc: 'حاسبة المعدل', timetable: 'الجدول الأسبوعي',
     digital_id: 'الهوية الطلابية', fee_history: 'سجل المدفوعات', office_hours: 'ساعات المكتب',
     notifications: 'الإشعارات',
+    // Doctor nav
+    live: 'الجلسة المباشرة', lectures: 'محاضراتي', students: 'الطلاب',
+    analytics: 'التحليلات', detector: 'كاشف الموضوع', alerts: 'التنبيهات',
+    ranalysis: 'تحليل R',
     // Labels
     new_features: 'ميزات جديدة', sign_out: 'تسجيل الخروج', light: 'فاتح', dark: 'داكن',
     welcome_back: 'مرحباً بعودتك', no_notifications: 'لا توجد إشعارات',

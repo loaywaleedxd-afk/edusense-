@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useLang } from '../context/LanguageContext';
 
 const ROLES = [
   { role: 'student', emoji: '🎓', label: 'Student',            desc: 'View attendance & emotions',       color: '#3b82f6', user: '231014184.0', pass: 'WGaub52Z' },
@@ -19,6 +20,7 @@ const cardVariants = {
 };
 
 export default function LoginPage({ theme: C, onLogin }) {
+  const { t, toggleLang, lang, isRTL } = useLang();
   const [selected, setSelected] = useState(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -49,9 +51,20 @@ export default function LoginPage({ theme: C, onLogin }) {
   return (
     <div style={{
       height: '100%', background: C.bg, display: 'flex', alignItems: 'center',
-      justifyContent: 'center', overflow: 'auto',
+      justifyContent: 'center', overflow: 'auto', direction: isRTL ? 'rtl' : 'ltr',
     }}>
-      <div style={{ textAlign: 'center' }}>
+      {/* Language toggle on login screen */}
+      <button onClick={toggleLang} style={{
+        position: 'absolute', top: 16, right: isRTL ? 'auto' : 16, left: isRTL ? 16 : 'auto',
+        background: C.card, border: `1px solid ${C.border}`, borderRadius: 20,
+        padding: '6px 14px', fontSize: 11, fontWeight: 700, color: C.text2,
+        display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+      }}>
+        <span>{lang === 'en' ? '🇦🇪' : '🇬🇧'}</span>
+        <span>{lang === 'en' ? 'عربي' : 'English'}</span>
+      </button>
+
+      <div style={{ textAlign: isRTL ? 'right' : 'center', direction: isRTL ? 'rtl' : 'ltr' }}>
         <AnimatePresence mode="wait">
           {!selected ? (
             /* ─── Role Selection ─── */
@@ -68,8 +81,10 @@ export default function LoginPage({ theme: C, onLogin }) {
                 transition={{ delay: 0.05, duration: 0.35 }}
               >
                 <div style={{ fontSize: 42, fontWeight: 700, color: C.blue2, marginBottom: 4 }}>⚡ EduSense</div>
-                <div style={{ fontSize: 12, color: C.text3, marginBottom: 40 }}>Classroom Emotion Detection & Attendance System</div>
-                <div style={{ fontSize: 13, color: C.text2, marginBottom: 16 }}>Choose your role to continue</div>
+                <div style={{ fontSize: 12, color: C.text3, marginBottom: 40 }}>
+                  {isRTL ? 'نظام كشف المشاعر والحضور في الفصول الدراسية' : 'Classroom Emotion Detection & Attendance System'}
+                </div>
+                <div style={{ fontSize: 13, color: C.text2, marginBottom: 16 }}>{t('choose_role')}</div>
               </motion.div>
 
               <motion.div
@@ -100,13 +115,15 @@ export default function LoginPage({ theme: C, onLogin }) {
             >
               <div style={{ fontSize: 30, marginBottom: 4 }}>{selected.emoji}</div>
               <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 2 }}>
-                {selected.label} Login
+                {selected.label} {t('sign_in')}
               </div>
-              <div style={{ fontSize: 11, color: C.text2, marginBottom: 16 }}>Enter your credentials to continue</div>
+              <div style={{ fontSize: 11, color: C.text2, marginBottom: 16 }}>
+                {isRTL ? 'أدخل بياناتك للمتابعة' : 'Enter your credentials to continue'}
+              </div>
 
               {/* Username */}
-              <div style={{ textAlign: 'left', marginBottom: 10 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: C.text3, marginBottom: 4, letterSpacing: '0.06em' }}>USERNAME</div>
+              <div style={{ textAlign: isRTL ? 'right' : 'left', marginBottom: 10 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: C.text3, marginBottom: 4, letterSpacing: '0.06em' }}>{t('username')}</div>
                 <input
                   value={username}
                   onChange={e => { setUsername(e.target.value); setError(''); }}
@@ -121,8 +138,8 @@ export default function LoginPage({ theme: C, onLogin }) {
               </div>
 
               {/* Password */}
-              <div style={{ textAlign: 'left', marginBottom: 6 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: C.text3, marginBottom: 4, letterSpacing: '0.06em' }}>PASSWORD</div>
+              <div style={{ textAlign: isRTL ? 'right' : 'left', marginBottom: 6 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: C.text3, marginBottom: 4, letterSpacing: '0.06em' }}>{t('password')}</div>
                 <input
                   type="password"
                   value={password}
@@ -160,7 +177,7 @@ export default function LoginPage({ theme: C, onLogin }) {
                   transition: 'background 0.2s',
                 }}
               >
-                {busy ? 'Signing in…' : 'Sign In  →'}
+                {busy ? (isRTL ? 'جارٍ تسجيل الدخول…' : 'Signing in…') : (isRTL ? `${t('sign_in')} ←` : `${t('sign_in')}  →`)}
               </motion.button>
 
               <div style={{
@@ -176,7 +193,7 @@ export default function LoginPage({ theme: C, onLogin }) {
                   width: '100%', marginTop: 8, background: 'transparent', border: 'none',
                   fontSize: 11, color: C.text3, cursor: 'pointer', padding: '8px 0',
                 }}
-              >← Choose different role</button>
+              >{isRTL ? 'اختر دوراً مختلفاً →' : '← Choose different role'}</button>
             </motion.div>
           )}
         </AnimatePresence>

@@ -6,7 +6,7 @@ const ROLE_COLORS = { doctor: '#8b5cf6', admin: '#10b981', student: '#3b82f6', p
 const KIND_ICON = { grade:'📝', appeal:'📋', new_appeal:'📋', attendance:'⚠️', warning:'⚠️', danger:'🚨', info:'ℹ️' };
 
 export default function Topbar({ theme: C, user, pageTitle, isDark, onToggleMode, onLogout }) {
-  const { lang, toggleLang } = useLang();
+  const { lang, toggleLang, isRTL, t } = useLang();
   const roleColor = ROLE_COLORS[user?.role] || '#3b82f6';
   const initials  = user?.initials || user?.name?.split(' ').slice(0,2).map(w=>w[0]?.toUpperCase()||'').join('') || '??';
   const [notifOpen, setNotifOpen] = useState(false);
@@ -27,14 +27,16 @@ export default function Topbar({ theme: C, user, pageTitle, isDark, onToggleMode
   return (
     <div style={{
       height: 64, background: C.card, display: 'flex', alignItems: 'center',
-      paddingLeft: 24, paddingRight: 16, borderBottom: `1px solid ${C.border}`,
+      paddingLeft: isRTL ? 16 : 24, paddingRight: isRTL ? 24 : 16,
+      borderBottom: `1px solid ${C.border}`,
       flexShrink: 0, position: 'relative', zIndex: 10,
+      flexDirection: isRTL ? 'row-reverse' : 'row',
     }}>
       {/* Breadcrumb */}
-      <div style={{ flex: 1, fontSize: 15, fontWeight: 700, color: C.text }}>{pageTitle}</div>
+      <div style={{ flex: 1, fontSize: 15, fontWeight: 700, color: C.text, textAlign: isRTL ? 'right' : 'left' }}>{pageTitle}</div>
 
-      {/* Right controls */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      {/* Right (or left in RTL) controls */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexDirection: isRTL ? 'row-reverse' : 'row' }}>
 
         {/* Notification Bell */}
         <div style={{ position: 'relative' }}>
@@ -69,13 +71,13 @@ export default function Topbar({ theme: C, user, pageTitle, isDark, onToggleMode
               display: 'flex', flexDirection: 'column',
             }}>
               {/* Header */}
-              <div style={{ display:'flex', alignItems:'center', padding:'12px 16px', borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
-                <div style={{ fontSize:13, fontWeight:700, color:C.text, flex:1 }}>
-                  Notifications {unread > 0 && <span style={{ color:C.blue }}>({unread} new)</span>}
+              <div style={{ display:'flex', alignItems:'center', padding:'12px 16px', borderBottom:`1px solid ${C.border}`, flexShrink:0, flexDirection: isRTL ? 'row-reverse' : 'row' }}>
+                <div style={{ fontSize:13, fontWeight:700, color:C.text, flex:1, textAlign: isRTL ? 'right' : 'left' }}>
+                  {t('notifications')} {unread > 0 && <span style={{ color:C.blue }}>({unread})</span>}
                 </div>
                 {unread > 0 && (
                   <button onClick={markAll} style={{ background:'none', border:'none', fontSize:11, color:C.blue, cursor:'pointer', fontWeight:700 }}>
-                    Mark all read
+                    {t('mark_all_read')}
                   </button>
                 )}
               </div>
@@ -83,7 +85,7 @@ export default function Topbar({ theme: C, user, pageTitle, isDark, onToggleMode
               {/* List */}
               <div style={{ overflowY:'auto', flex:1 }}>
                 {notifications.length === 0
-                  ? <div style={{ padding:32, textAlign:'center', color:C.text3, fontSize:12 }}>No notifications yet</div>
+                  ? <div style={{ padding:32, textAlign:'center', color:C.text3, fontSize:12 }}>{t('no_notifications')}</div>
                   : notifications.slice(0, 40).map((n, i) => {
                     const icon = KIND_ICON[n.alertKind] || KIND_ICON[n.type] || '🔔';
                     const timeStr = (() => {
@@ -127,10 +129,10 @@ export default function Topbar({ theme: C, user, pageTitle, isDark, onToggleMode
         <button onClick={onToggleMode} style={{
           background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 20,
           padding: '7px 14px', fontSize: 11, fontWeight: 700, color: C.text2,
-          display: 'flex', alignItems: 'center', gap: 6,
+          display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
         }}>
           <span>{isDark ? '☀️' : '🌙'}</span>
-          <span>{isDark ? 'Light' : 'Dark'}</span>
+          <span>{isDark ? t('light') : t('dark')}</span>
         </button>
 
         <div style={{ width:1, height:36, background:C.border }}/>
@@ -157,11 +159,11 @@ export default function Topbar({ theme: C, user, pageTitle, isDark, onToggleMode
         {/* Sign out */}
         <button onClick={onLogout} style={{
           background: C.red_dim, border: `1px solid ${C.red}`, borderRadius:8,
-          padding:'8px 14px', fontSize:11, color:C.red2, fontWeight:600,
+          padding:'8px 14px', fontSize:11, color:C.red2, fontWeight:600, cursor:'pointer',
         }}
           onMouseEnter={e=>e.currentTarget.style.background=C.red}
           onMouseLeave={e=>e.currentTarget.style.background=C.red_dim}
-        >Sign Out</button>
+        >{t('sign_out')}</button>
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { useLang } from '../context/LanguageContext';
 import Sidebar from '../components/Sidebar';
 import Topbar  from '../components/Topbar';
 import AnimatedPage from '../components/AnimatedPage';
@@ -54,6 +55,7 @@ const PAGE_TITLES = {
 export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogout,
   onOpenProctoring, onOpenAdvising, onOpenAtRisk }) {
   const [page, setPage] = useState('dashboard');
+  const { isRTL } = useLang();
 
   function handleNav(id) {
     if (id === '__proctoring') { onOpenProctoring?.(); return; }
@@ -63,7 +65,7 @@ export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogo
   }
 
   return (
-    <div style={{display:'flex',height:'100%',background:C.bg,overflow:'hidden'}}>
+    <div style={{display:'flex',height:'100%',background:C.bg,overflow:'hidden', flexDirection: isRTL ? 'row-reverse' : 'row'}}>
       <Sidebar theme={C} navItems={NAV} activeId={page} onNav={handleNav}/>
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
         <Topbar theme={C} user={user} pageTitle={PAGE_TITLES[page]||page} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout}/>

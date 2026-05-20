@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLang } from '../context/LanguageContext';
 import Sidebar from '../components/Sidebar';
 import Topbar  from '../components/Topbar';
 import AnimatedPage from '../components/AnimatedPage';
@@ -37,11 +38,12 @@ function gradeColor(g,C){return g>=75?C.green:g>=50?C.amber:C.red;}
 
 export default function ParentPage({ theme: C, user, isDark, onToggleMode, onLogout }) {
   const [page, setPage] = useState('overview');
+  const { isRTL } = useLang();
   const sid   = user.studentId || user.id || '';
   const child = store.getStudent(sid) || store.students[0];
 
   return (
-    <div style={{display:'flex',height:'100%',background:C.bg,overflow:'hidden'}}>
+    <div style={{display:'flex',height:'100%',background:C.bg,overflow:'hidden', flexDirection: isRTL ? 'row-reverse' : 'row'}}>
       <Sidebar theme={C} navItems={NAV} activeId={page} onNav={setPage}/>
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
         <Topbar theme={C} user={user} pageTitle={PAGE_TITLES[page]||page} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout}/>

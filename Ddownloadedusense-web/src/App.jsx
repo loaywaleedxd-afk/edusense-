@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { DARK, LIGHT } from './theme';
+import { useLang } from './context/LanguageContext';
 import LoginPage             from './pages/LoginPage';
 import StudentPage           from './pages/StudentPage';
 import DoctorPage            from './pages/DoctorPage';
@@ -17,6 +18,7 @@ export default function App() {
   const [isDark, setIsDark] = useState(true);
   const [user,   setUser]   = useState(null);
   const [loading, setLoading] = useState(false);
+  const { isRTL } = useLang();
 
   const C = isDark ? DARK : LIGHT;
 
@@ -69,7 +71,7 @@ export default function App() {
   }
 
   return (
-    <div style={{ height: '100vh', overflow: 'hidden', background: C.bg, fontFamily: "'Segoe UI', system-ui, sans-serif" }}>
+    <div style={{ height: '100vh', overflow: 'hidden', background: C.bg, fontFamily: "'Segoe UI', system-ui, sans-serif", direction: isRTL ? 'rtl' : 'ltr' }}>
       {!user ? (
         <LoginPage theme={C} onLogin={onLogin} />
       ) : user.role === 'student' ? (

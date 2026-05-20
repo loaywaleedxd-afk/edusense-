@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import TimetablePage from './TimetablePage';
 import { DoctorOfficeHours } from './OfficeHoursPage';
 import { pushToast } from '../components/NotificationToast';
+import { useLang } from '../context/LanguageContext';
 import Sidebar from '../components/Sidebar';
 import Topbar  from '../components/Topbar';
 import AnimatedPage from '../components/AnimatedPage';
@@ -53,7 +54,18 @@ const PAGE_TITLES = {
   alerts:'Alerts', moodle:'Moodle', ranalysis:'R Analysis Reports',
   appeals:'Student Appeals', announcements:'Announcements', examschedule:'Exam Schedule',
   resources:'Study Resources', assignments:'Assignments',
-  timetable:'Timetable', officehours:'Office Hours Management',
+  timetable:'timetable', officehours:'office_hours',
+};
+
+/* Map doctor page ids to translation keys */
+const DOC_PAGE_KEYS = {
+  dashboard:'dashboard', live:'live', attendance:'attendance',
+  lectures:'lectures', students:'students', grades:'grades',
+  chat:'chat', analytics:'analytics', detector:'detector',
+  alerts:'alerts', moodle:'moodle', ranalysis:'ranalysis',
+  appeals:'appeals', announcements:'announcements', examschedule:'exams',
+  resources:'resources', assignments:'assignments',
+  timetable:'timetable', officehours:'office_hours',
 };
 
 function letterGrade(g){if(g>=90)return'A+';if(g>=85)return'A';if(g>=80)return'B+';if(g>=75)return'B';if(g>=70)return'C+';if(g>=65)return'C';if(g>=60)return'D+';if(g>=50)return'D';return'F';}
@@ -99,6 +111,7 @@ function FilePill({ fileData, fileName, onRemove, theme: C }){
 export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLogout,
   onOpenProctoring, onOpenAdvising, onOpenAtRisk }) {
   const [page, setPage] = useState('dashboard');
+  const { t, isRTL } = useLang();
   const doctor = store.getDoctor(user.doctorId||'') || store.doctors[0];
   const myCourses = store.getDoctorCourses(doctor.id);
 
@@ -115,11 +128,18 @@ export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLog
     setPage(id);
   }
 
+  function getDocPageTitle(p) {
+    const key = DOC_PAGE_KEYS[p];
+    if (!key) return PAGE_TITLES[p] || p;
+    const val = t(key);
+    return val !== key ? val : PAGE_TITLES[p] || p;
+  }
+
   return (
-    <div style={{display:'flex',height:'100%',background:C.bg,overflow:'hidden'}}>
+    <div style={{display:'flex',height:'100%',background:C.bg,overflow:'hidden', flexDirection: isRTL ? 'row-reverse' : 'row'}}>
       <Sidebar theme={C} navItems={nav} activeId={page} onNav={handleNav}/>
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
-        <Topbar theme={C} user={user} pageTitle={PAGE_TITLES[page]||page} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout}/>
+        <Topbar theme={C} user={user} pageTitle={getDocPageTitle(page)} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout}/>
         <div className="content-scroll" style={{flex:1,overflowY:'auto',background:C.bg}}>
           <AnimatedPage pageKey={page}>
             {page==='dashboard'  && <DocDashboard theme={C} user={user} doctor={doctor} myCourses={myCourses}/>}

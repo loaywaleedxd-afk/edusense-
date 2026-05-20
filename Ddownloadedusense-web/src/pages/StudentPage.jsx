@@ -116,17 +116,24 @@ async function readFile(file){
   });
 }
 
-const PAGE_TITLES = {
-  dashboard:'Dashboard', attendance:'My Attendance', emotions:'My Emotions',
-  schedule:'Schedule', performance:'Performance', grades:'My Grades',
-  portfolio:'My Portfolio', chat:'Community Chat', moodle:'Moodle',
-  appeals:'My Appeals', transcript:'Academic Transcript',
-  announcements:'Announcements', exams:'Exam Schedule', degreeaudit:'Degree Audit',
-  resources:'Study Resources', assignments:'Assignments',
-  gpacalc:'GPA Calculator', timetable:'Timetable',
-  digitalid:'Digital ID Card', feehistory:'Fee History',
-  officehours:'Office Hours Booking',
+/* PAGE_TITLES is now a function that uses the t() translator */
+const PAGE_TITLE_KEYS = {
+  dashboard:'dashboard', attendance:'attendance', emotions:'emotions',
+  schedule:'schedule', performance:'performance', grades:'grades',
+  portfolio:'portfolio', chat:'chat', moodle:'moodle',
+  appeals:'appeals', transcript:'transcript',
+  announcements:'announcements', exams:'exams', degreeaudit:'degreeaudit',
+  resources:'resources', assignments:'assignments',
+  gpacalc:'gpa_calc', timetable:'timetable',
+  digitalid:'digital_id', feehistory:'fee_history',
+  officehours:'office_hours',
 };
+function getPageTitle(page, t) {
+  const key = PAGE_TITLE_KEYS[page];
+  if (!key) return page;
+  const val = t(key);
+  return val !== key ? val : page;
+}
 
 function letterGrade(g) {
   if(g>=90)return'A+';if(g>=85)return'A';if(g>=80)return'B+';if(g>=75)return'B';
@@ -248,6 +255,7 @@ function AttendanceAlertBanner({ theme: C, studentId, onGoToAttendance }) {
 export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLogout,
   onOpenProctoring, onOpenAdvising, onOpenAtRisk }) {
   const [page, setPage] = useState('dashboard');
+  const { t, isRTL } = useLang();
   const sid = user.studentId || user.id || '';
   const stu = store.getStudent(sid) || store.students[0];
   const stuId = stu?.id || sid;
@@ -267,10 +275,10 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
   }
 
   return (
-    <div style={{ display:'flex', height:'100%', background:C.bg, overflow:'hidden' }}>
+    <div style={{ display:'flex', height:'100%', background:C.bg, overflow:'hidden', flexDirection: isRTL ? 'row-reverse' : 'row' }}>
       <Sidebar theme={C} navItems={nav} activeId={page} onNav={navigate}/>
       <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', minWidth:0 }}>
-        <Topbar theme={C} user={user} pageTitle={PAGE_TITLES[page]||page} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout}/>
+        <Topbar theme={C} user={user} pageTitle={getPageTitle(page, t)} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout}/>
         <div className="content-scroll" style={{ flex:1, background:C.bg, overflowY:'auto' }}>
           {/* Attendance alert banner — visible on all pages */}
           <AttendanceAlertBanner
@@ -327,6 +335,8 @@ function StudentDashboard({ theme: C, user, stu }) {
   const streak = calcStreak(stu.id);
   const streakMsg = streak >= 10 ? 'Incredible! Keep it up! 🏆' : streak >= 5 ? 'Great consistency!' : streak >= 2 ? 'Keep going!' : 'Start your streak today!';
 
+  const { t: dashT, isRTL: dashRTL } = useLang();
+
   // Demo push notifications on first mount
   useEffect(() => {
     const SHOWN_KEY = `es_dash_notif_${stu.id}`;
@@ -352,7 +362,7 @@ function StudentDashboard({ theme: C, user, stu }) {
           <span style={{display:(stu.capturedPhoto||store.getPhotoUrl(stu))?'none':'flex'}}>{stu.emoji||'👤'}</span>
         </div>
         <div style={{flex:1}}>
-          <div style={{ fontSize:22, fontWeight:700, color:C.text }}>Welcome back, {user.name.split(' ')[0]} 👋</div>
+          <div style={{ fontSize:22, fontWeight:700, color:C.text }}>{dashT('welcome_back')}, {user.name.split(' ')[0]} 👋</div>
           <div style={{ fontSize:12, color:C.text2, marginTop:2 }}>{stu.id} · {stu.dept} · Year {stu.year}</div>
           <div style={{ fontSize:11, color:C.text3 }}>Your academic overview for this semester</div>
           {(() => {
