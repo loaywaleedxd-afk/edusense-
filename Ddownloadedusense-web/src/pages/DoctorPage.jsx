@@ -188,22 +188,22 @@ function DocDashboard({ theme: C, doctor, myCourses }) {
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'3fr 2fr',gap:12,marginBottom:12}}>
-        <Card theme={C} title="Engagement Trend">
+        <Card theme={C} title={t('engagement_trend')}>
           <div style={{padding:'4px 12px 12px'}}>
             <LineChart theme={C} series={[
-              {label:'Engagement',data:store.trendData.engagement,color:C.blue},
-              {label:'Attention', data:store.trendData.attention, color:C.green},
+              {label: t('engagement'), data:store.trendData.engagement, color:C.blue},
+              {label: t('attention'),  data:store.trendData.attention,  color:C.green},
             ]} labels={store.trendData.labels} height={200}/>
           </div>
         </Card>
-        <Card theme={C} title="Emotion Distribution">
+        <Card theme={C} title={t('emotion_dist')}>
           <div style={{padding:'4px 12px 12px'}}>
             <EmotionBarsWidget theme={C} data={store.emotionDist.slice(0,6)}/>
           </div>
         </Card>
       </div>
 
-      <Card theme={C} title={`My Lectures Today (${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date().getDay()]})`}>
+      <Card theme={C} title={`${t('lectures_now')} (${[t('sun'),t('mon'),t('tue'),t('wed'),t('thu'),'Fri','Sat'][new Date().getDay()]})`}>
         <div style={{padding:'4px 14px 14px',display:'flex',flexDirection:'column',gap:8}}>
           {(() => {
             const today = new Date().getDay();
@@ -1469,22 +1469,22 @@ function DocAnalytics({ theme: C }) {
       <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('analytics')}</div>
 
       <div style={{display:'flex',gap:12,marginBottom:12}}>
-        <StatCard theme={C} label="Avg Engagement" value={`${avgEng}%`} sub="Across all students" icon="🧠" accent="blue"/>
-        <StatCard theme={C} label="Avg Attendance" value={`${avgAtt}%`} sub="This semester"       icon="✅" accent="green"/>
-        <StatCard theme={C} label="Happy Students" value={`${happyPct}%`} sub="Positive emotions" icon="😊" accent="amber"/>
-        <StatCard theme={C} label="At Risk"        value={`${atRisk}%`}  sub="Engagement &lt; 40%" icon="⚠️" accent="red"/>
+        <StatCard theme={C} label={t('avg_engagement')} value={`${avgEng}%`} sub={t('students')} icon="🧠" accent="blue"/>
+        <StatCard theme={C} label={t('attendance_rate')} value={`${avgAtt}%`} sub={t('semester')} icon="✅" accent="green"/>
+        <StatCard theme={C} label={t('emotion')}        value={`${happyPct}%`} sub={t('engagement')} icon="😊" accent="amber"/>
+        <StatCard theme={C} label={t('at_risk')}        value={`${atRisk}%`}  sub={t('avg_engagement')} icon="⚠️" accent="red"/>
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
-        <Card theme={C} title="Weekly Engagement Trend">
+        <Card theme={C} title={t('engagement_trend')}>
           <div style={{padding:'4px 12px 12px'}}>
             <LineChart theme={C} series={[
-              {label:'Engagement',data:store.trendData.engagement,color:C.blue},
-              {label:'Attention', data:store.trendData.attention, color:C.purple},
+              {label: t('engagement'), data:store.trendData.engagement, color:C.blue},
+              {label: t('attention'),  data:store.trendData.attention,  color:C.purple},
             ]} labels={store.trendData.labels} height={200}/>
           </div>
         </Card>
-        <Card theme={C} title="Emotion Distribution">
+        <Card theme={C} title={t('emotion_dist')}>
           <div style={{padding:'4px 12px 12px',display:'flex',gap:12,alignItems:'center'}}>
             <DonutChart theme={C} data={store.emotionDist.slice(0,5).map(d=>({label:d.emotion,value:d.count,color:d.color}))} size={150}/>
             <div>
@@ -1499,7 +1499,7 @@ function DocAnalytics({ theme: C }) {
         </Card>
       </div>
 
-      <Card theme={C} title="Engagement by Course">
+      <Card theme={C} title={t('engagement_dept')}>
         <div style={{padding:'4px 12px 12px'}}>
           <BarChart theme={C} data={store.lectures.map(l=>({label:l.code,value:l.avgEngagement,color:l.color}))} height={200}/>
         </div>

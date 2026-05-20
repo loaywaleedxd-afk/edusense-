@@ -116,10 +116,19 @@ export const TRANSLATIONS = {
     graduation_progress: 'Graduation Progress', requirements: 'Requirements',
     credits_earned: 'Credits Earned', credits_required: 'Credits Required',
     // Admin
-    doctors: 'Lecturers', courses: 'Courses', enrollments: 'Enrollment Management',
+    doctors: 'Lecturers', courses: 'Courses', enrollments: 'Enrollments',
     reg_fees: 'Registration & Fees', parents: 'Parents', settings: 'Settings',
     overview: 'Overview', child_risk: 'Child Risk Status',
     system_analytics: 'System Analytics', appeals_mgmt: 'Appeals Management',
+    // Sidebar sections
+    management: 'Management', reports: 'Reports',
+    // Overlay nav items
+    proctoring: 'Exam Proctoring', advising: 'Advising', atrisk: 'Early Warning',
+    // Card titles (dashboard)
+    lectures_now: 'Lectures Now', emotion_dist: 'Emotion Distribution',
+    system_alerts: 'System Alerts', engagement_dept: 'Engagement by Department',
+    engagement_trend: 'Engagement Trend', r_reports_nav: 'R Reports',
+    child_overview: 'Child Overview', academic_alerts: 'Academic Alerts',
     // Doctor
     doc_overview: 'Overview', enrolled_students: 'Enrolled Students',
     live_session: 'Live Session', start_session: 'Start Session',
@@ -244,10 +253,19 @@ export const TRANSLATIONS = {
     graduation_progress: 'التقدم نحو التخرج', requirements: 'المتطلبات',
     credits_earned: 'الساعات المكتسبة', credits_required: 'الساعات المطلوبة',
     // Admin
-    doctors: 'أعضاء هيئة التدريس', courses: 'المقررات', enrollments: 'إدارة التسجيلات',
+    doctors: 'أعضاء هيئة التدريس', courses: 'المقررات', enrollments: 'التسجيلات',
     reg_fees: 'التسجيل والرسوم', parents: 'أولياء الأمور', settings: 'الإعدادات',
     overview: 'نظرة عامة', child_risk: 'حالة الطالب التحذيرية',
     system_analytics: 'تحليلات النظام', appeals_mgmt: 'إدارة التظلمات',
+    // Sidebar sections
+    management: 'الإدارة', reports: 'التقارير',
+    // Overlay nav items
+    proctoring: 'مراقبة الامتحانات', advising: 'الإرشاد الأكاديمي', atrisk: 'الإنذار المبكر',
+    // Card titles (dashboard)
+    lectures_now: 'المحاضرات الآن', emotion_dist: 'توزيع المشاعر',
+    system_alerts: 'تنبيهات النظام', engagement_dept: 'التفاعل حسب القسم',
+    engagement_trend: 'اتجاه التفاعل', r_reports_nav: 'تقارير R',
+    child_overview: 'نظرة عامة على الطالب', academic_alerts: 'تنبيهات أكاديمية',
     // Doctor
     doc_overview: 'نظرة عامة', enrolled_students: 'الطلاب المسجلون',
     live_session: 'الجلسة المباشرة', start_session: 'بدء الجلسة',

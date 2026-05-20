@@ -131,12 +131,12 @@ function AdminDashboard({ theme: C }) {
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'3fr 2fr',gap:12,marginBottom:12}}>
-        <Card theme={C} title="Engagement by Department">
+        <Card theme={C} title={t('engagement_dept')}>
           <div style={{padding:'4px 12px 12px'}}>
             <BarChart theme={C} data={deptEngData} height={210}/>
           </div>
         </Card>
-        <Card theme={C} title="Lectures Now">
+        <Card theme={C} title={t('lectures_now')}>
           <div style={{padding:'4px 12px 12px',display:'flex',flexDirection:'column',gap:6}}>
             {store.lectures.slice(0,3).map((lec,i)=>(
               <div key={i} style={{background:C.bg3,borderRadius:8,display:'flex',overflow:'hidden'}}>
@@ -146,7 +146,7 @@ function AdminDashboard({ theme: C }) {
                   <div style={{fontSize:10,color:C.text3}}>{lec.room} · {lec.time}</div>
                 </div>
                 <div style={{padding:'8px 12px',display:'flex',alignItems:'center'}}>
-                  <Badge text={lec.status} color={{active:'green',scheduled:'amber',ended:'gray'}[lec.status]||'gray'}/>
+                  <Badge text={lec.status === 'active' ? t('session_active') : lec.status === 'scheduled' ? t('confirmed') : lec.status} color={{active:'green',scheduled:'amber',ended:'gray'}[lec.status]||'gray'}/>
                 </div>
               </div>
             ))}
@@ -155,12 +155,12 @@ function AdminDashboard({ theme: C }) {
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-        <Card theme={C} title="System Alerts">
+        <Card theme={C} title={t('system_alerts')}>
           <div style={{padding:'4px 12px 12px',display:'flex',flexDirection:'column',gap:8}}>
             {store.alerts.map((a,i)=><AlertItem key={i} theme={C} alert={a}/>)}
           </div>
         </Card>
-        <Card theme={C} title="Emotion Distribution">
+        <Card theme={C} title={t('emotion_dist')}>
           <div style={{padding:'4px 12px 12px'}}>
             <EmotionBarsWidget theme={C} data={store.emotionDist.slice(0,6)}/>
           </div>

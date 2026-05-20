@@ -14,13 +14,25 @@ const NAV_LABEL_KEYS = {
   live: 'live', lectures: 'lectures', students: 'students', analytics: 'analytics',
   detector: 'detector', alerts: 'alerts', ranalysis: 'ranalysis',
   examschedule: 'exams', resources2: 'resources',
-  // Overlay items — kept in English (they open overlays, not pages)
-  __advising: '__advising', __atrisk: '__atrisk', __proctoring: '__proctoring',
+  // Admin nav
+  doctors: 'doctors', courses: 'courses', enrollments: 'enrollments',
+  registration: 'reg_fees', parents: 'parents', r_reports: 'r_reports_nav',
+  settings: 'settings', overview: 'overview',
+  // Parent nav
+  riskstatus: 'child_risk',
+  // Overlay items — translated
+  __proctoring: 'proctoring', __advising: 'advising', __atrisk: 'atrisk',
 };
 
 const SECTION_KEYS = {
   'New Features': 'new_features',
   'new features': 'new_features',
+  'Overview': 'overview',
+  'overview': 'overview',
+  'Management': 'management',
+  'management': 'management',
+  'Reports': 'reports',
+  'reports': 'reports',
 };
 
 const containerVariants = {
