@@ -15,6 +15,17 @@ import NotificationToast     from './components/NotificationToast';
 import OnboardingTour        from './components/OnboardingTour';
 import store                 from './dataStore';
 
+// Rate-limit state: { count, lockedUntil } stored in sessionStorage
+const RATE_KEY = 'es_login_rate';
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_MS   = 30_000; // 30 seconds
+
+function getRateState() {
+  try { return JSON.parse(sessionStorage.getItem(RATE_KEY)) || { count: 0, lockedUntil: 0 }; }
+  catch { return { count: 0, lockedUntil: 0 }; }
+}
+function setRateState(s) { sessionStorage.setItem(RATE_KEY, JSON.stringify(s)); }
+
 export default function App() {
   const [isDark, setIsDark] = useState(true);
   const [user,   setUser]   = useState(null);
@@ -43,15 +54,30 @@ export default function App() {
   function toggleMode() { setIsDark(d => !d); }
 
   function onLogout() {
-    store.signOut();   // clear JWT token
+    store.signOut();
+    setRateState({ count: 0, lockedUntil: 0 });
     setUser(null);
   }
 
   async function onLogin(username, password) {
+    const rate = getRateState();
+    if (Date.now() < rate.lockedUntil) {
+      const secs = Math.ceil((rate.lockedUntil - Date.now()) / 1000);
+      throw new Error(`Too many failed attempts. Try again in ${secs}s.`);
+    }
     setLoading(true);
     try {
       const u = await store.authenticate(username, password);
-      setUser(u || null);
+      if (u) {
+        setRateState({ count: 0, lockedUntil: 0 });
+        setUser(u);
+      } else {
+        const next = rate.count + 1;
+        setRateState({
+          count: next,
+          lockedUntil: next >= MAX_ATTEMPTS ? Date.now() + LOCKOUT_MS : 0,
+        });
+      }
       return u;
     } finally {
       setLoading(false);
