@@ -95,7 +95,7 @@ export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogo
         <Topbar theme={C} user={user} pageTitle={adminPageTitle} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout} onMenuOpen={() => setMenuOpen(true)}/>
         <div className="content-scroll" style={{flex:1,overflowY:'auto',background:C.bg}}>
           <AnimatedPage pageKey={page}>
-            {page==='dashboard'   && <AdminDashboard theme={C}/>}
+            {page==='dashboard'   && <AdminDashboard theme={C} onNav={handleNav}/>}
             {page==='analytics'   && <AdminAnalytics theme={C}/>}
             {page==='students'    && <AdminStudents theme={C}/>}
             {page==='doctors'     && <AdminDoctors theme={C}/>}
@@ -119,8 +119,33 @@ export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogo
   );
 }
 
+/* ── QUICK ACTION BUTTON ── */
+function QuickActionBtn({ icon, label, theme: C, onClick }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        width: 130, minHeight: 80, background: C.card,
+        border: `1.5px solid ${hovered ? C.blue2 : C.border}`,
+        borderRadius: 12, cursor: 'pointer',
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', gap: 6,
+        transition: 'border-color 0.2s, box-shadow 0.2s',
+        boxShadow: hovered ? `0 4px 16px ${C.blue}30` : 'none',
+        padding: '12px 8px',
+      }}
+    >
+      <span style={{ fontSize: 22 }}>{icon}</span>
+      <span style={{ fontSize: 11, fontWeight: 600, color: hovered ? C.blue2 : C.text2, textAlign: 'center', lineHeight: 1.3 }}>{label}</span>
+    </button>
+  );
+}
+
 /* ── DASHBOARD ── */
-function AdminDashboard({ theme: C }) {
+function AdminDashboard({ theme: C, onNav }) {
   const { t } = useLang();
   const isMobile = useMobile();
   const depts      = ['Computer Science','Engineering','Mathematics','Physics','Data Science'];
@@ -149,6 +174,45 @@ function AdminDashboard({ theme: C }) {
         <StatCard theme={C} label={t('live_session')}   value={activeLectures}        sub={t('analytics')}          icon="📚" accent="green"/>
         <StatCard theme={C} label={t('avg_engagement')} value={`${avgEng}%`}          sub={t('analytics')}          icon="🧠" accent="amber"/>
         <StatCard theme={C} label={t('at_risk')}        value={store.getStudentsOnProbation().length} sub={t('academic_standing')} icon="🚨" accent="red"/>
+      </div>
+
+      {/* Quick Actions */}
+      <div style={{marginBottom:12}}>
+        <div style={{fontSize:12,fontWeight:700,color:C.text2,marginBottom:8,letterSpacing:'0.05em',textTransform:'uppercase'}}>Quick Actions</div>
+        <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+          {[
+            {icon:'📢',label:'New Announcement',nav:'announcements'},
+            {icon:'📅',label:'Add Exam',nav:'examschedule'},
+            {icon:'👤',label:'Add Student',nav:'students'},
+            {icon:'📋',label:'View Audit Log',nav:'auditlog'},
+          ].map(a=>(
+            <QuickActionBtn key={a.nav} icon={a.icon} label={a.label} theme={C} onClick={()=>onNav?.(a.nav)}/>
+          ))}
+        </div>
+      </div>
+
+      {/* System Status */}
+      <div style={{
+        display:'flex',gap:8,flexWrap:'wrap',marginBottom:12,
+        background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:'10px 16px',
+        alignItems:'center',
+      }}>
+        <span style={{fontSize:11,fontWeight:700,color:C.text2,marginRight:4}}>System Status:</span>
+        {[
+          {label:'Database Online'},
+          {label:'4 Roles Active'},
+          {label:'QR System Ready'},
+          {label:'Notifications Active'},
+        ].map((s,i)=>(
+          <div key={i} style={{
+            display:'flex',alignItems:'center',gap:5,
+            background:'#10b98118',border:'1px solid #10b98133',
+            borderRadius:20,padding:'3px 10px',
+          }}>
+            <span style={{fontSize:10}}>✅</span>
+            <span style={{fontSize:10,fontWeight:600,color:C.green}}>{s.label}</span>
+          </div>
+        ))}
       </div>
 
       <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr' : '3fr 2fr',gap:12,marginBottom:12}}>

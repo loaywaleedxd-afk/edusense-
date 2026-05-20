@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLang } from '../context/LanguageContext';
+import useMobile from '../hooks/useMobile';
 
 const ROLES = [
   { role: 'student', emoji: '🎓', label: 'Student',            desc: 'View attendance & emotions',       color: '#3b82f6', user: '231014184.0', pass: 'WGaub52Z' },
@@ -9,18 +10,29 @@ const ROLES = [
   { role: 'parent',  emoji: '👨‍👩‍👧', label: 'Parent',            desc: 'Monitor child performance',        color: '#f59e0b', user: 'parent',       pass: 'Parent@EduSense2025!' },
 ];
 
-const containerVariants = {
-  hidden: {},
-  visible: { transition: { staggerChildren: 0.08 } },
-};
+const FEATURES = [
+  { icon: '✦', text: 'Real-time Emotion & Attention Detection' },
+  { icon: '✦', text: 'QR-Based Smart Attendance' },
+  { icon: '✦', text: 'Multi-Role Academic Portal' },
+  { icon: '✦', text: 'AI Insights & Analytics Dashboard' },
+  { icon: '✦', text: 'Grade Appeals & Office Hours Booking' },
+  { icon: '✦', text: 'Parent Portal with Live Alerts' },
+];
 
-const cardVariants = {
-  hidden:  { opacity: 0, y: 24, scale: 0.95 },
-  visible: { opacity: 1, y: 0,  scale: 1, transition: { duration: 0.3, ease: 'easeOut' } },
-};
+const STATS = ['500+ Students', '4 Roles', 'Real-time AI', 'Arabic RTL'];
+
+/* Floating orb config — generated once, stable positions */
+const ORBS = [
+  { w: 320, h: 320, top: '10%',  left: '15%',  color: 'rgba(99,102,241,0.12)',  dur: 8 },
+  { w: 200, h: 200, top: '55%',  left: '5%',   color: 'rgba(59,130,246,0.10)',  dur: 11 },
+  { w: 260, h: 260, top: '25%',  left: '55%',  color: 'rgba(139,92,246,0.08)',  dur: 9 },
+  { w: 150, h: 150, top: '70%',  left: '65%',  color: 'rgba(16,185,129,0.08)',  dur: 13 },
+  { w: 180, h: 180, top: '-5%',  left: '70%',  color: 'rgba(245,158,11,0.07)',  dur: 10 },
+];
 
 export default function LoginPage({ theme: C, onLogin }) {
   const { t, toggleLang, lang, isRTL } = useLang();
+  const isMobile = useMobile();
   const [selected, setSelected] = useState(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -50,175 +62,345 @@ export default function LoginPage({ theme: C, onLogin }) {
 
   return (
     <div style={{
-      height: '100%', background: C.bg, display: 'flex', alignItems: 'center',
-      justifyContent: 'center', overflow: 'auto', direction: isRTL ? 'rtl' : 'ltr',
+      height: '100%', display: 'flex', overflow: 'hidden',
+      direction: isRTL ? 'rtl' : 'ltr',
+      flexDirection: isRTL ? 'row-reverse' : 'row',
     }}>
-      {/* Language toggle on login screen */}
-      <button onClick={toggleLang} style={{
-        position: 'absolute', top: 16, right: isRTL ? 'auto' : 16, left: isRTL ? 16 : 'auto',
-        background: C.card, border: `1px solid ${C.border}`, borderRadius: 20,
-        padding: '6px 14px', fontSize: 11, fontWeight: 700, color: C.text2,
-        display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
-      }}>
-        <span>{lang === 'en' ? '🇦🇪' : '🇬🇧'}</span>
-        <span>{lang === 'en' ? 'عربي' : 'English'}</span>
-      </button>
-
-      <div style={{ textAlign: isRTL ? 'right' : 'center', direction: isRTL ? 'rtl' : 'ltr' }}>
-        <AnimatePresence mode="wait">
-          {!selected ? (
-            /* ─── Role Selection ─── */
+      {/* ── LEFT PANEL (hidden on mobile) ── */}
+      {!isMobile && (
+        <div style={{
+          width: '60%', position: 'relative', overflow: 'hidden', flexShrink: 0,
+          background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%)',
+          display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+          padding: '48px 52px',
+        }}>
+          {/* Animated orbs */}
+          {ORBS.map((orb, i) => (
             <motion.div
-              key="roles"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -16, scale: 0.97 }}
-              transition={{ duration: 0.25, ease: 'easeOut' }}
-            >
-              <motion.div
-                initial={{ opacity: 0, y: -12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.05, duration: 0.35 }}
-              >
-                <div style={{ fontSize: 42, fontWeight: 700, color: C.blue2, marginBottom: 4 }}>⚡ EduSense</div>
-                <div style={{ fontSize: 12, color: C.text3, marginBottom: 40 }}>
-                  {isRTL ? 'نظام كشف المشاعر والحضور في الفصول الدراسية' : 'Classroom Emotion Detection & Attendance System'}
-                </div>
-                <div style={{ fontSize: 13, color: C.text2, marginBottom: 16 }}>{t('choose_role')}</div>
-              </motion.div>
-
-              <motion.div
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}
-              >
-                {ROLES.map(r => (
-                  <motion.div key={r.role} variants={cardVariants}>
-                    <RoleCard info={r} theme={C} onClick={selectRole} />
-                  </motion.div>
-                ))}
-              </motion.div>
-            </motion.div>
-          ) : (
-            /* ─── Login Form ─── */
-            <motion.div
-              key="form"
-              initial={{ opacity: 0, y: 24, scale: 0.97 }}
-              animate={{ opacity: 1, y: 0,  scale: 1 }}
-              exit={{    opacity: 0, y: 16,  scale: 0.97 }}
-              transition={{ duration: 0.25, ease: 'easeOut' }}
+              key={i}
               style={{
-                background: C.card, borderRadius: 18, border: `1px solid ${C.border2}`,
-                padding: '24px 36px', minWidth: 392,
+                position: 'absolute',
+                width: orb.w, height: orb.h,
+                top: orb.top, left: orb.left,
+                borderRadius: '50%',
+                background: orb.color,
+                filter: 'blur(60px)',
+                pointerEvents: 'none',
               }}
+              animate={{ scale: [1, 1.15, 1], opacity: [0.6, 1, 0.6] }}
+              transition={{ duration: orb.dur, repeat: Infinity, ease: 'easeInOut' }}
+            />
+          ))}
+
+          {/* Content above features */}
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            {/* Logo */}
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
             >
-              <div style={{ fontSize: 30, marginBottom: 4 }}>{selected.emoji}</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 2 }}>
-                {selected.label} {t('sign_in')}
+              <div style={{
+                fontSize: 38, fontWeight: 800, color: '#ffffff',
+                letterSpacing: '-0.5px', marginBottom: 10,
+              }}>
+                ⚡ EduSense
               </div>
-              <div style={{ fontSize: 11, color: C.text2, marginBottom: 16 }}>
-                {isRTL ? 'أدخل بياناتك للمتابعة' : 'Enter your credentials to continue'}
+              <div style={{
+                fontSize: 14, color: 'rgba(255,255,255,0.55)',
+                fontWeight: 500, marginBottom: 52, maxWidth: 380,
+              }}>
+                AI-Powered University Management System
               </div>
+            </motion.div>
 
-              {/* Username */}
-              <div style={{ textAlign: isRTL ? 'right' : 'left', marginBottom: 10 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: C.text3, marginBottom: 4, letterSpacing: '0.06em' }}>{t('username')}</div>
-                <input
-                  value={username}
-                  onChange={e => { setUsername(e.target.value); setError(''); }}
-                  onKeyDown={e => e.key === 'Enter' && doLogin()}
-                  placeholder="Enter username"
-                  disabled={busy}
-                  style={{
-                    width: '100%', height: 38, background: C.bg3, border: `1px solid ${C.border}`,
-                    borderRadius: 9, padding: '0 12px', fontSize: 12, color: C.text,
-                  }}
-                />
+            {/* Feature list */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              {FEATURES.map((f, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, x: -24 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.15 + i * 0.08, duration: 0.4, ease: 'easeOut' }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 14 }}
+                >
+                  <div style={{
+                    width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+                    background: 'rgba(99,102,241,0.25)', border: '1px solid rgba(99,102,241,0.4)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 14, color: '#a5b4fc',
+                  }}>
+                    {f.icon}
+                  </div>
+                  <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.80)', fontWeight: 500 }}>
+                    {f.text}
+                  </span>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+
+          {/* Bottom stats row */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.8, duration: 0.4 }}
+            style={{
+              position: 'relative', zIndex: 1,
+              display: 'flex', gap: 0,
+              background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.10)',
+              borderRadius: 14, overflow: 'hidden',
+            }}
+          >
+            {STATS.map((s, i) => (
+              <div key={i} style={{
+                flex: 1, padding: '14px 0', textAlign: 'center',
+                borderRight: i < STATS.length - 1 ? '1px solid rgba(255,255,255,0.08)' : 'none',
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#ffffff' }}>{s}</div>
               </div>
+            ))}
+          </motion.div>
+        </div>
+      )}
 
-              {/* Password */}
-              <div style={{ textAlign: isRTL ? 'right' : 'left', marginBottom: 6 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: C.text3, marginBottom: 4, letterSpacing: '0.06em' }}>{t('password')}</div>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={e => { setPassword(e.target.value); setError(''); }}
-                  onKeyDown={e => e.key === 'Enter' && doLogin()}
-                  placeholder="Password"
-                  disabled={busy}
-                  style={{
-                    width: '100%', height: 38, background: C.bg3, border: `1px solid ${C.border}`,
-                    borderRadius: 9, padding: '0 12px', fontSize: 12, color: C.text,
-                  }}
-                />
-              </div>
+      {/* ── RIGHT PANEL ── */}
+      <div style={{
+        flex: 1, display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        background: C.bg, overflowY: 'auto', position: 'relative',
+        padding: isMobile ? '24px 16px' : '40px 48px',
+      }}>
+        {/* Language toggle */}
+        <button onClick={toggleLang} style={{
+          position: 'absolute', top: 16,
+          right: isRTL ? 'auto' : 16, left: isRTL ? 16 : 'auto',
+          background: C.card, border: `1px solid ${C.border}`, borderRadius: 20,
+          padding: '6px 14px', fontSize: 11, fontWeight: 700, color: C.text2,
+          display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+        }}>
+          <span>{lang === 'en' ? '🇦🇪' : '🇬🇧'}</span>
+          <span>{lang === 'en' ? 'عربي' : 'English'}</span>
+        </button>
 
-              <AnimatePresence>
-                {error && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    style={{ fontSize: 11, color: C.red2, marginBottom: 4 }}
-                  >{error}</motion.div>
-                )}
-              </AnimatePresence>
+        {/* Mobile-only logo */}
+        {isMobile && (
+          <div style={{ marginBottom: 28, textAlign: 'center' }}>
+            <div style={{ fontSize: 28, fontWeight: 800, color: C.blue2, letterSpacing: '-0.5px' }}>
+              ⚡ EduSense
+            </div>
+            <div style={{ fontSize: 11, color: C.text3, marginTop: 4 }}>
+              AI-Powered University Management System
+            </div>
+          </div>
+        )}
 
-              <motion.button
-                onClick={doLogin}
-                disabled={busy}
-                whileHover={!busy ? { scale: 1.02 } : {}}
-                whileTap={!busy ? { scale: 0.97 } : {}}
+        <div style={{ width: '100%', maxWidth: 420 }}>
+          <AnimatePresence mode="wait">
+            {!selected ? (
+              /* ─── Role Selection ─── */
+              <motion.div
+                key="roles"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -16, scale: 0.97 }}
+                transition={{ duration: 0.25, ease: 'easeOut' }}
+              >
+                <div style={{ marginBottom: 24, textAlign: 'center' }}>
+                  {!isMobile && (
+                    <div style={{ fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 6 }}>
+                      Welcome back
+                    </div>
+                  )}
+                  <div style={{ fontSize: 13, color: C.text2 }}>{t('choose_role')}</div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                  {ROLES.map(r => (
+                    <CompactRoleCard key={r.role} info={r} theme={C} onClick={selectRole} />
+                  ))}
+                </div>
+
+                <div style={{
+                  marginTop: 32, textAlign: 'center',
+                  fontSize: 11, color: C.text3,
+                }}>
+                  Powered by AI · Built for universities
+                </div>
+              </motion.div>
+            ) : (
+              /* ─── Login Form ─── */
+              <motion.div
+                key="form"
+                initial={{ opacity: 0, y: 24, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0,  scale: 1 }}
+                exit={{    opacity: 0, y: 16,  scale: 0.97 }}
+                transition={{ duration: 0.25, ease: 'easeOut' }}
                 style={{
-                  width: '100%', height: 40, background: busy ? C.border : selected.color,
-                  border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700,
-                  color: '#fff', marginTop: 8, cursor: busy ? 'not-allowed' : 'pointer',
-                  transition: 'background 0.2s',
+                  background: C.card, borderRadius: 18, border: `1px solid ${C.border2}`,
+                  padding: '28px 32px',
                 }}
               >
-                {busy ? (isRTL ? 'جارٍ تسجيل الدخول…' : 'Signing in…') : (isRTL ? `${t('sign_in')} ←` : `${t('sign_in')}  →`)}
-              </motion.button>
+                {/* Role indicator */}
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  background: `${selected.color}18`, border: `1px solid ${selected.color}44`,
+                  borderRadius: 30, padding: '4px 14px 4px 10px', marginBottom: 20,
+                }}>
+                  <span style={{ fontSize: 18 }}>{selected.emoji}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: selected.color }}>{selected.label}</span>
+                </div>
 
-              <div style={{
-                background: C.blue_dim, borderRadius: 8, padding: '7px 12px',
-                marginTop: 12, fontSize: 10, color: C.blue2,
-              }}>
-                Demo: {selected.user}
-              </div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 4 }}>
+                  {t('sign_in')}
+                </div>
+                <div style={{ fontSize: 11, color: C.text2, marginBottom: 22 }}>
+                  {isRTL ? 'أدخل بياناتك للمتابعة' : 'Enter your credentials to continue'}
+                </div>
 
-              <button
-                onClick={() => setSelected(null)}
-                style={{
-                  width: '100%', marginTop: 8, background: 'transparent', border: 'none',
-                  fontSize: 11, color: C.text3, cursor: 'pointer', padding: '8px 0',
-                }}
-              >{isRTL ? 'اختر دوراً مختلفاً →' : '← Choose different role'}</button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                {/* Username */}
+                <div style={{ textAlign: isRTL ? 'right' : 'left', marginBottom: 12 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: C.text3, marginBottom: 5, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    {t('username')}
+                  </div>
+                  <input
+                    value={username}
+                    onChange={e => { setUsername(e.target.value); setError(''); }}
+                    onKeyDown={e => e.key === 'Enter' && doLogin()}
+                    placeholder="Enter username"
+                    disabled={busy}
+                    style={{
+                      width: '100%', height: 42, background: C.bg3,
+                      border: `1.5px solid ${C.border}`, borderRadius: 10,
+                      padding: '0 14px', fontSize: 13, color: C.text,
+                      outline: 'none', boxSizing: 'border-box',
+                      transition: 'border-color 0.2s',
+                    }}
+                    onFocus={e => e.target.style.borderColor = selected.color}
+                    onBlur={e  => e.target.style.borderColor = C.border}
+                  />
+                </div>
+
+                {/* Password */}
+                <div style={{ textAlign: isRTL ? 'right' : 'left', marginBottom: 6 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: C.text3, marginBottom: 5, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    {t('password')}
+                  </div>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={e => { setPassword(e.target.value); setError(''); }}
+                    onKeyDown={e => e.key === 'Enter' && doLogin()}
+                    placeholder="Password"
+                    disabled={busy}
+                    style={{
+                      width: '100%', height: 42, background: C.bg3,
+                      border: `1.5px solid ${C.border}`, borderRadius: 10,
+                      padding: '0 14px', fontSize: 13, color: C.text,
+                      outline: 'none', boxSizing: 'border-box',
+                      transition: 'border-color 0.2s',
+                    }}
+                    onFocus={e => e.target.style.borderColor = selected.color}
+                    onBlur={e  => e.target.style.borderColor = C.border}
+                  />
+                </div>
+
+                <AnimatePresence>
+                  {error && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      style={{
+                        fontSize: 11, color: C.red2, marginBottom: 4,
+                        padding: '6px 10px', background: C.red_dim,
+                        borderRadius: 7, border: `1px solid ${C.red}44`,
+                      }}
+                    >{error}</motion.div>
+                  )}
+                </AnimatePresence>
+
+                <motion.button
+                  onClick={doLogin}
+                  disabled={busy}
+                  whileHover={!busy ? { scale: 1.02, boxShadow: `0 6px 20px ${selected.color}44` } : {}}
+                  whileTap={!busy ? { scale: 0.97 } : {}}
+                  style={{
+                    width: '100%', height: 44, marginTop: 14,
+                    background: busy ? C.border : `linear-gradient(135deg, ${selected.color}, ${selected.color}cc)`,
+                    border: 'none', borderRadius: 11, fontSize: 13, fontWeight: 700,
+                    color: '#fff', cursor: busy ? 'not-allowed' : 'pointer',
+                    transition: 'background 0.2s',
+                    letterSpacing: '0.02em',
+                  }}
+                >
+                  {busy
+                    ? (isRTL ? 'جارٍ تسجيل الدخول…' : 'Signing in…')
+                    : (isRTL ? `${t('sign_in')} ←` : `${t('sign_in')}  →`)}
+                </motion.button>
+
+                <div style={{
+                  background: C.blue_dim, borderRadius: 8, padding: '7px 12px',
+                  marginTop: 14, fontSize: 10, color: C.blue2,
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}>
+                  <span>🔑</span>
+                  <span>Demo: <strong>{selected.user}</strong></span>
+                </div>
+
+                <button
+                  onClick={() => setSelected(null)}
+                  style={{
+                    width: '100%', marginTop: 10, background: 'transparent', border: 'none',
+                    fontSize: 11, color: C.text3, cursor: 'pointer', padding: '8px 0',
+                  }}
+                >
+                  {isRTL ? 'اختر دوراً مختلفاً →' : '← Choose different role'}
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {!isMobile && (
+          <div style={{
+            position: 'absolute', bottom: 16,
+            fontSize: 10, color: C.text3, textAlign: 'center',
+          }}>
+            Powered by AI · Built for universities
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function RoleCard({ info, theme: C, onClick }) {
+function CompactRoleCard({ info, theme: C, onClick }) {
   return (
     <motion.div
       onClick={() => onClick(info)}
-      whileHover={{ y: -4, scale: 1.03, borderColor: info.color, boxShadow: `0 8px 24px ${info.color}30` }}
+      whileHover={{ y: -3, scale: 1.03, borderColor: info.color, boxShadow: `0 8px 24px ${info.color}28` }}
       whileTap={{ scale: 0.97 }}
       transition={{ type: 'spring', stiffness: 380, damping: 26 }}
       style={{
-        width: 220, height: 130, background: C.card,
-        borderRadius: 14, border: `1px solid ${C.border}`,
+        height: 100, background: C.card,
+        borderRadius: 14, border: `1.5px solid ${C.border}`,
         display: 'flex', flexDirection: 'column', alignItems: 'center',
-        justifyContent: 'center', cursor: 'pointer', gap: 4,
+        justifyContent: 'center', cursor: 'pointer', gap: 5,
+        position: 'relative', overflow: 'hidden',
       }}
     >
-      <div style={{ fontSize: 30 }}>{info.emoji}</div>
-      <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{info.label}</div>
-      <div style={{ fontSize: 10, color: C.text2, textAlign: 'center', padding: '0 16px' }}>{info.desc}</div>
+      {/* Subtle color accent top-bar */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: 3,
+        background: info.color, opacity: 0.7,
+      }} />
+      <div style={{ fontSize: 26 }}>{info.emoji}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{info.label}</div>
+      <div style={{ fontSize: 9, color: C.text3, textAlign: 'center', padding: '0 10px', lineHeight: 1.3 }}>
+        {info.desc}
+      </div>
     </motion.div>
   );
 }

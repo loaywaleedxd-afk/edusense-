@@ -73,7 +73,21 @@ export default function App() {
         height: '100vh', background: C.bg, display: 'flex',
         alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16,
       }}>
-        <div style={{ fontSize: 36 }}>⚡</div>
+        {/* Rotating ring around ⚡ icon */}
+        <div style={{ position: 'relative', width: 72, height: 72, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1.4, repeat: Infinity, ease: 'linear' }}
+            style={{
+              position: 'absolute', inset: 0,
+              borderRadius: '50%',
+              border: `3px solid transparent`,
+              borderTopColor: C.blue2,
+              borderRightColor: C.blue2 + '55',
+            }}
+          />
+          <div style={{ fontSize: 32 }}>⚡</div>
+        </div>
         <div style={{ fontSize: 14, color: C.text2 }}>Signing in…</div>
         <div style={{
           width: 120, height: 4, background: C.border, borderRadius: 4, overflow: 'hidden',
