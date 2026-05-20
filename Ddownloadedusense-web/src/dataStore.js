@@ -102,6 +102,7 @@ class DataStore {
     this.courseResources = [];
     this.assignments = [];
     this.submissions = [];
+    this.qrSessions = {};
   }
 
   _loadStudents(){
@@ -385,6 +386,7 @@ class DataStore {
       if(data.courseResources) this.courseResources = data.courseResources;
       if(data.assignments) this.assignments = data.assignments;
       if(data.submissions) this.submissions = data.submissions;
+      if(data.qrSessions) Object.assign(this.qrSessions, data.qrSessions);
     } catch(e){ console.warn('DataStore load error',e); }
   }
 
@@ -408,6 +410,7 @@ class DataStore {
         courseResources: this.courseResources,
         assignments: this.assignments,
         submissions: this.submissions,
+        qrSessions: this.qrSessions || {},
       }));
     } catch(e){ console.warn('DataStore persist error',e); }
   }
@@ -705,14 +708,12 @@ class DataStore {
 
   // ── QR ATTENDANCE SESSIONS ────────────────────────────────────────────────
   createQRSession(courseId, week){
-    if(!this.qrSessions) this.qrSessions={};
     const token=Math.random().toString(36).slice(2,8).toUpperCase();
     this.qrSessions[token]={courseId, week, createdAt:new Date().toISOString(), usedBy:[]};
     this._persist(); return token;
   }
 
   useQRToken(token, studentId){
-    if(!this.qrSessions) this.qrSessions={};
     const s=this.qrSessions[token];
     if(!s) return {ok:false, error:'Invalid code'};
     const age=(Date.now()-new Date(s.createdAt).getTime())/60000;

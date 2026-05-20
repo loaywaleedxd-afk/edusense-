@@ -71,6 +71,25 @@ function loadOverrides(stuId) {
 }
 function saveOverrides(stuId, obj) { localStorage.setItem(LS_PREFIX + stuId, JSON.stringify(obj)); }
 
+const ROADMAP_CUSTOM_KEY = 'es_roadmap_custom_courses';
+function loadCustomSemesters() {
+  try { return JSON.parse(localStorage.getItem(ROADMAP_CUSTOM_KEY) || '[]'); } catch { return []; }
+}
+function saveCustomSemesters(arr) { localStorage.setItem(ROADMAP_CUSTOM_KEY, JSON.stringify(arr)); }
+
+/* Build curriculum merged with store courses */
+function buildCurriculum() {
+  const custom = loadCustomSemesters(); // [{ semIdx (0-based), code, name, credits, cat }]
+  const result = CURRICULUM.map(s => ({ ...s, courses: [...s.courses] }));
+  custom.forEach(entry => {
+    const sem = result[entry.semIdx];
+    if (sem && !sem.courses.some(c => c.code === entry.code)) {
+      sem.courses.push({ code: entry.code, name: entry.name, credits: entry.credits || 3, cat: entry.cat || 'elective', custom: true });
+    }
+  });
+  return result;
+}
+
 /* ── Default status by student year ──────────────────────────────────────── */
 function defaultStatus(code, stu) {
   const COMPLETED_SEMS = [1, 2]; // semesters auto-completed
@@ -116,12 +135,59 @@ export default function GraduationRoadmapPage({ theme: C, stu, role = 'student' 
 
   const [expanded, setExpanded] = useState(new Set([1, 2, 3]));
   const [filter,   setFilter]   = useState('all');
+  const [curriculum, setCurriculum] = useState(() => buildCurriculum());
+  const [showAddCourse, setShowAddCourse] = useState(false);
+  const [addCourseForm, setAddCourseForm] = useState({ semIdx: 0, code: '', name: '', credits: 3, cat: 'elective' });
+  const [stuSearch, setStuSearch] = useState('');
+
+  // Filtered student list for admin picker
+  const filteredStudents = stuSearch
+    ? store.students.filter(s =>
+        s.name.toLowerCase().includes(stuSearch.toLowerCase()) ||
+        s.id.toLowerCase().includes(stuSearch.toLowerCase())
+      )
+    : store.students;
+
+  function addCourseToRoadmap() {
+    const { semIdx, code, name, credits, cat } = addCourseForm;
+    if (!code.trim() || !name.trim()) return alert('Course code and name are required');
+    const allCodes = curriculum.flatMap(s => s.courses.map(c => c.code));
+    if (allCodes.includes(code.trim().toUpperCase())) return alert('Course code already exists in roadmap');
+    const entry = { semIdx: Number(semIdx), code: code.trim().toUpperCase(), name: name.trim(), credits: Number(credits), cat };
+    const existing = loadCustomSemesters();
+    saveCustomSemesters([...existing, entry]);
+    setCurriculum(buildCurriculum());
+    setAddCourseForm({ semIdx: 0, code: '', name: '', credits: 3, cat: 'elective' });
+    setShowAddCourse(false);
+  }
+
+  function removeCourseFromRoadmap(code) {
+    const existing = loadCustomSemesters().filter(e => e.code !== code);
+    saveCustomSemesters(existing);
+    setCurriculum(buildCurriculum());
+  }
+
+  // Sync store courses into roadmap (match by code)
+  function syncStoreCoursesToRoadmap() {
+    const existing = loadCustomSemesters();
+    const existingCodes = new Set([
+      ...curriculum.flatMap(s => s.courses.map(c => c.code)),
+      ...existing.map(e => e.code),
+    ]);
+    const newEntries = store.courses
+      .filter(c => !existingCodes.has(c.code))
+      .map(c => ({ semIdx: 7, code: c.code, name: c.name, credits: 3, cat: 'elective' }));
+    if (!newEntries.length) return alert('All store courses are already in the roadmap');
+    saveCustomSemesters([...existing, ...newEntries]);
+    setCurriculum(buildCurriculum());
+    alert(`Added ${newEntries.length} course(s) from the Courses page to Semester 8`);
+  }
 
   function toggle(sem) {
     setExpanded(prev => { const n = new Set(prev); n.has(sem) ? n.delete(sem) : n.add(sem); return n; });
   }
 
-  const allCourses = CURRICULUM.flatMap(s => s.courses);
+  const allCourses = curriculum.flatMap(s => s.courses);
   const totalCredits     = allCourses.reduce((a, c) => a + c.credits, 0);
   const completedCredits = allCourses.filter(c => getCourseStatus(c.code) === 'completed').reduce((a, c) => a + c.credits, 0);
   const inProgressCredits = allCourses.filter(c => getCourseStatus(c.code) === 'in_progress').reduce((a, c) => a + c.credits, 0);
@@ -148,23 +214,72 @@ export default function GraduationRoadmapPage({ theme: C, stu, role = 'student' 
       <div style={{ fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t('grad_roadmap')}</div>
       <div style={{ fontSize: 12, color: C.text2, marginBottom: 16 }}>{t('grad_roadmap_sub')}</div>
 
-      {/* ── Admin: student selector ── */}
+      {/* ── Admin: student selector + course management ── */}
       {isAdmin && (
-        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>👤 {isRTL ? 'اختر الطالب' : 'Select Student'}</div>
-          <select
-            value={selectedStuId}
-            onChange={e => loadStu(e.target.value)}
-            style={{ flex: 1, minWidth: 220, height: 38, background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0 12px', fontSize: 13, color: C.text }}
-          >
-            {store.students.map(s => (
-              <option key={s.id} value={s.id}>{s.name} — {s.dept} (Year {s.year})</option>
-            ))}
-          </select>
-          <div style={{ fontSize: 11, color: C.text3 }}>
-            {isRTL ? 'انقر على المادة لتغيير حالتها' : 'Click any course to toggle its status'}
+        <>
+          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: '14px 18px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>👤 Student</div>
+            <input
+              value={stuSearch}
+              onChange={e => setStuSearch(e.target.value)}
+              placeholder="Search by name or ID…"
+              style={{ height: 36, background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0 12px', fontSize: 12, color: C.text, width: 180 }}
+            />
+            <select
+              value={selectedStuId}
+              onChange={e => loadStu(e.target.value)}
+              style={{ flex: 1, minWidth: 220, height: 38, background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0 12px', fontSize: 13, color: C.text }}
+            >
+              {filteredStudents.map(s => (
+                <option key={s.id} value={s.id}>{s.name} — {s.id} — {s.dept} (Y{s.year})</option>
+              ))}
+            </select>
+            <div style={{ fontSize: 11, color: C.text3 }}>Click a course card to toggle status</div>
           </div>
-        </div>
+
+          {/* Course management toolbar */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+            <button onClick={() => setShowAddCourse(v => !v)} style={{ background: showAddCourse ? C.card : 'linear-gradient(135deg,#3b82f6,#6366f1)', border: showAddCourse ? `1px solid ${C.border}` : 'none', borderRadius: 10, padding: '8px 16px', fontSize: 12, fontWeight: 700, color: showAddCourse ? C.text2 : '#fff', cursor: 'pointer' }}>
+              {showAddCourse ? '✕ Cancel' : '+ Add Course to Roadmap'}
+            </button>
+            <button onClick={syncStoreCoursesToRoadmap} style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid #10b981', borderRadius: 10, padding: '8px 16px', fontSize: 12, fontWeight: 700, color: '#10b981', cursor: 'pointer' }}>
+              🔄 Sync from Courses Page
+            </button>
+          </div>
+
+          {showAddCourse && (
+            <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+              style={{ background: C.card, border: `1px solid ${C.blue}`, borderRadius: 14, padding: '18px 20px', marginBottom: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 14 }}>Add Course to Roadmap</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 14 }}>
+                {[['code','Course Code (e.g. CS501)','text'],['name','Course Name','text'],['credits','Credits','number']].map(([k,ph,tp]) => (
+                  <div key={k}>
+                    <div style={{ fontSize: 10, color: C.text3, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase' }}>{ph}</div>
+                    <input type={tp} value={addCourseForm[k]} onChange={e => setAddCourseForm(f => ({ ...f, [k]: e.target.value }))}
+                      placeholder={ph} style={{ width: '100%', height: 36, background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0 10px', fontSize: 12, color: C.text, boxSizing: 'border-box' }} />
+                  </div>
+                ))}
+                <div>
+                  <div style={{ fontSize: 10, color: C.text3, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase' }}>Semester</div>
+                  <select value={addCourseForm.semIdx} onChange={e => setAddCourseForm(f => ({ ...f, semIdx: e.target.value }))}
+                    style={{ width: '100%', height: 36, background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0 10px', fontSize: 12, color: C.text }}>
+                    {CURRICULUM.map((s, i) => <option key={i} value={i}>{s.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: C.text3, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase' }}>Category</div>
+                  <select value={addCourseForm.cat} onChange={e => setAddCourseForm(f => ({ ...f, cat: e.target.value }))}
+                    style={{ width: '100%', height: 36, background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0 10px', fontSize: 12, color: C.text }}>
+                    {Object.entries(CAT_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                  </select>
+                </div>
+              </div>
+              <button onClick={addCourseToRoadmap} style={{ background: C.green, border: 'none', borderRadius: 8, padding: '9px 22px', fontSize: 12, fontWeight: 700, color: '#fff', cursor: 'pointer' }}>
+                ✅ Add Course
+              </button>
+            </motion.div>
+          )}
+        </>
       )}
 
       {/* ── Progress summary ── */}
@@ -229,7 +344,7 @@ export default function GraduationRoadmapPage({ theme: C, stu, role = 'student' 
 
       {/* ── Semester cards ── */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {CURRICULUM.map(sem => {
+        {curriculum.map(sem => {
           const open    = expanded.has(sem.sem);
           const courses = filter === 'all' ? sem.courses : sem.courses.filter(c => c.cat === filter);
           if (filter !== 'all' && courses.length === 0) return null;
@@ -307,6 +422,13 @@ export default function GraduationRoadmapPage({ theme: C, stu, role = 'student' 
                             <span style={{ fontSize: 9, fontWeight: 700, background: sm.color + '22', color: sm.color, borderRadius: 6, padding: '2px 7px', minWidth: 58, textAlign: 'center' }}>
                               {sm.label}
                             </span>
+                            {isAdmin && course.custom && (
+                              <button
+                                onClick={e => { e.stopPropagation(); removeCourseFromRoadmap(course.code); }}
+                                style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 6, padding: '3px 8px', fontSize: 11, color: '#ef4444', cursor: 'pointer', flexShrink: 0 }}
+                                title="Remove from roadmap"
+                              >🗑️</button>
+                            )}
                           </motion.div>
                         );
                       })}

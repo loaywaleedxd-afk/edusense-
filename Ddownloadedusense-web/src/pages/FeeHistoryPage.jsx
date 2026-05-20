@@ -4,13 +4,27 @@ import store from '../dataStore';
 import { get } from '../api.js';
 import { useLang } from '../context/LanguageContext';
 
-/* ── Admin override persistence ── */
+/* ── Admin persistence helpers ── */
 function loadFeeOverrides(stuId) {
   try { return JSON.parse(localStorage.getItem(`es_fees_${stuId}`) || '{}'); } catch { return {}; }
 }
 function saveFeeOverrides(stuId, overrides) {
   localStorage.setItem(`es_fees_${stuId}`, JSON.stringify(overrides));
 }
+function loadCustomRecords(stuId) {
+  try { return JSON.parse(localStorage.getItem(`es_fees_custom_${stuId}`) || '[]'); } catch { return []; }
+}
+function saveCustomRecords(stuId, records) {
+  localStorage.setItem(`es_fees_custom_${stuId}`, JSON.stringify(records));
+}
+function loadDeletedIds(stuId) {
+  try { return new Set(JSON.parse(localStorage.getItem(`es_fees_deleted_${stuId}`) || '[]')); } catch { return new Set(); }
+}
+function saveDeletedIds(stuId, ids) {
+  localStorage.setItem(`es_fees_deleted_${stuId}`, JSON.stringify([...ids]));
+}
+const MONTHS = ['Jan 2025','Feb 2025','Mar 2025','Apr 2025','May 2025','Jun 2025','Jul 2025','Aug 2025','Sep 2025','Oct 2025','Nov 2025','Dec 2025','Jan 2026','Feb 2026'];
+const DESCRIPTIONS = ['Tuition Installment','Lab & Technology Fee','Semester Registration Fee','Library Fee','Activity Fee','Examination Fee'];
 
 /* ── Local fee data generator ── */
 function buildLocalFees(stuId) {
@@ -101,6 +115,7 @@ export default function FeeHistoryPage({ theme: C, stu, user, role }) {
   const [selectedStuId, setSelectedStuId] = useState(
     isAdmin ? (store.students[0]?.id || '') : (stu?.id || '')
   );
+  const [stuSearch, setStuSearch] = useState('');
   const activeStu = isAdmin
     ? store.students.find(s => s.id === selectedStuId) || store.students[0]
     : (stu || user);
@@ -108,14 +123,24 @@ export default function FeeHistoryPage({ theme: C, stu, user, role }) {
   const [feeOverrides, setFeeOverrides] = useState(() =>
     isAdmin ? loadFeeOverrides(selectedStuId) : {}
   );
+  const [customRecords, setCustomRecords] = useState(() =>
+    isAdmin ? loadCustomRecords(selectedStuId) : []
+  );
+  const [deletedIds, setDeletedIds] = useState(() =>
+    isAdmin ? loadDeletedIds(selectedStuId) : new Set()
+  );
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addForm, setAddForm] = useState({ description: DESCRIPTIONS[0], amount: '', month: MONTHS[0], status: 'pending' });
 
-  const reloadOverrides = useCallback((id) => {
+  const reloadAdminState = useCallback((id) => {
     setFeeOverrides(loadFeeOverrides(id));
+    setCustomRecords(loadCustomRecords(id));
+    setDeletedIds(loadDeletedIds(id));
   }, []);
 
   useEffect(() => {
-    if (isAdmin) reloadOverrides(selectedStuId);
-  }, [selectedStuId, isAdmin, reloadOverrides]);
+    if (isAdmin) reloadAdminState(selectedStuId);
+  }, [selectedStuId, isAdmin, reloadAdminState]);
 
   const [data, setData] = useState(() => buildLocalFees(activeStu?.id || ''));
   const [tab, setTab]   = useState('fees');
@@ -130,31 +155,50 @@ export default function FeeHistoryPage({ theme: C, stu, user, role }) {
       .catch(() => {});
   }, [selectedStuId, stu?.id, isAdmin]);
 
-  // Merge overrides into records
-  const mergedRecords = data.records.map(r => {
-    const ov = feeOverrides[r.id];
-    return ov ? { ...r, ...ov } : r;
-  });
+  // Merge base records with overrides, filter deleted, add custom
+  const baseRecords = data.records
+    .filter(r => !deletedIds.has(r.id))
+    .map(r => { const ov = feeOverrides[r.id]; return ov ? { ...r, ...ov } : r; });
+  const records = [...baseRecords, ...customRecords.filter(r => !deletedIds.has(r.id))];
 
   function markAsPaid(recordId) {
     const today = new Date();
-    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const paidDate = `${months[today.getMonth()]} ${today.getDate()}, ${today.getFullYear()}`;
-    const newOverrides = { ...feeOverrides, [recordId]: { status: 'paid', paidDate, method: 'Admin Override' } };
-    saveFeeOverrides(selectedStuId, newOverrides);
-    setFeeOverrides(newOverrides);
+    const ms = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const paidDate = `${ms[today.getMonth()]} ${today.getDate()}, ${today.getFullYear()}`;
+    const updated = { ...feeOverrides, [recordId]: { status: 'paid', paidDate, method: 'Admin Override' } };
+    saveFeeOverrides(selectedStuId, updated);
+    setFeeOverrides(updated);
   }
 
   function revertToPending(recordId) {
-    const newOverrides = { ...feeOverrides };
-    delete newOverrides[recordId];
-    saveFeeOverrides(selectedStuId, newOverrides);
-    setFeeOverrides(newOverrides);
+    const updated = { ...feeOverrides };
+    delete updated[recordId];
+    saveFeeOverrides(selectedStuId, updated);
+    setFeeOverrides(updated);
   }
 
-  const records = mergedRecords;
-  const { aid, totalFees } = data;
+  function deleteRecord(recordId) {
+    const updated = new Set(deletedIds);
+    updated.add(recordId);
+    saveDeletedIds(selectedStuId, updated);
+    setDeletedIds(updated);
+  }
+
+  function addFeeRecord() {
+    const amount = parseFloat(addForm.amount);
+    if (!amount || amount <= 0) return alert('Enter a valid amount');
+    const id = `FEE-CUSTOM-${selectedStuId}-${Date.now()}`;
+    const rec = { id, month: addForm.month, description: addForm.description, amount, status: addForm.status, paidDate: null, method: 'Admin Added' };
+    const updated = [...customRecords, rec];
+    saveCustomRecords(selectedStuId, updated);
+    setCustomRecords(updated);
+    setAddForm({ description: DESCRIPTIONS[0], amount: '', month: MONTHS[0], status: 'pending' });
+    setShowAddForm(false);
+  }
+
+  const { aid } = data;
   const totalAid  = data.totalAid;
+  const totalFees = records.reduce((a, r) => a + r.amount, 0);
   const totalPaid = records.filter(r => r.status === 'paid').reduce((a, r) => a + r.amount, 0);
   const balance   = +(totalFees - totalPaid - totalAid).toFixed(2);
 
@@ -171,20 +215,24 @@ export default function FeeHistoryPage({ theme: C, stu, user, role }) {
           {fromAPI ? '🟢 Live' : '🟡 Demo data'}
         </div>
         {isAdmin && (
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <label style={{ fontSize: 11, color: C.text2, fontWeight: 600 }}>Student:</label>
+            <input
+              value={stuSearch}
+              onChange={e => setStuSearch(e.target.value)}
+              placeholder="Search name/ID…"
+              style={{ height: 34, background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0 10px', fontSize: 12, color: C.text, width: 150 }}
+            />
             <select
               value={selectedStuId}
-              onChange={e => setSelectedStuId(e.target.value)}
-              style={{
-                padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600,
-                background: C.card, color: C.text, border: `1px solid ${C.border}`,
-                cursor: 'pointer', outline: 'none',
-              }}
+              onChange={e => { setSelectedStuId(e.target.value); setStuSearch(''); }}
+              style={{ padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: C.card, color: C.text, border: `1px solid ${C.border}`, cursor: 'pointer', outline: 'none', maxWidth: 260 }}
             >
-              {store.students.map(s => (
-                <option key={s.id} value={s.id}>{s.name} — {s.id}</option>
-              ))}
+              {store.students
+                .filter(s => !stuSearch || s.name.toLowerCase().includes(stuSearch.toLowerCase()) || s.id.toLowerCase().includes(stuSearch.toLowerCase()))
+                .map(s => (
+                  <option key={s.id} value={s.id}>{s.name} — {s.id}</option>
+                ))}
             </select>
           </div>
         )}
@@ -261,6 +309,66 @@ export default function FeeHistoryPage({ theme: C, stu, user, role }) {
           </div>
         </div>
       </div>
+
+      {/* ── Admin toolbar ── */}
+      {isAdmin && (
+        <div style={{ marginBottom: 18 }}>
+          <button
+            onClick={() => setShowAddForm(v => !v)}
+            style={{
+              background: showAddForm ? C.card : 'linear-gradient(135deg,#3b82f6,#6366f1)',
+              border: showAddForm ? `1px solid ${C.border}` : 'none',
+              borderRadius: 10, padding: '9px 18px', fontSize: 12, fontWeight: 700,
+              color: showAddForm ? C.text2 : '#fff', cursor: 'pointer',
+            }}
+          >
+            {showAddForm ? '✕ Cancel' : '+ Add Fee Record'}
+          </button>
+
+          {showAddForm && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+              style={{ marginTop: 12, background: C.card, borderRadius: 14, border: `1px solid ${C.blue}`, padding: '18px 20px' }}
+            >
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 14 }}>New Fee Record</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: 14 }}>
+                <div>
+                  <div style={{ fontSize: 10, color: C.text3, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase' }}>Description</div>
+                  <select value={addForm.description} onChange={e => setAddForm(f => ({ ...f, description: e.target.value }))}
+                    style={{ width: '100%', height: 36, background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0 10px', fontSize: 12, color: C.text }}>
+                    {DESCRIPTIONS.map(d => <option key={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: C.text3, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase' }}>Month</div>
+                  <select value={addForm.month} onChange={e => setAddForm(f => ({ ...f, month: e.target.value }))}
+                    style={{ width: '100%', height: 36, background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0 10px', fontSize: 12, color: C.text }}>
+                    {MONTHS.map(m => <option key={m}>{m}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: C.text3, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase' }}>Amount ($)</div>
+                  <input type="number" min="0" value={addForm.amount} onChange={e => setAddForm(f => ({ ...f, amount: e.target.value }))}
+                    placeholder="e.g. 800"
+                    style={{ width: '100%', height: 36, background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0 10px', fontSize: 12, color: C.text, boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: C.text3, fontWeight: 700, marginBottom: 4, textTransform: 'uppercase' }}>Status</div>
+                  <select value={addForm.status} onChange={e => setAddForm(f => ({ ...f, status: e.target.value }))}
+                    style={{ width: '100%', height: 36, background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0 10px', fontSize: 12, color: C.text }}>
+                    <option value="pending">Pending</option>
+                    <option value="paid">Paid</option>
+                  </select>
+                </div>
+              </div>
+              <button onClick={addFeeRecord}
+                style={{ background: C.green, border: 'none', borderRadius: 8, padding: '9px 22px', fontSize: 12, fontWeight: 700, color: '#fff', cursor: 'pointer' }}>
+                ✅ Add Record
+              </button>
+            </motion.div>
+          )}
+        </div>
+      )}
 
       {/* ── Tabs ── */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
@@ -342,28 +450,18 @@ export default function FeeHistoryPage({ theme: C, stu, user, role }) {
                 </button>
               )}
               {isAdmin && rec.status === 'pending' && (
-                <button
-                  onClick={() => markAsPaid(rec.id)}
-                  style={{
-                    flexShrink: 0, background: '#10b98120', border: '1px solid #10b98150',
-                    borderRadius: 8, padding: '6px 12px', fontSize: 11,
-                    fontWeight: 700, color: '#10b981', cursor: 'pointer', whiteSpace: 'nowrap',
-                  }}
-                >
+                <button onClick={() => markAsPaid(rec.id)} style={{ flexShrink: 0, background: '#10b98120', border: '1px solid #10b98150', borderRadius: 8, padding: '6px 12px', fontSize: 11, fontWeight: 700, color: '#10b981', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                   ✅ Mark Paid
                 </button>
               )}
-              {isAdmin && rec.status === 'paid' && feeOverrides[rec.id] && (
-                <button
-                  onClick={() => revertToPending(rec.id)}
-                  title="Revert to pending"
-                  style={{
-                    flexShrink: 0, background: '#f59e0b20', border: '1px solid #f59e0b50',
-                    borderRadius: 8, padding: '6px 12px', fontSize: 11,
-                    fontWeight: 700, color: '#f59e0b', cursor: 'pointer', whiteSpace: 'nowrap',
-                  }}
-                >
+              {isAdmin && rec.status === 'paid' && (feeOverrides[rec.id] || customRecords.some(r => r.id === rec.id)) && (
+                <button onClick={() => revertToPending(rec.id)} style={{ flexShrink: 0, background: '#f59e0b20', border: '1px solid #f59e0b50', borderRadius: 8, padding: '6px 12px', fontSize: 11, fontWeight: 700, color: '#f59e0b', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                   ↩️ Revert
+                </button>
+              )}
+              {isAdmin && (
+                <button onClick={() => deleteRecord(rec.id)} style={{ flexShrink: 0, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, padding: '6px 10px', fontSize: 13, cursor: 'pointer' }} title="Delete record">
+                  🗑️
                 </button>
               )}
             </motion.div>

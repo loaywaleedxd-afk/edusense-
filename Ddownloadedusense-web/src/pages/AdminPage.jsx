@@ -527,13 +527,13 @@ function AdminStudents({ theme: C }) {
       {portfolioStudent && <StudentPortfolioModal theme={C} student={portfolioStudent} onClose={()=>setPortfolioStudent(null)}/>}
       {createdAccount && <CredentialsModal theme={C} account={createdAccount} onClose={()=>setCreatedAccount(null)}/>}
       {showImport && <BulkImportModal theme={C} onClose={()=>setShowImport(false)} onImported={()=>setStudents([...store.students])}/>}
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
-        <div style={{fontSize:22,fontWeight:700,color:C.text}}>{t('students')} ({store.students.length})</div>
-        <div style={{display:'flex',gap:8}}>
-          <button onClick={deleteSelected} style={{background:C.red_dim,border:`1px solid ${C.red}`,borderRadius:8,padding:'8px 14px',fontSize:11,color:C.red2,cursor:'pointer'}}>🗑️ Delete Selected</button>
-          <button onClick={()=>exportDataAsCSV(filtered.map(s=>({ID:s.id,Name:s.name,Department:s.dept,Year:s.year,Email:s.email||'',Attendance:`${s.attendanceRate}%`,Engagement:`${s.engagement}%`,GPA:s.gpa||'N/A'})),'students_export.csv')} style={{background:C.green_dim||'rgba(16,185,129,0.15)',border:`1px solid ${C.green}`,borderRadius:8,padding:'8px 14px',fontSize:11,fontWeight:700,color:C.green,cursor:'pointer'}}>📤 {t('export_csv')}</button>
-          <button onClick={()=>setShowImport(true)} style={{background:'linear-gradient(135deg,#8b5cf6,#6366f1)',border:'none',borderRadius:8,padding:'8px 14px',fontSize:11,fontWeight:700,color:'#fff',cursor:'pointer'}}>📥 Import Excel/CSV</button>
-          <button onClick={()=>setShowAdd(true)} style={{background:C.blue3,border:'none',borderRadius:8,padding:'8px 14px',fontSize:11,fontWeight:700,color:'#fff',cursor:'pointer'}}>+ Add Student</button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ fontSize: 22, fontWeight: 700, color: C.text }}>{t('students')} <span style={{ fontSize: 14, fontWeight: 400, color: C.text3 }}>({filtered.length} / {store.students.length})</span></div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={deleteSelected} style={{ background: C.red_dim, border: `1px solid ${C.red}`, borderRadius: 8, padding: '8px 14px', fontSize: 11, color: C.red2, cursor: 'pointer' }}>🗑️ Delete</button>
+          <button onClick={() => exportDataAsCSV(filtered.map(s => ({ ID: s.id, Name: s.name, Department: s.dept, Year: s.year, Email: s.email || '', Attendance: `${s.attendanceRate}%`, Engagement: `${s.engagement}%`, GPA: s.gpa || 'N/A' })), 'students_export.csv')} style={{ background: C.green_dim || 'rgba(16,185,129,0.15)', border: `1px solid ${C.green}`, borderRadius: 8, padding: '8px 14px', fontSize: 11, fontWeight: 700, color: C.green, cursor: 'pointer' }}>📤 Export</button>
+          <button onClick={() => setShowImport(true)} style={{ background: 'linear-gradient(135deg,#8b5cf6,#6366f1)', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 11, fontWeight: 700, color: '#fff', cursor: 'pointer' }}>📥 Import</button>
+          <button onClick={() => setShowAdd(true)} style={{ background: C.blue3, border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 11, fontWeight: 700, color: '#fff', cursor: 'pointer' }}>+ Add Student</button>
         </div>
       </div>
 
@@ -571,9 +571,28 @@ function AdminStudents({ theme: C }) {
         </div>
       )}
 
-      <div style={{marginBottom:12}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search students..."
-          style={{width:'100%',height:38,background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 12px',fontSize:12,color:C.text}}/>
+      <div style={{ marginBottom: 14, position: 'relative' }}>
+        <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', fontSize: 15, pointerEvents: 'none', opacity: 0.5 }}>🔍</span>
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder={`Search ${store.students.length} students by name or ID…`}
+          style={{
+            width: '100%', height: 44, background: C.card, border: `1.5px solid ${search ? C.blue : C.border}`,
+            borderRadius: 12, paddingLeft: 40, paddingRight: search ? 40 : 16, fontSize: 13, color: C.text,
+            boxSizing: 'border-box', transition: 'border-color 0.15s',
+          }}
+        />
+        {search && (
+          <button onClick={() => setSearch('')} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', fontSize: 16, color: C.text3, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+        )}
+        {search && (
+          <div style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 10, color: C.text3, fontWeight: 700 }}>
+          </div>
+        )}
+        {search && filtered.length === 0 && (
+          <div style={{ marginTop: 6, fontSize: 11, color: C.text3, paddingLeft: 4 }}>No students match "{search}"</div>
+        )}
       </div>
 
       <Card theme={C} title={`Students (${filtered.length})`}>

@@ -73,6 +73,32 @@ button { cursor: pointer; font-family: inherit; }
 @media (max-width: 767px) {
   .rg-2, .rg-3, .rg-4 { grid-template-columns: 1fr !important; }
   .content-scroll { padding-bottom: 72px !important; }
+
+  /* Force single column on all inline-grid/flex toolbars */
+  .mobile-stack { flex-direction: column !important; align-items: stretch !important; }
+  .mobile-hide  { display: none !important; }
+  .mobile-full  { width: 100% !important; min-width: 0 !important; }
+
+  /* Stat cards: 2 per row on phones */
+  .stat-grid { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
+
+  /* Tables: scroll horizontally instead of overflowing */
+  .table-scroll { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+
+  /* Make all page headers sensible size */
+  .page-title { font-size: 18px !important; }
+
+  /* Admin students toolbar: stack on mobile */
+  .admin-toolbar { flex-wrap: wrap !important; gap: 8px !important; }
+  .admin-toolbar button, .admin-toolbar input, .admin-toolbar select {
+    flex: 1 1 auto !important; min-width: 120px !important;
+  }
+
+  /* Search bar — full width */
+  .search-bar { width: 100% !important; }
+
+  /* Cards: reduce padding */
+  .card-mobile { padding: 12px !important; }
 }
 
 /* ── Mobile bottom nav ── */
