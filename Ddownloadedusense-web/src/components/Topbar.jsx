@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import store from '../dataStore';
 import { useLang } from '../context/LanguageContext';
+import useMobile from '../hooks/useMobile';
 
 const ROLE_COLORS = { doctor: '#8b5cf6', admin: '#10b981', student: '#3b82f6', parent: '#f59e0b' };
 const KIND_ICON = { grade:'📝', appeal:'📋', new_appeal:'📋', attendance:'⚠️', warning:'⚠️', danger:'🚨', info:'ℹ️' };
 
-export default function Topbar({ theme: C, user, pageTitle, isDark, onToggleMode, onLogout }) {
+export default function Topbar({ theme: C, user, pageTitle, isDark, onToggleMode, onLogout, onMenuOpen }) {
   const { lang, toggleLang, isRTL, t } = useLang();
+  const isMobile = useMobile();
   const roleColor = ROLE_COLORS[user?.role] || '#3b82f6';
   const initials  = user?.initials || user?.name?.split(' ').slice(0,2).map(w=>w[0]?.toUpperCase()||'').join('') || '??';
   const [notifOpen, setNotifOpen] = useState(false);
@@ -32,8 +34,17 @@ export default function Topbar({ theme: C, user, pageTitle, isDark, onToggleMode
       flexShrink: 0, position: 'relative', zIndex: 10,
       flexDirection: isRTL ? 'row-reverse' : 'row',
     }}>
+      {/* Hamburger — mobile only */}
+      {isMobile && (
+        <button onClick={onMenuOpen} style={{
+          background: 'none', border: 'none', fontSize: 22, color: C.text,
+          cursor: 'pointer', padding: '4px 8px', marginRight: isRTL ? 0 : 4, marginLeft: isRTL ? 4 : 0,
+          lineHeight: 1, flexShrink: 0,
+        }}>☰</button>
+      )}
+
       {/* Breadcrumb */}
-      <div style={{ flex: 1, fontSize: 15, fontWeight: 700, color: C.text, textAlign: isRTL ? 'right' : 'left' }}>{pageTitle}</div>
+      <div style={{ flex: 1, fontSize: isMobile ? 13 : 15, fontWeight: 700, color: C.text, textAlign: isRTL ? 'right' : 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pageTitle}</div>
 
       {/* Right (or left in RTL) controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexDirection: isRTL ? 'row-reverse' : 'row' }}>
@@ -118,30 +129,30 @@ export default function Topbar({ theme: C, user, pageTitle, isDark, onToggleMode
         {/* Language toggle */}
         <button onClick={toggleLang} title={lang === 'en' ? 'Switch to Arabic' : 'Switch to English'} style={{
           background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 20,
-          padding: '7px 14px', fontSize: 11, fontWeight: 700, color: C.text2,
+          padding: isMobile ? '7px 10px' : '7px 14px', fontSize: 11, fontWeight: 700, color: C.text2,
           display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
         }}>
           <span>{lang === 'en' ? '🇦🇪' : '🇬🇧'}</span>
-          <span>{lang === 'en' ? 'عربي' : 'EN'}</span>
+          {!isMobile && <span>{lang === 'en' ? 'عربي' : 'EN'}</span>}
         </button>
 
         {/* Mode toggle */}
         <button onClick={onToggleMode} style={{
           background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 20,
-          padding: '7px 14px', fontSize: 11, fontWeight: 700, color: C.text2,
+          padding: isMobile ? '7px 10px' : '7px 14px', fontSize: 11, fontWeight: 700, color: C.text2,
           display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
         }}>
           <span>{isDark ? '☀️' : '🌙'}</span>
-          <span>{isDark ? t('light') : t('dark')}</span>
+          {!isMobile && <span>{isDark ? t('light') : t('dark')}</span>}
         </button>
 
-        <div style={{ width:1, height:36, background:C.border }}/>
+        {!isMobile && <div style={{ width:1, height:36, background:C.border }}/>}
 
         {/* Avatar */}
         <div style={{
-          width:38, height:38, borderRadius:'50%', background:roleColor,
+          width:34, height:34, borderRadius:'50%', background:roleColor,
           display:'flex', alignItems:'center', justifyContent:'center',
-          fontSize:13, fontWeight:700, color:'#fff', flexShrink:0,
+          fontSize:12, fontWeight:700, color:'#fff', flexShrink:0,
           overflow:'hidden', border:`2px solid ${roleColor}`,
         }}>
           {user?.photoUrl
@@ -150,20 +161,22 @@ export default function Topbar({ theme: C, user, pageTitle, isDark, onToggleMode
           <span style={{ display: user?.photoUrl ? 'none' : 'flex' }}>{initials}</span>
         </div>
 
-        {/* Name + role */}
-        <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
-          <div style={{ fontSize:12, fontWeight:700, color:C.text }}>{user?.name || 'User'}</div>
-          <div style={{ fontSize:10, color:C.text3 }}>{(user?.role||'').replace(/^\w/,c=>c.toUpperCase())}</div>
-        </div>
+        {/* Name + role — desktop only */}
+        {!isMobile && (
+          <div style={{ display:'flex', flexDirection:'column', gap:1 }}>
+            <div style={{ fontSize:12, fontWeight:700, color:C.text }}>{user?.name || 'User'}</div>
+            <div style={{ fontSize:10, color:C.text3 }}>{(user?.role||'').replace(/^\w/,c=>c.toUpperCase())}</div>
+          </div>
+        )}
 
         {/* Sign out */}
         <button onClick={onLogout} style={{
           background: C.red_dim, border: `1px solid ${C.red}`, borderRadius:8,
-          padding:'8px 14px', fontSize:11, color:C.red2, fontWeight:600, cursor:'pointer',
+          padding: isMobile ? '8px 10px' : '8px 14px', fontSize:11, color:C.red2, fontWeight:600, cursor:'pointer',
         }}
           onMouseEnter={e=>e.currentTarget.style.background=C.red}
           onMouseLeave={e=>e.currentTarget.style.background=C.red_dim}
-        >{t('sign_out')}</button>
+        >{isMobile ? '⏻' : t('sign_out')}</button>
       </div>
     </div>
   );

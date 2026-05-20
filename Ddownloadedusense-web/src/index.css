@@ -45,3 +45,44 @@ button { cursor: pointer; font-family: inherit; }
 /* ── RTL support ── */
 [dir="rtl"] { text-align: right; }
 [dir="rtl"] .content-scroll { direction: rtl; }
+
+/* ── Mobile drawer backdrop ── */
+.mobile-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+  z-index: 299; animation: fadeIn 0.18s ease;
+}
+
+/* ── Mobile sidebar drawer ── */
+.sidebar-drawer {
+  position: fixed; top: 0; bottom: 0; z-index: 300;
+  width: 260px; overflow-y: auto;
+  animation: slideInLeft 0.22s ease;
+}
+[dir="rtl"] .sidebar-drawer { animation: slideInRight 0.22s ease; }
+
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); opacity: 0.5; }
+  to   { transform: translateX(0);     opacity: 1;   }
+}
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0.5; }
+  to   { transform: translateX(0);    opacity: 1;   }
+}
+
+/* ── Responsive grid helpers ── */
+@media (max-width: 767px) {
+  .rg-2, .rg-3, .rg-4 { grid-template-columns: 1fr !important; }
+  .content-scroll { padding-bottom: 72px !important; }
+}
+
+/* ── Mobile bottom nav ── */
+.mobile-bottom-nav {
+  display: none;
+  position: fixed; bottom: 0; left: 0; right: 0;
+  height: 58px; z-index: 200;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  flex-direction: row; align-items: center; justify-content: space-around;
+}
+@media (max-width: 767px) {
+  .mobile-bottom-nav { display: flex; }
+}

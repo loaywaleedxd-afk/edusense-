@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { useLang } from '../context/LanguageContext';
+import useMobile from '../hooks/useMobile';
 
 /* ── Translation key map for nav item ids ── */
 const NAV_LABEL_KEYS = {
@@ -20,6 +21,9 @@ const NAV_LABEL_KEYS = {
   settings: 'settings', overview: 'overview',
   // Parent nav
   riskstatus: 'child_risk',
+  // New feature items
+  ai_insight: 'ai_insight_nav', calendar: 'academic_calendar',
+  roadmap: 'grad_roadmap', livepoll: 'live_poll',
   // Overlay items — translated
   __proctoring: 'proctoring', __advising: 'advising', __atrisk: 'atrisk',
 };
@@ -44,12 +48,15 @@ const itemVariants = {
   visible: { opacity: 1, x: 0, transition: { duration: 0.22, ease: 'easeOut' } },
 };
 
-export default function Sidebar({ theme: C, navItems, activeId, onNav }) {
+export default function Sidebar({ theme: C, navItems, activeId, onNav, mobileOpen, onMobileClose }) {
   const { t, isRTL } = useLang();
+  const isMobile = useMobile();
 
-  return (
+  const sidebarContent = (
     <div style={{
-      width: 230, minWidth: 230, height: '100%',
+      width: isMobile ? 260 : 230,
+      minWidth: isMobile ? 260 : 230,
+      height: '100%',
       background: C.sidebar, display: 'flex', flexDirection: 'column',
       borderRight: isRTL ? 'none' : `1px solid ${C.border}`,
       borderLeft: isRTL ? `1px solid ${C.border}` : 'none',
@@ -110,12 +117,20 @@ export default function Sidebar({ theme: C, navItems, activeId, onNav }) {
                 isActive={activeId === item.id}
                 theme={C}
                 isRTL={isRTL}
-                onClick={() => onNav(item.id)}
+                onClick={() => { onNav(item.id); isMobile && onMobileClose?.(); }}
               />
             </motion.div>
           );
         })}
       </motion.div>
+
+      {/* Close button on mobile */}
+      {isMobile && (
+        <button onClick={onMobileClose} style={{
+          position: 'absolute', top: 12, right: isRTL ? 'auto' : 12, left: isRTL ? 12 : 'auto',
+          background: 'none', border: 'none', fontSize: 20, color: C.text3, cursor: 'pointer', lineHeight: 1,
+        }}>✕</button>
+      )}
 
       {/* Version */}
       <div style={{ padding: '12px 0', textAlign: 'center', fontSize: 9, color: C.text3, flexShrink: 0 }}>
@@ -123,6 +138,25 @@ export default function Sidebar({ theme: C, navItems, activeId, onNav }) {
       </div>
     </div>
   );
+
+  // On mobile: render as overlay drawer
+  if (isMobile) {
+    if (!mobileOpen) return null;
+    return (
+      <>
+        <div className="mobile-backdrop" onClick={onMobileClose} />
+        <div
+          className="sidebar-drawer"
+          style={{ [isRTL ? 'right' : 'left']: 0, background: C.sidebar }}
+        >
+          {sidebarContent}
+        </div>
+      </>
+    );
+  }
+
+  // Desktop: normal inline sidebar
+  return sidebarContent;
 }
 
 function NavBtn({ item, isActive, theme: C, onClick, isRTL }) {

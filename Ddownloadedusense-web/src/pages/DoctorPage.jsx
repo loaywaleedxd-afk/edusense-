@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import TimetablePage from './TimetablePage';
 import { DoctorOfficeHours } from './OfficeHoursPage';
+import AIInsightPage from './AIInsightPage';
+import AcademicCalendarPage from './AcademicCalendarPage';
+import { DoctorLivePoll } from './LivePollPage';
 import { pushToast } from '../components/NotificationToast';
 import { useLang } from '../context/LanguageContext';
 import Sidebar from '../components/Sidebar';
@@ -45,6 +48,9 @@ const NAV = [
   {id:'__atrisk',     icon:'🚨', label:'Early Warning'},
   {id:'timetable',    icon:'🗓️', label:'Timetable'},
   {id:'officehours',  icon:'🕐', label:'Office Hours'},
+  {id:'ai_insight',   icon:'🤖', label:'AI Insights'},
+  {id:'calendar',     icon:'📅', label:'Academic Calendar'},
+  {id:'livepoll',     icon:'📊', label:'Live Poll'},
 ];
 
 const PAGE_TITLES = {
@@ -66,6 +72,8 @@ const DOC_PAGE_KEYS = {
   appeals:'appeals', announcements:'announcements', examschedule:'exams',
   resources:'resources', assignments:'assignments',
   timetable:'timetable', officehours:'office_hours',
+  ai_insight:'ai_insight_nav', calendar:'academic_calendar',
+  livepoll:'live_poll',
 };
 
 function letterGrade(g){if(g>=90)return'A+';if(g>=85)return'A';if(g>=80)return'B+';if(g>=75)return'B';if(g>=70)return'C+';if(g>=65)return'C';if(g>=60)return'D+';if(g>=50)return'D';return'F';}
@@ -111,6 +119,7 @@ function FilePill({ fileData, fileName, onRemove, theme: C }){
 export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLogout,
   onOpenProctoring, onOpenAdvising, onOpenAtRisk }) {
   const [page, setPage] = useState('dashboard');
+  const [menuOpen, setMenuOpen] = useState(false);
   const { t, isRTL } = useLang();
   const doctor = store.getDoctor(user.doctorId||'') || store.doctors[0];
   const myCourses = store.getDoctorCourses(doctor.id);
@@ -137,9 +146,9 @@ export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLog
 
   return (
     <div style={{display:'flex',height:'100%',background:C.bg,overflow:'hidden', flexDirection: isRTL ? 'row-reverse' : 'row'}}>
-      <Sidebar theme={C} navItems={nav} activeId={page} onNav={handleNav}/>
+      <Sidebar theme={C} navItems={nav} activeId={page} onNav={handleNav} mobileOpen={menuOpen} onMobileClose={() => setMenuOpen(false)}/>
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
-        <Topbar theme={C} user={user} pageTitle={getDocPageTitle(page)} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout}/>
+        <Topbar theme={C} user={user} pageTitle={getDocPageTitle(page)} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout} onMenuOpen={() => setMenuOpen(true)}/>
         <div className="content-scroll" style={{flex:1,overflowY:'auto',background:C.bg}}>
           <AnimatedPage pageKey={page}>
             {page==='dashboard'  && <DocDashboard theme={C} user={user} doctor={doctor} myCourses={myCourses}/>}
@@ -161,6 +170,9 @@ export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLog
             {page==='assignments'   && <DocAssignments theme={C} doctor={doctor} myCourses={myCourses}/>}
             {page==='timetable'     && <TimetablePage theme={C} role="doctor" doctorId={doctor.id}/>}
             {page==='officehours'   && <DoctorOfficeHours theme={C} doctor={doctor}/>}
+            {page==='ai_insight'    && <AIInsightPage theme={C} doctor={doctor} myCourses={myCourses}/>}
+            {page==='calendar'      && <AcademicCalendarPage theme={C} role="doctor"/>}
+            {page==='livepoll'      && <DoctorLivePoll theme={C}/>}
           </AnimatedPage>
         </div>
       </div>

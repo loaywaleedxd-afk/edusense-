@@ -38,6 +38,7 @@ function gradeColor(g,C){return g>=75?C.green:g>=50?C.amber:C.red;}
 
 export default function ParentPage({ theme: C, user, isDark, onToggleMode, onLogout }) {
   const [page, setPage] = useState('overview');
+  const [menuOpen, setMenuOpen] = useState(false);
   const { isRTL, t } = useLang();
   const sid   = user.studentId || user.id || '';
   const child = store.getStudent(sid) || store.students[0];
@@ -51,9 +52,9 @@ export default function ParentPage({ theme: C, user, isDark, onToggleMode, onLog
 
   return (
     <div style={{display:'flex',height:'100%',background:C.bg,overflow:'hidden', flexDirection: isRTL ? 'row-reverse' : 'row'}}>
-      <Sidebar theme={C} navItems={NAV} activeId={page} onNav={setPage}/>
+      <Sidebar theme={C} navItems={NAV} activeId={page} onNav={setPage} mobileOpen={menuOpen} onMobileClose={() => setMenuOpen(false)}/>
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
-        <Topbar theme={C} user={user} pageTitle={parentPageTitle} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout}/>
+        <Topbar theme={C} user={user} pageTitle={parentPageTitle} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout} onMenuOpen={() => setMenuOpen(true)}/>
         {/* Read-only banner */}
         <div style={{background:'rgba(139,92,246,0.08)',borderBottom:`1px solid rgba(139,92,246,0.2)`,padding:'6px 20px',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
           <span style={{fontSize:13}}>👁️</span>

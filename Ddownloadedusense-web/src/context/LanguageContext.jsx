@@ -136,6 +136,36 @@ export const TRANSLATIONS = {
     present_today: 'Present Today', absent_today: 'Absent Today',
     grade_entry: 'Grade Entry', exam_results: 'Exam Results',
     publish_grades: 'Publish Grades', enter_grade: 'Enter Grade',
+    // ── AI Insight ────────────────────────────────────────────────────────────
+    ai_insight_nav: 'AI Insights', academic_calendar: 'Academic Calendar',
+    emotion_report: 'Emotion Report', grade_predictor: 'Grade Predictor',
+    generating_report: 'Generating AI report…', generate_report: 'Generate Weekly Report',
+    generate_predictions: 'Generate Predictions', ai_recommendations: 'AI Recommendations',
+    weekly_classroom: 'Weekly Classroom Health Report',
+    disengaged_students: 'Disengaged Students', confused_students: 'Confused Students',
+    hard_topics: 'Hard Topics Flagged', four_week_trend: '4-Week Trend',
+    low_risk: 'Low Risk', medium_risk: 'Medium Risk', high_risk: 'High Risk',
+    critical_risk: 'Critical Risk', risk_level: 'Risk Level',
+    predicted_grade: 'Predicted Grade', intervention: 'Needs Intervention',
+    export_csv: 'Export CSV', dept_comparison: 'Department Comparison',
+    // ── Calendar ─────────────────────────────────────────────────────────────
+    add_event: 'Add Event', upcoming_events: 'Upcoming Events',
+    event_title: 'Event Title', event_type: 'Event Type',
+    cal_exam: 'Exam', cal_holiday: 'Holiday', cal_deadline: 'Deadline',
+    cal_lecture: 'Lecture', cal_semester: 'Semester', cal_meeting: 'Meeting',
+    no_events: 'No upcoming events', event_detail: 'Event Detail',
+    read_only_cal: 'View only — only admins can add events',
+    // ── Graduation Roadmap ───────────────────────────────────────────────────
+    grad_roadmap: 'Graduation Roadmap', grad_roadmap_sub: 'Track your path to graduation semester by semester',
+    // ── Live Poll ────────────────────────────────────────────────────────────
+    live_poll: 'Live Lecture Poll', live_poll_sub_doc: 'Create real-time polls for your students during lectures',
+    live_poll_sub_stu: 'Vote on polls launched by your lecturer in real time',
+    create_poll: 'Create New Poll', new_poll: 'New Poll', publish_poll: 'Publish Poll',
+    end_poll: 'End Poll', poll_live: 'LIVE', poll_ended: 'ENDED',
+    poll_question: 'Question', poll_question_ph: 'e.g. Which topic was hardest today?',
+    poll_choices: 'Answer Choices', choice: 'Choice', votes: 'votes',
+    no_active_poll: 'No active poll right now', poll_wait: 'Your lecturer will start a poll during the lecture',
+    vote_cast: 'Your vote was recorded', so_far: 'total so far',
   },
 
   ar: {
@@ -273,6 +303,36 @@ export const TRANSLATIONS = {
     present_today: 'الحضور اليوم', absent_today: 'الغياب اليوم',
     grade_entry: 'إدخال الدرجات', exam_results: 'نتائج الامتحانات',
     publish_grades: 'نشر الدرجات', enter_grade: 'أدخل الدرجة',
+    // ── AI Insight ────────────────────────────────────────────────────────────
+    ai_insight_nav: 'رؤى الذكاء الاصطناعي', academic_calendar: 'التقويم الأكاديمي',
+    emotion_report: 'تقرير المشاعر', grade_predictor: 'توقع الدرجات',
+    generating_report: 'جارٍ إنشاء تقرير الذكاء الاصطناعي…', generate_report: 'إنشاء التقرير الأسبوعي',
+    generate_predictions: 'إنشاء التوقعات', ai_recommendations: 'توصيات الذكاء الاصطناعي',
+    weekly_classroom: 'تقرير صحة الفصل الأسبوعي',
+    disengaged_students: 'الطلاب غير المتفاعلين', confused_students: 'الطلاب الحائرون',
+    hard_topics: 'الموضوعات الصعبة', four_week_trend: 'الاتجاه خلال 4 أسابيع',
+    low_risk: 'خطر منخفض', medium_risk: 'خطر متوسط', high_risk: 'خطر مرتفع',
+    critical_risk: 'خطر حرج', risk_level: 'مستوى الخطر',
+    predicted_grade: 'الدرجة المتوقعة', intervention: 'يحتاج تدخلاً',
+    export_csv: 'تصدير CSV', dept_comparison: 'مقارنة الأقسام',
+    // ── Calendar ─────────────────────────────────────────────────────────────
+    add_event: 'إضافة حدث', upcoming_events: 'الأحداث القادمة',
+    event_title: 'عنوان الحدث', event_type: 'نوع الحدث',
+    cal_exam: 'امتحان', cal_holiday: 'إجازة', cal_deadline: 'موعد نهائي',
+    cal_lecture: 'محاضرة', cal_semester: 'فصل دراسي', cal_meeting: 'اجتماع',
+    no_events: 'لا توجد أحداث قادمة', event_detail: 'تفاصيل الحدث',
+    read_only_cal: 'للعرض فقط — إضافة الأحداث للمسؤولين',
+    // ── Graduation Roadmap ───────────────────────────────────────────────────
+    grad_roadmap: 'خارطة طريق التخرج', grad_roadmap_sub: 'تتبع مسارك نحو التخرج فصلاً دراسياً بعد فصل',
+    // ── Live Poll ────────────────────────────────────────────────────────────
+    live_poll: 'استطلاع المحاضرة المباشر', live_poll_sub_doc: 'أنشئ استطلاعات فورية لطلابك أثناء المحاضرات',
+    live_poll_sub_stu: 'صوّت في الاستطلاعات التي يطلقها أستاذك مباشرة',
+    create_poll: 'إنشاء استطلاع جديد', new_poll: 'استطلاع جديد', publish_poll: 'نشر الاستطلاع',
+    end_poll: 'إنهاء الاستطلاع', poll_live: 'مباشر', poll_ended: 'منتهٍ',
+    poll_question: 'السؤال', poll_question_ph: 'مثال: ما الموضوع الأصعب اليوم؟',
+    poll_choices: 'خيارات الإجابة', choice: 'خيار', votes: 'أصوات',
+    no_active_poll: 'لا يوجد استطلاع نشط الآن', poll_wait: 'سيطلق أستاذك استطلاعاً أثناء المحاضرة',
+    vote_cast: 'تم تسجيل صوتك', so_far: 'حتى الآن',
   },
 };
 

@@ -14,6 +14,9 @@ import store from '../dataStore';
 import { EMOTION_ICONS } from '../theme';
 import GPACalculatorPage from './GPACalculatorPage';
 import TimetablePage from './TimetablePage';
+import AcademicCalendarPage from './AcademicCalendarPage';
+import GraduationRoadmapPage from './GraduationRoadmapPage';
+import { StudentLivePoll } from './LivePollPage';
 import DigitalIDPage from './DigitalIDPage';
 import FeeHistoryPage from './FeeHistoryPage';
 import { StudentOfficeHours } from './OfficeHoursPage';
@@ -47,6 +50,9 @@ const NAV_BASE = [
   { id:'digitalid',     icon:'🪪',  label:'Digital ID' },
   { id:'feehistory',    icon:'💳', label:'Fee History' },
   { id:'officehours',   icon:'🕐', label:'Office Hours' },
+  { id:'calendar',      icon:'📅', label:'Academic Calendar' },
+  { id:'roadmap',       icon:'🗺️', label:'Graduation Roadmap' },
+  { id:'livepoll',      icon:'📊', label:'Live Poll' },
 ];
 
 function loadLastSeen(stuId) {
@@ -126,7 +132,8 @@ const PAGE_TITLE_KEYS = {
   resources:'resources', assignments:'assignments',
   gpacalc:'gpa_calc', timetable:'timetable',
   digitalid:'digital_id', feehistory:'fee_history',
-  officehours:'office_hours',
+  officehours:'office_hours', calendar:'academic_calendar',
+  roadmap:'grad_roadmap', livepoll:'live_poll',
 };
 function getPageTitle(page, t) {
   const key = PAGE_TITLE_KEYS[page];
@@ -255,6 +262,7 @@ function AttendanceAlertBanner({ theme: C, studentId, onGoToAttendance }) {
 export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLogout,
   onOpenProctoring, onOpenAdvising, onOpenAtRisk }) {
   const [page, setPage] = useState('dashboard');
+  const [menuOpen, setMenuOpen] = useState(false);
   const { t, isRTL } = useLang();
   const sid = user.studentId || user.id || '';
   const stu = store.getStudent(sid) || store.students[0];
@@ -276,9 +284,9 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
 
   return (
     <div style={{ display:'flex', height:'100%', background:C.bg, overflow:'hidden', flexDirection: isRTL ? 'row-reverse' : 'row' }}>
-      <Sidebar theme={C} navItems={nav} activeId={page} onNav={navigate}/>
+      <Sidebar theme={C} navItems={nav} activeId={page} onNav={navigate} mobileOpen={menuOpen} onMobileClose={() => setMenuOpen(false)}/>
       <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', minWidth:0 }}>
-        <Topbar theme={C} user={user} pageTitle={getPageTitle(page, t)} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout}/>
+        <Topbar theme={C} user={user} pageTitle={getPageTitle(page, t)} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout} onMenuOpen={() => setMenuOpen(true)}/>
         <div className="content-scroll" style={{ flex:1, background:C.bg, overflowY:'auto' }}>
           {/* Attendance alert banner — visible on all pages */}
           <AttendanceAlertBanner
@@ -308,6 +316,9 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
             {page==='digitalid'     && <DigitalIDPage theme={C} stu={stu} user={user}/>}
             {page==='feehistory'    && <FeeHistoryPage theme={C} stu={stu} user={user}/>}
             {page==='officehours'   && <StudentOfficeHours theme={C} stu={stu}/>}
+            {page==='calendar'      && <AcademicCalendarPage theme={C} role="student"/>}
+            {page==='roadmap'       && <GraduationRoadmapPage theme={C} stu={stu}/>}
+            {page==='livepoll'      && <StudentLivePoll theme={C}/>}
           </AnimatedPage>
         </div>
       </div>

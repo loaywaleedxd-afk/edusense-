@@ -9,7 +9,7 @@ export default function QRCode({ value, size = 200, color = '#3b82f6' }) {
     QRCodeLib.toCanvas(canvasRef.current, value, {
       width: size,
       margin: 2,
-      color: { dark: color, light: '#0f172a' },
+      color: { dark: '#1e293b', light: '#ffffff' },
     });
   }, [value, size, color]);
 

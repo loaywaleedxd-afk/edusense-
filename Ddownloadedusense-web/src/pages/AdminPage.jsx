@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { useLang } from '../context/LanguageContext';
+import AcademicCalendarPage from './AcademicCalendarPage';
 import Sidebar from '../components/Sidebar';
 import Topbar  from '../components/Topbar';
 import AnimatedPage from '../components/AnimatedPage';
@@ -43,6 +44,7 @@ const NAV = [
   {id:'__proctoring', icon:'🎥', label:'Exam Proctoring'},
   {id:'__advising',   icon:'🎓', label:'Advising'},
   {id:'__atrisk',     icon:'🚨', label:'Early Warning'},
+  {id:'calendar',     icon:'📅', label:'Academic Calendar'},
 ];
 
 const PAGE_TITLES = {
@@ -55,6 +57,7 @@ const PAGE_TITLES = {
 export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogout,
   onOpenProctoring, onOpenAdvising, onOpenAtRisk }) {
   const [page, setPage] = useState('dashboard');
+  const [menuOpen, setMenuOpen] = useState(false);
   const { isRTL, t } = useLang();
 
   const ADMIN_PAGE_KEYS = {
@@ -62,6 +65,7 @@ export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogo
     doctors:'doctors', courses:'courses', enrollments:'enrollments',
     appeals:'appeals', registration:'reg_fees', examschedule:'page_exams',
     parents:'parents', r_reports:'ranalysis', settings:'settings',
+    calendar:'academic_calendar',
   };
 
   function handleNav(id) {
@@ -75,9 +79,9 @@ export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogo
 
   return (
     <div style={{display:'flex',height:'100%',background:C.bg,overflow:'hidden', flexDirection: isRTL ? 'row-reverse' : 'row'}}>
-      <Sidebar theme={C} navItems={NAV} activeId={page} onNav={handleNav}/>
+      <Sidebar theme={C} navItems={NAV} activeId={page} onNav={handleNav} mobileOpen={menuOpen} onMobileClose={() => setMenuOpen(false)}/>
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
-        <Topbar theme={C} user={user} pageTitle={adminPageTitle} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout}/>
+        <Topbar theme={C} user={user} pageTitle={adminPageTitle} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout} onMenuOpen={() => setMenuOpen(true)}/>
         <div className="content-scroll" style={{flex:1,overflowY:'auto',background:C.bg}}>
           <AnimatedPage pageKey={page}>
             {page==='dashboard'   && <AdminDashboard theme={C}/>}
@@ -92,6 +96,7 @@ export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogo
             {page==='parents'     && <AdminParents theme={C}/>}
             {page==='r_reports'   && <AdminRReports theme={C}/>}
             {page==='settings'    && <AdminSettings theme={C}/>}
+            {page==='calendar'    && <AcademicCalendarPage theme={C} role="admin"/>}
           </AnimatedPage>
         </div>
       </div>
@@ -223,6 +228,75 @@ function AdminAnalytics({ theme: C }) {
           })} height={200}/>
         </div>
       </Card>
+
+      {/* ── Department Comparison ── */}
+      <DeptComparisonSection theme={C}/>
+    </div>
+  );
+}
+
+function DeptComparisonSection({ theme: C }) {
+  const { t } = useLang();
+  const depts      = ['Computer Science','Engineering','Mathematics','Physics','Data Science'];
+  const deptShort  = ['CS','Eng','Math','Phys','Data Sci'];
+  const deptColors = [C.blue,C.purple,C.green,C.amber,C.cyan];
+
+  const metrics = depts.map((dept, i) => {
+    const ds = store.students.filter(s => s.dept === dept);
+    const att = ds.length ? Math.round(ds.reduce((a,s)=>a+(s.attendanceRate||0),0)/ds.length) : 65+(i*7)%25;
+    const eng = ds.length ? Math.round(ds.reduce((a,s)=>a+(s.engagement||0),0)/ds.length)     : 55+(i*9)%30;
+    const gpa = ds.length ? parseFloat((ds.reduce((a,s)=>a+(parseFloat(s.gpa)||3.0),0)/ds.length).toFixed(2)) : 3.0+(i*0.1)%0.8;
+    const risk = ds.filter(s=>(s.attendanceRate||100)<65||(s.engagement||100)<40).length;
+    return { dept: deptShort[i], attendance: att, engagement: eng, gpa: Math.round(gpa*25), riskPct: ds.length?Math.round(risk/ds.length*100):0, color: deptColors[i] };
+  });
+
+  function exportDeptCSV() {
+    exportDataAsCSV(metrics.map((m,i)=>({
+      Department: depts[i],
+      'Avg Attendance %': m.attendance,
+      'Avg Engagement %': m.engagement,
+      'Avg GPA (scaled)': (m.gpa/25).toFixed(2),
+      'At-Risk %': m.riskPct,
+    })), 'department_comparison.csv');
+  }
+
+  return (
+    <div style={{marginTop:12}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+        <div style={{fontSize:16,fontWeight:700,color:C.text}}>{t('dept_comparison')}</div>
+        <button onClick={exportDeptCSV} style={{background:'rgba(16,185,129,0.15)',border:'1px solid #10b981',borderRadius:8,padding:'6px 12px',fontSize:11,fontWeight:700,color:'#10b981',cursor:'pointer'}}>📤 {t('export_csv')}</button>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+        <Card theme={C} title={t('attendance_rate')}>
+          <div style={{padding:'4px 12px 12px'}}>
+            <BarChart theme={C} data={metrics.map(m=>({label:m.dept,value:m.attendance,color:m.color}))} height={180}/>
+          </div>
+        </Card>
+        <Card theme={C} title={t('avg_engagement')}>
+          <div style={{padding:'4px 12px 12px'}}>
+            <BarChart theme={C} data={metrics.map(m=>({label:m.dept,value:m.engagement,color:m.color}))} height={180}/>
+          </div>
+        </Card>
+        <Card theme={C} title={t('at_risk')}>
+          <div style={{padding:'4px 12px 12px'}}>
+            <BarChart theme={C} data={metrics.map(m=>({label:m.dept,value:m.riskPct,color:m.color}))} height={180}/>
+          </div>
+        </Card>
+        <Card theme={C} title="GPA Index">
+          <div style={{padding:'12px 16px 12px'}}>
+            {metrics.map((m,i)=>(
+              <div key={i} style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+                <div style={{width:8,height:8,borderRadius:'50%',background:m.color,flexShrink:0}}/>
+                <div style={{fontSize:12,color:C.text2,width:60,flexShrink:0}}>{m.dept}</div>
+                <div style={{flex:1,height:8,background:C.bg3,borderRadius:4,overflow:'hidden'}}>
+                  <div style={{height:'100%',borderRadius:4,background:m.color,width:`${Math.min(m.gpa,100)}%`,transition:'width 0.6s ease'}}/>
+                </div>
+                <div style={{fontSize:11,fontWeight:700,color:m.color,width:36,textAlign:'right'}}>{(m.gpa/25).toFixed(2)}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }
@@ -393,6 +467,18 @@ function BulkImportModal({ theme: C, onClose, onImported }) {
   );
 }
 
+/* ── CSV EXPORT UTILITY ── */
+function exportDataAsCSV(data, filename) {
+  if (!data || !data.length) return;
+  const headers = Object.keys(data[0]);
+  const rows = data.map(r => headers.map(h => `"${String(r[h] ?? '').replace(/"/g,'""')}"`).join(','));
+  const csv = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function AdminStudents({ theme: C }) {
   const { t } = useLang();
   const [students, setStudents] = useState(store.students);
@@ -437,6 +523,7 @@ function AdminStudents({ theme: C }) {
         <div style={{fontSize:22,fontWeight:700,color:C.text}}>{t('students')} ({store.students.length})</div>
         <div style={{display:'flex',gap:8}}>
           <button onClick={deleteSelected} style={{background:C.red_dim,border:`1px solid ${C.red}`,borderRadius:8,padding:'8px 14px',fontSize:11,color:C.red2,cursor:'pointer'}}>🗑️ Delete Selected</button>
+          <button onClick={()=>exportDataAsCSV(filtered.map(s=>({ID:s.id,Name:s.name,Department:s.dept,Year:s.year,Email:s.email||'',Attendance:`${s.attendanceRate}%`,Engagement:`${s.engagement}%`,GPA:s.gpa||'N/A'})),'students_export.csv')} style={{background:C.green_dim||'rgba(16,185,129,0.15)',border:`1px solid ${C.green}`,borderRadius:8,padding:'8px 14px',fontSize:11,fontWeight:700,color:C.green,cursor:'pointer'}}>📤 {t('export_csv')}</button>
           <button onClick={()=>setShowImport(true)} style={{background:'linear-gradient(135deg,#8b5cf6,#6366f1)',border:'none',borderRadius:8,padding:'8px 14px',fontSize:11,fontWeight:700,color:'#fff',cursor:'pointer'}}>📥 Import Excel/CSV</button>
           <button onClick={()=>setShowAdd(true)} style={{background:C.blue3,border:'none',borderRadius:8,padding:'8px 14px',fontSize:11,fontWeight:700,color:'#fff',cursor:'pointer'}}>+ Add Student</button>
         </div>
