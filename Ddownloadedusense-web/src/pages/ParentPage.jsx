@@ -293,7 +293,7 @@ function ParentAttendance({ theme: C, child }) {
       <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:4}}>{t('page_attendance')} — {child.name}</div>
       <div style={{fontSize:12,color:C.text2,marginBottom:12}}>{t('sub_attendance')}</div>
 
-      <div style={{display:'flex',gap:12,marginBottom:12}}>
+      <div style={{display:'flex',gap:12,marginBottom:12,flexWrap:'wrap'}}>
         <StatCard theme={C} label="Attendance Rate"  value={`${rate}%`}         sub="This semester"        icon="✅" accent="green"/>
         <StatCard theme={C} label="Courses Enrolled" value={myCourses.length}    sub="Active enrollments"   icon="📚" accent="blue"/>
         <StatCard theme={C} label="Sessions Logged"  value={attRecs.length}       sub="Recorded by system"   icon="📊" accent="purple"/>
@@ -481,7 +481,7 @@ function ParentPerformance({ theme: C, child }) {
   return (
     <div style={{padding:'8px 20px 20px'}}>
       <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('page_performance')} — {child.name}</div>
-      <div style={{display:'flex',gap:12,marginBottom:12}}>
+      <div style={{display:'flex',gap:12,marginBottom:12,flexWrap:'wrap'}}>
         <StatCard theme={C} label="GPA"            value={child.gpa}              sub="Current semester"    icon="📈" accent="blue"/>
         <StatCard theme={C} label="Avg Engagement" value={`${child.engagement}%`} sub="In class"            icon="🧠" accent="green"/>
         <StatCard theme={C} label="Attention"      value={`${child.attentionScore}%`} sub="Average"        icon="👁️" accent="purple"/>
