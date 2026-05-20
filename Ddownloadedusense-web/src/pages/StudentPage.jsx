@@ -591,6 +591,11 @@ function StudentAttendance({ theme: C, stu }) {
               {qrMsg}
             </div>
           )}
+          {qrMsg && !qrMsg.startsWith('✅') && (
+            <button onClick={()=>{try{localStorage.removeItem('es_qr');}catch(e){}setQrCode('');setQrMsg('🔄 Cleared — ask your lecturer to regenerate the code.');}} style={{marginTop:10,background:'none',border:`1px solid ${C.border}`,borderRadius:8,padding:'6px 14px',fontSize:11,color:C.text3,cursor:'pointer'}}>
+              🔄 Still not working? Clear & Retry
+            </button>
+          )}
         </div>
       )}
 

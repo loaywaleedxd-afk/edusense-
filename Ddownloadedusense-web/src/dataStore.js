@@ -387,10 +387,16 @@ class DataStore {
       if(data.assignments) this.assignments = data.assignments;
       if(data.submissions) this.submissions = data.submissions;
     } catch(e){ console.warn('DataStore load error',e); }
-    // Load QR sessions from their own key
+    // Remove old QR key from previous code versions so users never need to clear it manually
+    try { localStorage.removeItem('edusense_qr'); } catch(e){}
+    // Expire sessions older than 2 hours from the active QR store
     try {
-      const qr = localStorage.getItem('edusense_qr');
-      if(qr) Object.assign(this.qrSessions, JSON.parse(qr));
+      const sessions = JSON.parse(localStorage.getItem('es_qr') || '{}');
+      const now = Date.now();
+      const cleaned = Object.fromEntries(
+        Object.entries(sessions).filter(([, s]) => (now - s.createdAt) < 2 * 60 * 60 * 1000)
+      );
+      localStorage.setItem('es_qr', JSON.stringify(cleaned));
     } catch(e){}
   }
 
