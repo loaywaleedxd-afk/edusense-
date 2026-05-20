@@ -22,6 +22,7 @@ import FeeHistoryPage from './FeeHistoryPage';
 import { StudentOfficeHours } from './OfficeHoursPage';
 import { useLang } from '../context/LanguageContext';
 import { pushToast } from '../components/NotificationToast';
+import useMobile from '../hooks/useMobile';
 
 const NAV_BASE = [
   { id:'dashboard',  icon:'📊', label:'Dashboard' },
@@ -347,6 +348,7 @@ function StudentDashboard({ theme: C, user, stu }) {
   const streakMsg = streak >= 10 ? 'Incredible! Keep it up! 🏆' : streak >= 5 ? 'Great consistency!' : streak >= 2 ? 'Keep going!' : 'Start your streak today!';
 
   const { t: dashT, isRTL: dashRTL } = useLang();
+  const isMobile = useMobile();
 
   // Demo push notifications on first mount
   useEffect(() => {
@@ -365,8 +367,8 @@ function StudentDashboard({ theme: C, user, stu }) {
   return (
     <div style={{ padding:'8px 20px 20px' }}>
       {/* Welcome header */}
-      <div style={{ background:C.card, borderRadius:16, border:`1px solid ${C.border}`, padding:'16px 20px', display:'flex', alignItems:'center', gap:16, marginBottom:12 }}>
-        <div style={{ width:90, height:90, borderRadius:'50%', background:stu.color||C.blue, display:'flex', alignItems:'center', justifyContent:'center', fontSize:40, flexShrink:0, overflow:'hidden', border:`3px solid ${stu.color||C.blue}` }}>
+      <div style={{ background:C.card, borderRadius:16, border:`1px solid ${C.border}`, padding:'16px 20px', display:'flex', alignItems:'center', gap:16, marginBottom:12, flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
+        <div style={{ width: isMobile ? 60 : 90, height: isMobile ? 60 : 90, borderRadius:'50%', background:stu.color||C.blue, display:'flex', alignItems:'center', justifyContent:'center', fontSize: isMobile ? 28 : 40, flexShrink:0, overflow:'hidden', border:`3px solid ${stu.color||C.blue}` }}>
           {(stu.capturedPhoto||store.getPhotoUrl(stu))
             ? <img src={stu.capturedPhoto||store.getPhotoUrl(stu)} alt={stu.name} onError={e=>{e.target.style.display='none';e.target.nextSibling.style.display='flex';}} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
             : null}
@@ -403,7 +405,7 @@ function StudentDashboard({ theme: C, user, stu }) {
       </div>
 
       {/* Stat cards */}
-      <div style={{ display:'flex', gap:12, marginBottom:12 }}>
+      <div style={{ display:'flex', gap:12, marginBottom:12, flexWrap:'wrap' }}>
         <StatCard theme={C} label="Attendance Rate"  value={`${stu.attendanceRate}%`} sub={`${Math.round(stu.attendanceRate/100*16)} of 16 lectures`} icon="✅" accent="green"/>
         <StatCard theme={C} label="Avg Engagement"   value={`${stu.engagement}%`}     sub="Above class average" icon="🧠" accent="blue"/>
         <StatCard theme={C} label="Avg Attention"    value={`${stu.attentionScore}%`}  sub="Good focus level"  icon="👁️" accent="purple"/>
@@ -411,7 +413,7 @@ function StudentDashboard({ theme: C, user, stu }) {
       </div>
 
       {/* Charts row */}
-      <div style={{ display:'grid', gridTemplateColumns:'3fr 2fr', gap:12, marginBottom:12 }}>
+      <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '3fr 2fr', gap:12, marginBottom:12 }}>
         <Card theme={C} title="Engagement Trend — Last 14 Lectures">
           <div style={{ padding:'4px 12px 12px' }}>
             <LineChart theme={C} series={[
@@ -436,7 +438,7 @@ function StudentDashboard({ theme: C, user, stu }) {
       </div>
 
       {/* Bottom row */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+      <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap:12 }}>
         <Card theme={C} title={`Today's Schedule (${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date().getDay()]})`}>
           <div style={{ padding:'0 12px 12px', display:'flex', flexDirection:'column', gap:6 }}>
             {(() => {
@@ -531,7 +533,7 @@ function StudentAttendance({ theme: C, stu }) {
       <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>✅ {t('page_attendance')}</div>
       <div style={{ fontSize:12, color:C.text2, marginBottom:12 }}>{t('sub_attendance')}</div>
 
-      <div style={{ display:'flex', gap:12, marginBottom:12 }}>
+      <div style={{ display:'flex', gap:12, marginBottom:12, flexWrap:'wrap' }}>
         <StatCard theme={C} label={t('attendance_rate')} value={`${rate}%`} sub={t('semester')} icon="✅" accent="green"/>
         <StatCard theme={C} label={t('course')} value={myCourses.length} sub={t('enrolled_students')} icon="📚" accent="blue"/>
         <StatCard theme={C} label={t('tab_records')} value={Math.round(rate/100*16)*myCourses.length} sub={`${attRecs.length} QR/manual`} icon="📊" accent="purple"/>
@@ -766,7 +768,7 @@ function StudentPerformance({ theme: C, stu }) {
   return (
     <div style={{ padding:'8px 20px 20px' }}>
       <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:12 }}>📈 {t('page_performance')}</div>
-      <div style={{ display:'flex', gap:12, marginBottom:12 }}>
+      <div style={{ display:'flex', gap:12, marginBottom:12, flexWrap:'wrap' }}>
         <StatCard theme={C} label="GPA"              value={stu.gpa||'—'}          sub="Current semester"           icon="📈" accent="blue"/>
         <StatCard theme={C} label="Avg Engagement"   value={`${stu.engagement}%`}  sub="In-class average"           icon="🧠" accent="green"/>
         <StatCard theme={C} label="Courses Graded"   value={`${passed}/${gradeEntries.length||myCourses.length}`} sub="This semester" icon="🎯" accent="purple"/>
@@ -898,7 +900,7 @@ function StudentPortfolio({ theme: C, user, stu }) {
         </div>
 
         {/* Stats */}
-        <div style={{ display:'flex', gap:12, marginBottom:12 }}>
+        <div style={{ display:'flex', gap:12, marginBottom:12, flexWrap:'wrap' }}>
           {[['Attendance',`${stu.attendanceRate}%`,C.green],['Avg Grade',`${avgG}%`,C.blue],['Engagement',`${stu.engagement}%`,C.amber],['Courses Graded',grades.length,C.purple]].map(([lbl,val,col],i)=>(
             <div key={i} style={{ flex:1, background:C.bg3, borderRadius:10, padding:'12px', textAlign:'center' }}>
               <div style={{ fontSize:22, fontWeight:700, color:col }}>{val}</div>

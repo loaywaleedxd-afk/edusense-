@@ -76,7 +76,7 @@ export default function Topbar({ theme: C, user, pageTitle, isDark, onToggleMode
           {/* Dropdown panel */}
           {notifOpen && (
             <div style={{
-              position: 'absolute', top: 46, right: 0, width: 340, maxHeight: 440,
+              position: 'absolute', top: 46, right: 0, width: isMobile ? 'calc(100vw - 24px)' : 340, maxHeight: 440,
               background: C.card, border: `1px solid ${C.border}`, borderRadius: 14,
               boxShadow: '0 8px 32px rgba(0,0,0,0.25)', zIndex: 1000, overflow: 'hidden',
               display: 'flex', flexDirection: 'column',

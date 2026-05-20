@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { useLang } from '../context/LanguageContext';
+import useMobile from '../hooks/useMobile';
 import AcademicCalendarPage from './AcademicCalendarPage';
 import GraduationRoadmapPage from './GraduationRoadmapPage';
 import FeeHistoryPage from './FeeHistoryPage';
@@ -115,6 +116,7 @@ export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogo
 /* ── DASHBOARD ── */
 function AdminDashboard({ theme: C }) {
   const { t } = useLang();
+  const isMobile = useMobile();
   const depts      = ['Computer Science','Engineering','Mathematics','Physics','Data Science'];
   const deptShort  = ['CS','Engineering','Math','Physics','Data Sci'];
   const deptColors = [C.blue,C.purple,C.green,C.amber,C.cyan];
@@ -135,7 +137,7 @@ function AdminDashboard({ theme: C }) {
       <div style={{fontSize:24,fontWeight:700,color:C.text,marginBottom:4}}>{t('dashboard')}</div>
       <div style={{fontSize:12,color:C.text2,marginBottom:12}}>{t('doc_overview')}</div>
 
-      <div style={{display:'flex',gap:12,marginBottom:12}}>
+      <div style={{display:'flex',gap:12,marginBottom:12,flexWrap:'wrap'}}>
         <StatCard theme={C} label={t('students')}      value={store.students.length} sub={t('enrolled_students')}  icon="🎓" accent="blue"/>
         <StatCard theme={C} label={t('doctors')}        value={store.doctors.length}  sub={t('live_session')}       icon="👨‍🏫" accent="purple"/>
         <StatCard theme={C} label={t('live_session')}   value={activeLectures}        sub={t('analytics')}          icon="📚" accent="green"/>
@@ -143,7 +145,7 @@ function AdminDashboard({ theme: C }) {
         <StatCard theme={C} label={t('at_risk')}        value={store.getStudentsOnProbation().length} sub={t('academic_standing')} icon="🚨" accent="red"/>
       </div>
 
-      <div style={{display:'grid',gridTemplateColumns:'3fr 2fr',gap:12,marginBottom:12}}>
+      <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr' : '3fr 2fr',gap:12,marginBottom:12}}>
         <Card theme={C} title={t('engagement_dept')}>
           <div style={{padding:'4px 12px 12px'}}>
             <BarChart theme={C} data={deptEngData} height={210}/>
@@ -167,7 +169,7 @@ function AdminDashboard({ theme: C }) {
         </Card>
       </div>
 
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+      <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',gap:12}}>
         <Card theme={C} title={t('system_alerts')}>
           <div style={{padding:'4px 12px 12px',display:'flex',flexDirection:'column',gap:8}}>
             {store.alerts.map((a,i)=><AlertItem key={i} theme={C} alert={a}/>)}
@@ -186,6 +188,7 @@ function AdminDashboard({ theme: C }) {
 /* ── ANALYTICS ── */
 function AdminAnalytics({ theme: C }) {
   const { t } = useLang();
+  const isMobile = useMobile();
   const totalEnrolled = store.courses.reduce((a,c)=>a+(store.courseEnrollments[c.id]||[]).length,0);
   const atRisk        = store.students.filter(s=>(s.attendanceRate||100)<65||(s.engagement||100)<40).length;
   const avgAtt        = store.students.length
@@ -196,14 +199,14 @@ function AdminAnalytics({ theme: C }) {
     <div style={{padding:'8px 20px 20px'}}>
       <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('system_analytics')}</div>
 
-      <div style={{display:'flex',gap:12,marginBottom:12}}>
+      <div style={{display:'flex',gap:12,marginBottom:12,flexWrap:'wrap'}}>
         <StatCard theme={C} label="Avg Attendance"   value={`${avgAtt}%`}           sub="Across all students"   icon="✅" accent="green"/>
         <StatCard theme={C} label="Total Enrollments" value={totalEnrolled.toLocaleString()} sub="Across all courses" icon="📋" accent="blue"/>
         <StatCard theme={C} label="At-Risk Students"  value={atRisk}                 sub="Attendance<65% or Eng<40%" icon="⚠️" accent="purple"/>
         <StatCard theme={C} label="Courses Running"   value={store.courses.length}   sub="This semester"        icon="📚" accent="amber"/>
       </div>
 
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
+      <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',gap:12,marginBottom:12}}>
         <Card theme={C} title="Engagement Trend (All Departments)">
           <div style={{padding:'4px 12px 12px'}}>
             <LineChart theme={C} series={[

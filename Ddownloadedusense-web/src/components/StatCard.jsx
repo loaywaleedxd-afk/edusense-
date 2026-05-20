@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import useMobile from '../hooks/useMobile';
 
 const ACCENTS = {
   blue:   ['#3b82f6','#06b6d4'],
@@ -15,6 +16,7 @@ const DIM_MAP = {
 };
 
 export default function StatCard({ theme: C, label, value, sub, icon, accent = 'blue' }) {
+  const isMobile = useMobile();
   const [c1, c2] = ACCENTS[accent] || ACCENTS.blue;
   const dimKey   = DIM_MAP[accent] || 'bg3';
   const dimColor = C[dimKey] || C.bg3;
@@ -26,7 +28,9 @@ export default function StatCard({ theme: C, label, value, sub, icon, accent = '
       transition={{ type: 'spring', stiffness: 380, damping: 26 }}
       style={{
         background: C.card, borderRadius: 16, border: `1px solid ${C.border}`,
-        overflow: 'hidden', flex: 1, minWidth: 0, cursor: 'default',
+        overflow: 'hidden', flex: 1,
+        minWidth: isMobile ? 'calc(50% - 6px)' : 140,
+        cursor: 'default',
       }}
     >
       {/* Top accent bar */}
@@ -57,7 +61,7 @@ export default function StatCard({ theme: C, label, value, sub, icon, accent = '
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, ease: 'easeOut' }}
-          style={{ fontSize: 32, fontWeight: 700, color: c1, lineHeight: 1.1 }}
+          style={{ fontSize: isMobile ? 22 : 32, fontWeight: 700, color: c1, lineHeight: 1.1 }}
         >{value}</motion.div>
 
         {/* Sub */}

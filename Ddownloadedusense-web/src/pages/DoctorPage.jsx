@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import useMobile from '../hooks/useMobile';
 import TimetablePage from './TimetablePage';
 import { DoctorOfficeHours } from './OfficeHoursPage';
 import AIInsightPage from './AIInsightPage';
@@ -183,6 +184,7 @@ export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLog
 /* ── DASHBOARD ── */
 function DocDashboard({ theme: C, doctor, myCourses }) {
   const { t, isRTL } = useLang();
+  const isMobile = useMobile();
   const enrolled = myCourses.flatMap(c=>store.getEnrolledStudents(c.id));
   const uniqueStudents = [...new Map(enrolled.map(s=>[s.id,s])).values()];
   const presentToday = uniqueStudents.filter(s=>s.present).length;
@@ -192,14 +194,14 @@ function DocDashboard({ theme: C, doctor, myCourses }) {
       <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:4}}>{t('dashboard')}</div>
       <div style={{fontSize:12,color:C.text2,marginBottom:12}}>{t('doc_overview')}</div>
 
-      <div style={{display:'flex',gap:12,marginBottom:12}}>
+      <div style={{display:'flex',gap:12,marginBottom:12,flexWrap:'wrap'}}>
         <StatCard theme={C} label={t('lectures')}       value={myCourses.length} sub={t('semester')}   icon="📚" accent="blue"/>
         <StatCard theme={C} label={t('students')}       value={uniqueStudents.length} sub={t('enrolled_students')}   icon="👥" accent="purple"/>
         <StatCard theme={C} label={t('present_today')}  value={presentToday}     sub={t('live_session')}    icon="✅" accent="green"/>
         <StatCard theme={C} label={t('avg_engagement')} value={`${doctor.engagement}%`} sub={t('analytics')} icon="🧠" accent="amber"/>
       </div>
 
-      <div style={{display:'grid',gridTemplateColumns:'3fr 2fr',gap:12,marginBottom:12}}>
+      <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr' : '3fr 2fr',gap:12,marginBottom:12}}>
         <Card theme={C} title={t('engagement_trend')}>
           <div style={{padding:'4px 12px 12px'}}>
             <LineChart theme={C} series={[
@@ -312,7 +314,7 @@ function DocLive({ theme: C, myCourses }) {
         </select>
       </div>
 
-      <div style={{display:'flex',gap:12,marginBottom:12}}>
+      <div style={{display:'flex',gap:12,marginBottom:12,flexWrap:'wrap'}}>
         <StatCard theme={C} label="Present"        value={presentCount}      sub="Detected by camera"   icon="👥" accent="green"/>
         <StatCard theme={C} label="Avg Attention"  value={`${avgAtt}%`}      sub="Class average"        icon="👁️" accent="blue"/>
         <StatCard theme={C} label="Avg Engagement" value={`${avgEng}%`}      sub="Real-time average"    icon="🧠" accent="purple"/>
@@ -648,7 +650,7 @@ function DocLectures({ theme: C, myCourses }) {
         const allEnrolled = myCourses.flatMap(c=>store.getEnrolledStudents(c.id));
         const avgEng = allEnrolled.length ? Math.round(allEnrolled.reduce((a,s)=>a+s.engagement,0)/allEnrolled.length) : 0;
         return (
-      <div style={{display:'flex',gap:12,marginBottom:12}}>
+      <div style={{display:'flex',gap:12,marginBottom:12,flexWrap:'wrap'}}>
         <StatCard theme={C} label="Courses"        value={myCourses.length}   sub="This semester"    icon="📚" accent="blue"/>
         <StatCard theme={C} label="Total Students" value={totalStudents}       sub="Across all courses" icon="👥" accent="green"/>
         <StatCard theme={C} label="Avg Engagement" value={`${avgEng}%`}       sub="Across courses"   icon="🧠" accent="amber"/>
@@ -1480,7 +1482,7 @@ function DocAnalytics({ theme: C }) {
     <div style={{padding:'8px 20px 20px'}}>
       <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('analytics')}</div>
 
-      <div style={{display:'flex',gap:12,marginBottom:12}}>
+      <div style={{display:'flex',gap:12,marginBottom:12,flexWrap:'wrap'}}>
         <StatCard theme={C} label={t('avg_engagement')} value={`${avgEng}%`} sub={t('students')} icon="🧠" accent="blue"/>
         <StatCard theme={C} label={t('attendance_rate')} value={`${avgAtt}%`} sub={t('semester')} icon="✅" accent="green"/>
         <StatCard theme={C} label={t('emotion')}        value={`${happyPct}%`} sub={t('engagement')} icon="😊" accent="amber"/>

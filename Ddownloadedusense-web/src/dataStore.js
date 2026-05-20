@@ -386,8 +386,12 @@ class DataStore {
       if(data.courseResources) this.courseResources = data.courseResources;
       if(data.assignments) this.assignments = data.assignments;
       if(data.submissions) this.submissions = data.submissions;
-      if(data.qrSessions) Object.assign(this.qrSessions, data.qrSessions);
     } catch(e){ console.warn('DataStore load error',e); }
+    // Load QR sessions from their own key
+    try {
+      const qr = localStorage.getItem('edusense_qr');
+      if(qr) Object.assign(this.qrSessions, JSON.parse(qr));
+    } catch(e){}
   }
 
   _persist(){
@@ -410,8 +414,9 @@ class DataStore {
         courseResources: this.courseResources,
         assignments: this.assignments,
         submissions: this.submissions,
-        qrSessions: this.qrSessions || {},
       }));
+      // QR sessions stored separately so other tabs never overwrite them
+      localStorage.setItem('edusense_qr', JSON.stringify(this.qrSessions));
     } catch(e){ console.warn('DataStore persist error',e); }
   }
 
@@ -710,15 +715,16 @@ class DataStore {
   createQRSession(courseId, week){
     const token=Math.random().toString(36).slice(2,8).toUpperCase();
     this.qrSessions[token]={courseId, week, createdAt:new Date().toISOString(), usedBy:[]};
-    this._persist(); return token;
+    // Write to isolated key so other tabs see it immediately without a full _persist()
+    try { localStorage.setItem('edusense_qr', JSON.stringify(this.qrSessions)); } catch(e){}
+    return token;
   }
 
   useQRToken(token, studentId){
-    // Always pull the latest sessions from localStorage so codes created in
-    // another tab (e.g. Doctor's tab) are visible here immediately.
+    // Read from the isolated QR key — never clobbered by other tabs' _persist()
     try {
-      const raw=localStorage.getItem('edusense_store');
-      if(raw){ const d=JSON.parse(raw); if(d.qrSessions) Object.assign(this.qrSessions,d.qrSessions); }
+      const raw=localStorage.getItem('edusense_qr');
+      if(raw) Object.assign(this.qrSessions, JSON.parse(raw));
     } catch(e){}
     const s=this.qrSessions[token];
     if(!s) return {ok:false, error:'Invalid code'};
