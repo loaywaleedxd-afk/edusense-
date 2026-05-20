@@ -415,8 +415,9 @@ class DataStore {
         assignments: this.assignments,
         submissions: this.submissions,
       }));
-      // QR sessions stored separately so other tabs never overwrite them
-      localStorage.setItem('edusense_qr', JSON.stringify(this.qrSessions));
+      // NOTE: edusense_qr is intentionally NOT written here.
+      // Only createQRSession() writes to it — so no other tab's _persist() call
+      // can ever overwrite the doctor's active QR tokens.
     } catch(e){ console.warn('DataStore persist error',e); }
   }
 
