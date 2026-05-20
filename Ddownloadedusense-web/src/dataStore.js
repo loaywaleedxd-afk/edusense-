@@ -713,26 +713,30 @@ class DataStore {
   }
 
   // ── QR ATTENDANCE SESSIONS ────────────────────────────────────────────────
+  // Completely self-contained: every read/write goes straight to localStorage
+  // under its own key ('es_qr'). _persist() never touches this key, so no
+  // other tab can ever overwrite active sessions.
+  _qrRead(){ try{ return JSON.parse(localStorage.getItem('es_qr')||'{}'); }catch(e){ return {}; } }
+  _qrWrite(sessions){ try{ localStorage.setItem('es_qr', JSON.stringify(sessions)); }catch(e){} }
+
   createQRSession(courseId, week){
-    const token=Math.random().toString(36).slice(2,8).toUpperCase();
-    this.qrSessions[token]={courseId, week, createdAt:new Date().toISOString(), usedBy:[]};
-    // Write to isolated key so other tabs see it immediately without a full _persist()
-    try { localStorage.setItem('edusense_qr', JSON.stringify(this.qrSessions)); } catch(e){}
+    const token = Math.random().toString(36).slice(2,8).toUpperCase();
+    const sessions = this._qrRead();
+    sessions[token] = { courseId, week, createdAt: Date.now(), usedBy: [] };
+    this._qrWrite(sessions);
     return token;
   }
 
   useQRToken(token, studentId){
-    // Read from the isolated QR key — never clobbered by other tabs' _persist()
-    try {
-      const raw=localStorage.getItem('edusense_qr');
-      if(raw) Object.assign(this.qrSessions, JSON.parse(raw));
-    } catch(e){}
-    const s=this.qrSessions[token];
+    const sessions = this._qrRead();
+    const s = sessions[token];
     if(!s) return {ok:false, error:'Invalid code'};
-    const age=(Date.now()-new Date(s.createdAt).getTime())/60000;
-    if(age>90) return {ok:false, error:'Code expired (valid for 90 min)'};
-    if(s.usedBy.includes(studentId)) return {ok:false, error:'Already checked in'};
-    s.usedBy.push(studentId);
+    const ageMin = (Date.now() - s.createdAt) / 60000;
+    if(ageMin > 90) return {ok:false, error:'Code expired (valid for 90 min)'};
+    if((s.usedBy||[]).includes(studentId)) return {ok:false, error:'Already checked in'};
+    s.usedBy = [...(s.usedBy||[]), studentId];
+    sessions[token] = s;
+    this._qrWrite(sessions);
     this.markAttendance(s.courseId, studentId, 1.0, 'qr', s.week);
     this._persist();
     return {ok:true, courseId:s.courseId, week:s.week};
