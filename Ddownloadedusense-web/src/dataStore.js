@@ -714,6 +714,12 @@ class DataStore {
   }
 
   useQRToken(token, studentId){
+    // Always pull the latest sessions from localStorage so codes created in
+    // another tab (e.g. Doctor's tab) are visible here immediately.
+    try {
+      const raw=localStorage.getItem('edusense_store');
+      if(raw){ const d=JSON.parse(raw); if(d.qrSessions) Object.assign(this.qrSessions,d.qrSessions); }
+    } catch(e){}
     const s=this.qrSessions[token];
     if(!s) return {ok:false, error:'Invalid code'};
     const age=(Date.now()-new Date(s.createdAt).getTime())/60000;
