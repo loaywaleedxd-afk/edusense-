@@ -29,3 +29,19 @@ button { cursor: pointer; font-family: inherit; }
 
 @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
 .live-dot { animation: pulse 1.5s ease-in-out infinite; }
+
+/* ── Print / PDF Export ── */
+@media print {
+  html, body { overflow: visible !important; height: auto !important; background: #fff !important; }
+  #root { height: auto !important; overflow: visible !important; }
+  nav, aside, [class*="sidebar"], [class*="topbar"], button, .no-print { display: none !important; }
+  .content-scroll { overflow: visible !important; height: auto !important; }
+  * { color: #000 !important; background: #fff !important; border-color: #ccc !important; box-shadow: none !important; }
+  table { border-collapse: collapse; }
+  td, th { border: 1px solid #ccc; padding: 6px 10px; }
+  @page { margin: 1.5cm; }
+}
+
+/* ── RTL support ── */
+[dir="rtl"] { text-align: right; }
+[dir="rtl"] .content-scroll { direction: rtl; }

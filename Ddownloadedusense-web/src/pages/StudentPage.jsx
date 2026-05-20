@@ -12,6 +12,13 @@ import ScheduleItem from '../components/ScheduleItem';
 import WebcamFeed from '../components/WebcamFeed';
 import store from '../dataStore';
 import { EMOTION_ICONS } from '../theme';
+import GPACalculatorPage from './GPACalculatorPage';
+import TimetablePage from './TimetablePage';
+import DigitalIDPage from './DigitalIDPage';
+import FeeHistoryPage from './FeeHistoryPage';
+import { StudentOfficeHours } from './OfficeHoursPage';
+import { useLang } from '../context/LanguageContext';
+import { pushToast } from '../components/NotificationToast';
 
 const NAV_BASE = [
   { id:'dashboard',  icon:'📊', label:'Dashboard' },
@@ -35,6 +42,11 @@ const NAV_BASE = [
   { id:'__advising',    icon:'🎓', label:'Advising' },
   { id:'__atrisk',      icon:'📊', label:'My Risk Status' },
   { id:'__proctoring',  icon:'🎥', label:'Exam Session' },
+  { id:'gpacalc',       icon:'📊', label:'GPA Calculator' },
+  { id:'timetable',     icon:'🗓️', label:'Timetable' },
+  { id:'digitalid',     icon:'🪪',  label:'Digital ID' },
+  { id:'feehistory',    icon:'💳', label:'Fee History' },
+  { id:'officehours',   icon:'🕐', label:'Office Hours' },
 ];
 
 function loadLastSeen(stuId) {
@@ -111,6 +123,9 @@ const PAGE_TITLES = {
   appeals:'My Appeals', transcript:'Academic Transcript',
   announcements:'Announcements', exams:'Exam Schedule', degreeaudit:'Degree Audit',
   resources:'Study Resources', assignments:'Assignments',
+  gpacalc:'GPA Calculator', timetable:'Timetable',
+  digitalid:'Digital ID Card', feehistory:'Fee History',
+  officehours:'Office Hours Booking',
 };
 
 function letterGrade(g) {
@@ -280,6 +295,11 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
             {page==='degreeaudit'   && <StudentDegreeAudit theme={C} stu={stu}/>}
             {page==='resources'     && <StudentResources theme={C} stu={stu}/>}
             {page==='assignments'   && <StudentAssignments theme={C} stu={stu}/>}
+            {page==='gpacalc'       && <GPACalculatorPage theme={C} stu={stu}/>}
+            {page==='timetable'     && <TimetablePage theme={C} stu={stu} role="student"/>}
+            {page==='digitalid'     && <DigitalIDPage theme={C} stu={stu} user={user}/>}
+            {page==='feehistory'    && <FeeHistoryPage theme={C} stu={stu} user={user}/>}
+            {page==='officehours'   && <StudentOfficeHours theme={C} stu={stu}/>}
           </AnimatedPage>
         </div>
       </div>
@@ -306,6 +326,20 @@ function StudentDashboard({ theme: C, user, stu }) {
   const myCoursesEnrolled = store.getStudentCourses(stu.id);
   const streak = calcStreak(stu.id);
   const streakMsg = streak >= 10 ? 'Incredible! Keep it up! 🏆' : streak >= 5 ? 'Great consistency!' : streak >= 2 ? 'Keep going!' : 'Start your streak today!';
+
+  // Demo push notifications on first mount
+  useEffect(() => {
+    const SHOWN_KEY = `es_dash_notif_${stu.id}`;
+    if (sessionStorage.getItem(SHOWN_KEY)) return;
+    sessionStorage.setItem(SHOWN_KEY, '1');
+    const demos = [
+      { delay: 1200, title: 'Grade Posted', message: 'Your AI grade is now available — check Exam Results.', icon: '📝', color: '#3b82f6' },
+      { delay: 3500, title: 'Attendance Warning', message: 'Your attendance in Data Science dropped below 80%.', icon: '⚠️', color: '#f59e0b' },
+      { delay: 6000, title: 'Advising Confirmed', message: 'Your appointment with Dr. Ahmed is confirmed for Mon 10:00.', icon: '✅', color: '#10b981' },
+    ];
+    const timers = demos.map(d => setTimeout(() => pushToast(d), d.delay));
+    return () => timers.forEach(clearTimeout);
+  }, [stu.id]);
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
@@ -763,7 +797,13 @@ function StudentGrades({ theme: C, stu }) {
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
-      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:10 }}>📝 My Exam Results</div>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+        <div style={{ fontSize:22, fontWeight:700, color:C.text }}>📝 My Exam Results</div>
+        <button onClick={() => window.print()}
+          style={{ background:C.blue3, border:'none', borderRadius:8, padding:'8px 16px', fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer' }}>
+          🖨️ Export PDF
+        </button>
+      </div>
 
       {/* Mini stats */}
       <div style={{ display:'flex', gap:12, marginBottom:16 }}>
@@ -1492,6 +1532,26 @@ function StudentResources({ theme: C, stu }) {
   );
 }
 
+/* ── Plagiarism: Jaccard similarity between two texts ── */
+function tokenize(text) {
+  return new Set((text||'').toLowerCase().replace(/[^a-z0-9؀-ۿ\s]/g,' ').split(/\s+/).filter(w=>w.length>2));
+}
+function jaccardSim(a, b) {
+  const sA = tokenize(a), sB = tokenize(b);
+  if (!sA.size && !sB.size) return 0;
+  let inter = 0;
+  sA.forEach(t => { if (sB.has(t)) inter++; });
+  const union = sA.size + sB.size - inter;
+  return union === 0 ? 0 : Math.round((inter / union) * 100);
+}
+function checkPlagiarism(asnId, myText, myStudentId) {
+  if (!myText || myText.length < 30) return null;
+  const allSubs = (store.submissions||[]).filter(s => s.assignmentId===asnId && s.studentId!==myStudentId && s.content);
+  if (!allSubs.length) return 0;
+  const sims = allSubs.map(s => jaccardSim(myText, s.content));
+  return Math.max(...sims);
+}
+
 /* ══ ASSIGNMENTS ══ */
 function StudentAssignments({ theme: C, stu }) {
   const assignments = store.getStudentAssignments(stu.id);
@@ -1500,6 +1560,8 @@ function StudentAssignments({ theme: C, stu }) {
   const [fileState,  setFileState] = useState({}); // {[asnId]: {data,name,size}}
   const [fileErrors, setFileErrors]= useState({});
   const [submitted,  setSubmitted] = useState({});
+  const [plagScore,  setPlagScore] = useState({}); // {[asnId]: number|null}
+  const [plagLoading,setPlagLoad]  = useState({});
   const [, refresh] = useState(0);
   const today = new Date().toISOString().slice(0,10);
 
@@ -1517,6 +1579,17 @@ function StudentAssignments({ theme: C, stu }) {
     const text = (content[asnId]||'').trim();
     const fs   = fileState[asnId];
     if (!text && !fs) return;
+
+    // Run plagiarism check before submitting
+    if (text.length >= 30) {
+      setPlagLoad(p=>({...p,[asnId]:true}));
+      setTimeout(()=>{
+        const score = checkPlagiarism(asnId, text, stu.id);
+        setPlagScore(p=>({...p,[asnId]:score}));
+        setPlagLoad(p=>({...p,[asnId]:false}));
+      }, 800);
+    }
+
     store.submitAssignment(asnId, stu.id, text, fs?.data||null, fs?.name||'', fs?.size||0);
     setSubmitted(prev=>({...prev,[asnId]:true}));
     setTimeout(()=>setSubmitted(prev=>({...prev,[asnId]:false})),2500);
@@ -1685,7 +1758,7 @@ function StudentAssignments({ theme: C, stu }) {
                     </label>
                     {fileErrors[asn.id] && <div style={{ fontSize:11, color:C.red, marginBottom:6 }}>⚠️ {fileErrors[asn.id]}</div>}
 
-                    <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
                       <button onClick={()=>submit(asn.id)}
                         disabled={!(content[asn.id]||'').trim() && !fileState[asn.id]}
                         style={{ background:'linear-gradient(135deg,#3b82f6,#6366f1)', border:'none', borderRadius:8,
@@ -1694,6 +1767,21 @@ function StudentAssignments({ theme: C, stu }) {
                         📤 {sub?'Resubmit':'Submit'}
                       </button>
                       {submitted[asn.id] && <span style={{ fontSize:12, color:C.green, fontWeight:700 }}>✅ Submitted!</span>}
+                      {/* Plagiarism badge */}
+                      {plagLoading[asn.id] && (
+                        <span style={{ fontSize:11, color:C.text3, fontStyle:'italic' }}>🔍 Checking originality…</span>
+                      )}
+                      {!plagLoading[asn.id] && plagScore[asn.id] != null && (
+                        <span style={{
+                          fontSize:11, fontWeight:700, padding:'4px 10px', borderRadius:20,
+                          background: plagScore[asn.id] >= 50 ? '#ef444418' : plagScore[asn.id] >= 25 ? '#f59e0b18' : '#10b98118',
+                          color:      plagScore[asn.id] >= 50 ? '#ef4444'  : plagScore[asn.id] >= 25 ? '#f59e0b'  : '#10b981',
+                          border: `1px solid ${plagScore[asn.id]>=50?'#ef444433':plagScore[asn.id]>=25?'#f59e0b33':'#10b98133'}`,
+                        }}>
+                          {plagScore[asn.id] >= 50 ? '⚠️ High' : plagScore[asn.id] >= 25 ? '🟡 Medium' : '✅ Original'}
+                          {' '}similarity: {plagScore[asn.id]}%
+                        </span>
+                      )}
                     </div>
                   </div>
                 )}

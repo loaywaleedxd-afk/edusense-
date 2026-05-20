@@ -19,7 +19,7 @@ from routers import (
     announcements, exam_schedule, resources, assignments,
     notifications, complaints, fees, registration, waitlist,
     qr_sessions, enrollments, init_data,
-    proctoring, advising, at_risk,
+    proctoring, advising, at_risk, office_hours,
 )
 from database import init_db
 import aiosqlite
@@ -91,7 +91,35 @@ app.include_router(init_data.router,     prefix="/api/init",          tags=["Ini
 app.include_router(proctoring.router,    prefix="/api/proctor",        tags=["Proctoring"])
 app.include_router(advising.router,      prefix="/api/advising",       tags=["Advising"])
 app.include_router(at_risk.router,       prefix="/api/at-risk",        tags=["AtRisk"])
+app.include_router(office_hours.router,  prefix="/api/office-hours",   tags=["OfficeHours"])
 app.include_router(r_router)
+
+
+# ── Per-user WebSocket notification endpoint ───────────────────────────────────
+@app.websocket("/ws/notifications/{user_id}")
+async def ws_notifications(websocket: WebSocket, user_id: str):
+    """Real-time notification channel per user."""
+    await manager.connect_user(websocket, user_id)
+    try:
+        # Send a welcome ping so the client knows it's connected
+        await websocket.send_text(json.dumps({
+            "type": "connected",
+            "title": "Connected",
+            "message": "Real-time notifications active",
+            "icon": "🟢",
+            "color": "#10b981",
+        }))
+        while True:
+            # Keep connection alive; actual pushes come from notify_user()
+            data = await websocket.receive_text()
+            # Handle ping/pong
+            if data == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
+        manager.disconnect_user(websocket, user_id)
+    except Exception as e:
+        logger.error(f"WS notification error for {user_id}: {e}")
+        manager.disconnect_user(websocket, user_id)
 
 # Serve student photos as static files
 _PHOTOS_DIR = os.path.join(os.path.dirname(__file__), "..", "student_photos")

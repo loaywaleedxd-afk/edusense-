@@ -1,16 +1,17 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { DARK, LIGHT } from './theme';
-import LoginPage          from './pages/LoginPage';
-import StudentPage        from './pages/StudentPage';
-import DoctorPage         from './pages/DoctorPage';
-import AdminPage          from './pages/AdminPage';
-import ParentPage         from './pages/ParentPage';
-import ChatWidget         from './components/ChatWidget';
-import ExamProctoringPage from './pages/ExamProctoringPage';
-import AdvisingPage       from './pages/AdvisingPage';
-import AtRiskPage         from './pages/AtRiskPage';
-import store              from './dataStore';
+import LoginPage             from './pages/LoginPage';
+import StudentPage           from './pages/StudentPage';
+import DoctorPage            from './pages/DoctorPage';
+import AdminPage             from './pages/AdminPage';
+import ParentPage            from './pages/ParentPage';
+import ChatWidget            from './components/ChatWidget';
+import ExamProctoringPage    from './pages/ExamProctoringPage';
+import AdvisingPage          from './pages/AdvisingPage';
+import AtRiskPage            from './pages/AtRiskPage';
+import NotificationToast     from './components/NotificationToast';
+import store                 from './dataStore';
 
 export default function App() {
   const [isDark, setIsDark] = useState(true);
@@ -83,6 +84,7 @@ export default function App() {
         <AdminPage {...commonProps} />
       )}
       {user && <ChatWidget user={user} />}
+      {user && <NotificationToast user={user} />}
 
       {/* ── Full-screen overlay pages ── */}
       <AnimatePresence>

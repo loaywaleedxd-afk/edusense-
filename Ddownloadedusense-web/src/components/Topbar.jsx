@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import store from '../dataStore';
+import { useLang } from '../context/LanguageContext';
 
 const ROLE_COLORS = { doctor: '#8b5cf6', admin: '#10b981', student: '#3b82f6', parent: '#f59e0b' };
 const KIND_ICON = { grade:'📝', appeal:'📋', new_appeal:'📋', attendance:'⚠️', warning:'⚠️', danger:'🚨', info:'ℹ️' };
 
 export default function Topbar({ theme: C, user, pageTitle, isDark, onToggleMode, onLogout }) {
+  const { lang, toggleLang } = useLang();
   const roleColor = ROLE_COLORS[user?.role] || '#3b82f6';
   const initials  = user?.initials || user?.name?.split(' ').slice(0,2).map(w=>w[0]?.toUpperCase()||'').join('') || '??';
   const [notifOpen, setNotifOpen] = useState(false);
@@ -110,6 +112,16 @@ export default function Topbar({ theme: C, user, pageTitle, isDark, onToggleMode
             </div>
           )}
         </div>
+
+        {/* Language toggle */}
+        <button onClick={toggleLang} title={lang === 'en' ? 'Switch to Arabic' : 'Switch to English'} style={{
+          background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 20,
+          padding: '7px 14px', fontSize: 11, fontWeight: 700, color: C.text2,
+          display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+        }}>
+          <span>{lang === 'en' ? '🇦🇪' : '🇬🇧'}</span>
+          <span>{lang === 'en' ? 'عربي' : 'EN'}</span>
+        </button>
 
         {/* Mode toggle */}
         <button onClick={onToggleMode} style={{

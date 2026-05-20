@@ -1,4 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import TimetablePage from './TimetablePage';
+import { DoctorOfficeHours } from './OfficeHoursPage';
+import { pushToast } from '../components/NotificationToast';
 import Sidebar from '../components/Sidebar';
 import Topbar  from '../components/Topbar';
 import AnimatedPage from '../components/AnimatedPage';
@@ -39,6 +42,8 @@ const NAV = [
   {id:'__proctoring', icon:'🎥', label:'Exam Proctoring'},
   {id:'__advising',   icon:'🎓', label:'Advising'},
   {id:'__atrisk',     icon:'🚨', label:'Early Warning'},
+  {id:'timetable',    icon:'🗓️', label:'Timetable'},
+  {id:'officehours',  icon:'🕐', label:'Office Hours'},
 ];
 
 const PAGE_TITLES = {
@@ -48,6 +53,7 @@ const PAGE_TITLES = {
   alerts:'Alerts', moodle:'Moodle', ranalysis:'R Analysis Reports',
   appeals:'Student Appeals', announcements:'Announcements', examschedule:'Exam Schedule',
   resources:'Study Resources', assignments:'Assignments',
+  timetable:'Timetable', officehours:'Office Hours Management',
 };
 
 function letterGrade(g){if(g>=90)return'A+';if(g>=85)return'A';if(g>=80)return'B+';if(g>=75)return'B';if(g>=70)return'C+';if(g>=65)return'C';if(g>=60)return'D+';if(g>=50)return'D';return'F';}
@@ -133,6 +139,8 @@ export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLog
             {page==='examschedule'  && <DocExamSchedule theme={C} doctor={doctor} myCourses={myCourses}/>}
             {page==='resources'     && <DocResources theme={C} doctor={doctor} myCourses={myCourses}/>}
             {page==='assignments'   && <DocAssignments theme={C} doctor={doctor} myCourses={myCourses}/>}
+            {page==='timetable'     && <TimetablePage theme={C} role="doctor" doctorId={doctor.id}/>}
+            {page==='officehours'   && <DoctorOfficeHours theme={C} doctor={doctor}/>}
           </AnimatedPage>
         </div>
       </div>

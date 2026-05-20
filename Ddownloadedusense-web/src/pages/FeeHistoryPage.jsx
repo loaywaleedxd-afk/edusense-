@@ -1,0 +1,312 @@
+import { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import store from '../dataStore';
+import { get } from '../api.js';
+import { useLang } from '../context/LanguageContext';
+
+/* ── Local fee data generator ── */
+function buildLocalFees(stuId) {
+  const seed = stuId ? stuId.charCodeAt(0) * 31 + (stuId.charCodeAt(1) || 7) : 42;
+  const rng = (s => () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; })(seed);
+
+  const baseFee = 4800;
+  const months  = ['Sep 2024','Oct 2024','Nov 2024','Dec 2024','Jan 2025','Feb 2025'];
+  const records = months.map((month, i) => {
+    const amount = +(baseFee / 6 + rng() * 120 - 60).toFixed(2);
+    const status  = i < 4 ? 'paid' : i === 4 ? 'paid' : 'pending';
+    return {
+      id: `FEE-${stuId}-${i + 1}`,
+      month,
+      description: i === 0 ? 'Semester Registration Fee'
+        : i % 3 === 0 ? 'Lab & Technology Fee'
+        : 'Tuition Installment',
+      amount,
+      status,
+      paidDate: status === 'paid' ? `${month.split(' ')[0]} ${15 + (i % 5)}, ${month.split(' ')[1]}` : null,
+      method: ['Bank Transfer','Credit Card','Online Portal'][i % 3],
+    };
+  });
+
+  // Financial aid
+  const aid = [];
+  if (rng() > 0.3) {
+    aid.push({
+      id: `AID-${stuId}-1`,
+      type: 'Merit Scholarship',
+      amount: +(baseFee * (0.15 + rng() * 0.1)).toFixed(2),
+      description: 'Academic Excellence Award — GPA above 3.5',
+      appliedDate: 'Sep 2024',
+      status: 'approved',
+    });
+  }
+  if (rng() > 0.5) {
+    aid.push({
+      id: `AID-${stuId}-2`,
+      type: 'Financial Need Grant',
+      amount: +(500 + rng() * 300).toFixed(2),
+      description: 'Need-based support grant from university fund',
+      appliedDate: 'Oct 2024',
+      status: 'approved',
+    });
+  }
+
+  const totalFees = records.reduce((a, r) => a + r.amount, 0);
+  const totalPaid = records.filter(r => r.status === 'paid').reduce((a, r) => a + r.amount, 0);
+  const totalAid  = aid.reduce((a, r) => a + r.amount, 0);
+  const balance   = +(totalFees - totalPaid - totalAid).toFixed(2);
+
+  return { records, aid, totalFees: +totalFees.toFixed(2), totalPaid: +totalPaid.toFixed(2), totalAid, balance };
+}
+
+/* ── Fake receipt generator ── */
+function downloadReceipt(record, stuName) {
+  const text = [
+    '══════════════════════════════════',
+    '       EduSense University        ',
+    '        PAYMENT RECEIPT           ',
+    '══════════════════════════════════',
+    `Receipt #: ${record.id}`,
+    `Date:      ${record.paidDate || 'N/A'}`,
+    `Student:   ${stuName}`,
+    '──────────────────────────────────',
+    `Description: ${record.description}`,
+    `Amount:      $${record.amount.toFixed(2)}`,
+    `Method:      ${record.method}`,
+    `Status:      ${record.status.toUpperCase()}`,
+    '──────────────────────────────────',
+    'Thank you for your payment.',
+    'Keep this receipt for your records.',
+    '══════════════════════════════════',
+  ].join('\n');
+  const blob = new Blob([text], { type: 'text/plain' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `receipt-${record.id}.txt`; a.click();
+  URL.revokeObjectURL(url);
+}
+
+export default function FeeHistoryPage({ theme: C, stu, user }) {
+  const { t } = useLang();
+  const [data, setData] = useState(() => buildLocalFees(stu?.id || ''));
+  const [tab, setTab]   = useState('fees'); // 'fees' | 'aid'
+  const [fromAPI, setFromAPI] = useState(false);
+
+  useEffect(() => {
+    get(`/api/fees/${stu?.id}`)
+      .then(res => {
+        if (res?.records) { setData(res); setFromAPI(true); }
+      })
+      .catch(() => {});
+  }, [stu?.id]);
+
+  const { records, aid, totalFees, totalPaid, totalAid, balance } = data;
+
+  return (
+    <div style={{ padding: '8px 20px 40px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+        <div style={{ fontSize: 22, fontWeight: 700, color: C.text }}>💳 {t('fee_title')}</div>
+        <div style={{
+          fontSize: 9, padding: '2px 8px', borderRadius: 20, fontWeight: 700,
+          background: fromAPI ? '#10b98122' : '#f59e0b22',
+          color: fromAPI ? '#10b981' : '#f59e0b',
+          border: `1px solid ${fromAPI ? '#10b98133' : '#f59e0b33'}`,
+        }}>
+          {fromAPI ? '🟢 Live' : '🟡 Demo data'}
+        </div>
+      </div>
+      <div style={{ fontSize: 12, color: C.text2, marginBottom: 20 }}>{t('fee_sub')}</div>
+
+      {/* ── Summary cards ── */}
+      <div style={{ display: 'flex', gap: 14, marginBottom: 24, flexWrap: 'wrap' }}>
+        {[
+          [t('total_fees'),  `$${totalFees.toFixed(2)}`,  C.blue,    '📋'],
+          [t('paid'),        `$${totalPaid.toFixed(2)}`,  '#10b981', '✅'],
+          ['Aid Received',   `$${totalAid.toFixed(2)}`,   '#8b5cf6', '🎁'],
+          [t('balance'),     `$${Math.max(0, balance).toFixed(2)}`, balance > 0 ? '#ef4444' : '#10b981', balance > 0 ? '⚠️' : '✅'],
+        ].map(([label, val, col, icon]) => (
+          <motion.div
+            key={label}
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+            style={{
+              flex: 1, minWidth: 140, background: C.card,
+              borderRadius: 14, border: `1px solid ${col}33`,
+              padding: '16px 18px', textAlign: 'center',
+            }}
+          >
+            <div style={{ fontSize: 22, marginBottom: 6 }}>{icon}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: col }}>{val}</div>
+            <div style={{ fontSize: 11, color: C.text3, marginTop: 4 }}>{label}</div>
+          </motion.div>
+        ))}
+      </div>
+
+      {/* ── Progress bar ── */}
+      <div style={{ marginBottom: 24, background: C.card, borderRadius: 12, border: `1px solid ${C.border}`, padding: '14px 18px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>Payment Progress</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#10b981' }}>
+            {totalFees > 0 ? Math.round((totalPaid + totalAid) / totalFees * 100) : 0}% covered
+          </span>
+        </div>
+        <div style={{ height: 10, background: C.bg3, borderRadius: 6, overflow: 'hidden', position: 'relative' }}>
+          <motion.div
+            initial={{ width: 0 }}
+            animate={{ width: `${Math.min(100, totalFees > 0 ? (totalPaid / totalFees) * 100 : 0)}%` }}
+            transition={{ duration: 0.8, ease: 'easeOut' }}
+            style={{ position: 'absolute', left: 0, top: 0, bottom: 0, background: '#10b981', borderRadius: 6 }}
+          />
+          <motion.div
+            initial={{ width: 0 }}
+            animate={{ width: `${Math.min(100, totalFees > 0 ? ((totalPaid + totalAid) / totalFees) * 100 : 0)}%` }}
+            transition={{ duration: 0.8, ease: 'easeOut', delay: 0.2 }}
+            style={{ position: 'absolute', left: 0, top: 0, bottom: 0, background: 'linear-gradient(90deg,#10b981,#8b5cf6)', borderRadius: 6 }}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: 16, marginTop: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: C.text3 }}>
+            <div style={{ width: 10, height: 10, borderRadius: 2, background: '#10b981' }} /> Paid
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: C.text3 }}>
+            <div style={{ width: 10, height: 10, borderRadius: 2, background: '#8b5cf6' }} /> Aid
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: C.text3 }}>
+            <div style={{ width: 10, height: 10, borderRadius: 2, background: C.bg3, border: `1px solid ${C.border}` }} /> Remaining
+          </div>
+        </div>
+      </div>
+
+      {/* ── Tabs ── */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
+        {[['fees','💳 Fee History'],['aid','🎁 Financial Aid']].map(([id,label]) => (
+          <button
+            key={id} onClick={() => setTab(id)}
+            style={{
+              padding: '8px 20px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              background: tab === id ? C.blue : C.card,
+              color: tab === id ? '#fff' : C.text2,
+              border: `1px solid ${tab === id ? C.blue : C.border}`,
+              transition: 'all 0.15s',
+            }}
+          >{label}</button>
+        ))}
+      </div>
+
+      {/* ── Fee records ── */}
+      {tab === 'fees' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {records.map((rec, i) => (
+            <motion.div
+              key={rec.id}
+              initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.05 }}
+              style={{
+                background: C.card, borderRadius: 14,
+                border: `1px solid ${rec.status === 'paid' ? '#10b98133' : '#f59e0b33'}`,
+                padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 14,
+              }}
+            >
+              {/* Timeline dot */}
+              <div style={{ flexShrink: 0, textAlign: 'center', width: 44 }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: '50%', margin: '0 auto',
+                  background: rec.status === 'paid' ? '#10b98120' : '#f59e0b20',
+                  border: `2px solid ${rec.status === 'paid' ? '#10b981' : '#f59e0b'}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 16,
+                }}>
+                  {rec.status === 'paid' ? '✅' : '⏳'}
+                </div>
+              </div>
+
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{rec.description}</div>
+                <div style={{ fontSize: 11, color: C.text3, marginTop: 2 }}>
+                  {rec.month}
+                  {rec.paidDate && ` · Paid on ${rec.paidDate}`}
+                  {rec.method && ` · via ${rec.method}`}
+                </div>
+              </div>
+
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <div style={{ fontSize: 18, fontWeight: 800, color: rec.status === 'paid' ? '#10b981' : '#f59e0b' }}>
+                  ${rec.amount.toFixed(2)}
+                </div>
+                <div style={{
+                  fontSize: 9, fontWeight: 700, marginTop: 4,
+                  padding: '2px 8px', borderRadius: 20,
+                  background: rec.status === 'paid' ? '#10b98120' : '#f59e0b20',
+                  color: rec.status === 'paid' ? '#10b981' : '#f59e0b',
+                }}>
+                  {rec.status.toUpperCase()}
+                </div>
+              </div>
+
+              {rec.status === 'paid' && (
+                <button
+                  onClick={() => downloadReceipt(rec, stu?.name || user?.name || 'Student')}
+                  title={t('download_receipt')}
+                  style={{
+                    flexShrink: 0, background: C.bg3, border: `1px solid ${C.border}`,
+                    borderRadius: 8, padding: '6px 12px', fontSize: 11,
+                    fontWeight: 600, color: C.text2, cursor: 'pointer',
+                  }}
+                >
+                  ⬇️ Receipt
+                </button>
+              )}
+            </motion.div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Financial aid records ── */}
+      {tab === 'aid' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {aid.length === 0 ? (
+            <div style={{ textAlign: 'center', color: C.text3, padding: 60 }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>🎁</div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>No financial aid records found</div>
+              <div style={{ fontSize: 11, color: C.text3, marginTop: 8 }}>
+                Contact the Financial Aid office for assistance
+              </div>
+            </div>
+          ) : aid.map((item, i) => (
+            <motion.div
+              key={item.id}
+              initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.07 }}
+              style={{
+                background: C.card, borderRadius: 14,
+                border: `1px solid #8b5cf633`,
+                padding: '18px 20px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{
+                  width: 44, height: 44, borderRadius: 12,
+                  background: '#8b5cf620', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22,
+                }}>🎓</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{item.type}</div>
+                  <div style={{ fontSize: 11, color: C.text3, marginTop: 2 }}>{item.description}</div>
+                  <div style={{ fontSize: 10, color: C.text3, marginTop: 4 }}>Applied: {item.appliedDate}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: '#8b5cf6' }}>
+                    −${item.amount.toFixed(2)}
+                  </div>
+                  <div style={{
+                    fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 20, marginTop: 4,
+                    background: '#10b98120', color: '#10b981',
+                  }}>
+                    {item.status.toUpperCase()}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
