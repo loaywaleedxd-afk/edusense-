@@ -261,7 +261,7 @@ function AttendanceAlertBanner({ theme: C, studentId, onGoToAttendance }) {
 }
 
 export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLogout,
-  onOpenProctoring, onOpenAdvising, onOpenAtRisk }) {
+  onOpenProctoring, onOpenAdvising, onOpenAtRisk, pendingQR, onClearPendingQR }) {
   const [page, setPage] = useState('dashboard');
   const [menuOpen, setMenuOpen] = useState(false);
   const { t, isRTL } = useLang();
@@ -283,6 +283,11 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
     }
   }
 
+  // Auto-navigate to attendance tab when opened via QR scan link
+  useEffect(() => {
+    if (pendingQR) setPage('attendance');
+  }, [pendingQR]);
+
   return (
     <div style={{ display:'flex', height:'100%', background:C.bg, overflow:'hidden', flexDirection: isRTL ? 'row-reverse' : 'row' }}>
       <Sidebar theme={C} navItems={nav} activeId={page} onNav={navigate} mobileOpen={menuOpen} onMobileClose={() => setMenuOpen(false)}/>
@@ -297,7 +302,7 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
           />
           <AnimatedPage pageKey={page}>
             {page==='dashboard'  && <StudentDashboard theme={C} user={user} stu={stu} isDark={isDark}/>}
-            {page==='attendance' && <StudentAttendance theme={C} stu={stu}/>}
+            {page==='attendance' && <StudentAttendance theme={C} stu={stu} pendingQR={pendingQR} onClearPendingQR={onClearPendingQR}/>}
             {page==='emotions'   && <StudentEmotions theme={C} stu={stu}/>}
             {page==='schedule'   && <StudentSchedule theme={C} stu={stu}/>}
             {page==='performance'&& <StudentPerformance theme={C} stu={stu}/>}
@@ -459,7 +464,7 @@ function StudentDashboard({ theme: C, user, stu }) {
 }
 
 /* ══ ATTENDANCE ══ */
-function StudentAttendance({ theme: C, stu }) {
+function StudentAttendance({ theme: C, stu, pendingQR, onClearPendingQR }) {
   const { t, isRTL } = useLang();
   const myCourses  = store.getStudentCourses(stu.id);
   const attRecs    = store.getStudentAttendance(stu.id);
@@ -470,6 +475,26 @@ function StudentAttendance({ theme: C, stu }) {
   const [excuseForm, setExcuseForm] = useState({courseId:'', week:1, reason:''});
   const [excuseSent, setExcuseSent] = useState(false);
   const [, refresh] = useState(0);
+
+  // Auto-check-in from QR scan URL (cross-device)
+  useEffect(() => {
+    if (!pendingQR) return;
+    setTab('qr');
+    try {
+      const { courseId, week, createdAt } = pendingQR;
+      const ageMin = (Date.now() - createdAt) / 60000;
+      if (ageMin > 90) {
+        setQrMsg('⚠️ QR code expired. Ask your lecturer to regenerate it.');
+      } else {
+        store.markAttendance(courseId, stu.id, 1.0, 'qr', week);
+        setQrMsg(`✅ Checked in for Week ${week}!`);
+        refresh(n => n + 1);
+      }
+    } catch(e) {
+      setQrMsg('⚠️ Invalid QR code.');
+    }
+    onClearPendingQR?.();
+  }, [pendingQR]);
 
   const courseRows = myCourses.map((course) => {
     const recs     = store.getStudentCourseAttendance(stu.id, course.id);

@@ -20,6 +20,23 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const { isRTL } = useLang();
 
+  // Read QR check-in payload from URL (mobile scan) and persist through login
+  const [pendingQR, setPendingQR] = useState(() => {
+    try {
+      const p = new URLSearchParams(window.location.search).get('checkin');
+      if (p) {
+        window.history.replaceState({}, '', window.location.pathname);
+        const data = JSON.parse(atob(p));
+        sessionStorage.setItem('es_pending_qr', JSON.stringify(data));
+        return data;
+      }
+      const stored = sessionStorage.getItem('es_pending_qr');
+      if (stored) return JSON.parse(stored);
+    } catch(e) {}
+    return null;
+  });
+  function clearPendingQR() { sessionStorage.removeItem('es_pending_qr'); setPendingQR(null); }
+
   const C = isDark ? DARK : LIGHT;
 
   function toggleMode() { setIsDark(d => !d); }
@@ -75,7 +92,7 @@ export default function App() {
       {!user ? (
         <LoginPage theme={C} onLogin={onLogin} />
       ) : user.role === 'student' ? (
-        <StudentPage {...commonProps} />
+        <StudentPage {...commonProps} pendingQR={pendingQR} onClearPendingQR={clearPendingQR} />
       ) : user.role === 'doctor' ? (
         <DoctorPage {...commonProps} />
       ) : user.role === 'admin' ? (

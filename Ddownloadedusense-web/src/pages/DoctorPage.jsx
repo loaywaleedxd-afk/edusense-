@@ -396,7 +396,7 @@ function DocAttendance({ theme: C, myCourses }) {
   const [week, setWeek]           = useState(1);
   const [tick, setTick]           = useState(0);
   const [activeTab, setActiveTab] = useState('roster'); // 'roster' | 'qr' | 'excuses'
-  const [qrToken, setQrToken]     = useState(null);
+  const [qrMeta, setQrMeta]       = useState(null); // {token, courseId, week, createdAt}
   const refresh = () => setTick(n=>n+1);
 
   const course   = store.getCourse(selCourse);
@@ -434,8 +434,9 @@ function DocAttendance({ theme: C, myCourses }) {
   }
 
   function generateQR() {
+    const createdAt = Date.now();
     const token = store.createQRSession(selCourse, week);
-    setQrToken(token);
+    setQrMeta({ token, courseId: selCourse, week, createdAt });
     setActiveTab('qr');
   }
 
@@ -459,11 +460,11 @@ function DocAttendance({ theme: C, myCourses }) {
 
       {/* Controls */}
       <div style={{display:'flex',gap:10,marginBottom:12,flexWrap:'wrap',alignItems:'center'}}>
-        <select value={selCourse} onChange={e=>{setSelCourse(e.target.value);setQrToken(null);}}
+        <select value={selCourse} onChange={e=>{setSelCourse(e.target.value);setQrMeta(null);}}
           style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 12px',fontSize:12,color:C.text}}>
           {myCourses.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        <select value={week} onChange={e=>{setWeek(parseInt(e.target.value));setQrToken(null);}}
+        <select value={week} onChange={e=>{setWeek(parseInt(e.target.value));setQrMeta(null);}}
           style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 12px',fontSize:12,color:C.text}}>
           {Array.from({length:16},(_,i)=><option key={i+1} value={i+1}>Week {i+1}</option>)}
         </select>
@@ -574,23 +575,26 @@ function DocAttendance({ theme: C, myCourses }) {
       {/* ── QR TAB ── */}
       {activeTab==='qr' && (
         <div style={{background:C.card,borderRadius:14,border:`1px solid ${C.border}`,padding:28,textAlign:'center'}}>
-          {qrToken ? (
-            <>
+          {qrMeta ? (()=>{
+            const qrPayload = btoa(JSON.stringify({courseId:qrMeta.courseId,week:qrMeta.week,createdAt:qrMeta.createdAt}));
+            const qrUrl = `${window.location.origin}${window.location.pathname}?checkin=${qrPayload}`;
+            return (<>
               <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:4}}>📱 QR Code for {course?.name} — Week {week}</div>
-              <div style={{fontSize:11,color:C.text3,marginBottom:20}}>Students scan this or enter the code in their app · Valid for 90 minutes</div>
+              <div style={{fontSize:11,color:C.text3,marginBottom:20}}>Students scan with phone camera to auto check-in · or enter code manually · Valid 90 min</div>
               <div style={{display:'flex',justifyContent:'center',marginBottom:20}}>
-                <QRCodeComp value={`EDUSENSE:${qrToken}:${selCourse}:W${week}`} size={220} color={course?.color||'#3b82f6'}/>
+                <QRCodeComp value={qrUrl} size={220} color={course?.color||'#3b82f6'}/>
               </div>
               <div style={{display:'inline-block',background:C.bg3,border:`2px dashed ${C.border}`,borderRadius:12,padding:'12px 32px',marginBottom:20}}>
-                <div style={{fontSize:11,color:C.text3,marginBottom:4}}>Session Code</div>
-                <div style={{fontSize:36,fontWeight:800,color:course?.color||C.blue,letterSpacing:8,fontFamily:'monospace'}}>{qrToken}</div>
+                <div style={{fontSize:11,color:C.text3,marginBottom:4}}>Manual Code (same device)</div>
+                <div style={{fontSize:36,fontWeight:800,color:course?.color||C.blue,letterSpacing:8,fontFamily:'monospace'}}>{qrMeta.token}</div>
               </div>
-              <div style={{fontSize:11,color:C.text3}}>Students go to <strong>My Attendance</strong> → <strong>QR Check-In</strong> and enter this code</div>
-              <button onClick={()=>{const t=store.createQRSession(selCourse,week);setQrToken(t);}}
+              <div style={{fontSize:11,color:C.text3}}>📷 Scan with phone → auto check-in &nbsp;·&nbsp; 💻 Same device: enter code in <strong>QR Check-In</strong> tab</div>
+              <button onClick={()=>{const ca=Date.now();const t=store.createQRSession(selCourse,week);setQrMeta({token:t,courseId:selCourse,week,createdAt:ca});}}
                 style={{marginTop:16,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 20px',fontSize:12,color:C.text2,cursor:'pointer'}}>
                 🔄 Regenerate Code
               </button>
-            </>
+            </>);
+          })()
           ) : (
             <div>
               <div style={{fontSize:48,marginBottom:12}}>📱</div>
