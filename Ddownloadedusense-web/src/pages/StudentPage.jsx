@@ -447,6 +447,7 @@ function StudentDashboard({ theme: C, user, stu }) {
 
 /* ══ ATTENDANCE ══ */
 function StudentAttendance({ theme: C, stu }) {
+  const { t, isRTL } = useLang();
   const myCourses  = store.getStudentCourses(stu.id);
   const attRecs    = store.getStudentAttendance(stu.id);
   const rate       = stu.attendanceRate || 0;
@@ -516,20 +517,20 @@ function StudentAttendance({ theme: C, stu }) {
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
-      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>My Attendance</div>
-      <div style={{ fontSize:12, color:C.text2, marginBottom:12 }}>Track your presence · Check in with QR code · Submit excuses</div>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>✅ {t('page_attendance')}</div>
+      <div style={{ fontSize:12, color:C.text2, marginBottom:12 }}>{t('sub_attendance')}</div>
 
       <div style={{ display:'flex', gap:12, marginBottom:12 }}>
-        <StatCard theme={C} label="Attendance Rate"  value={`${rate}%`}          sub="This semester"          icon="✅" accent="green"/>
-        <StatCard theme={C} label="Courses Enrolled" value={myCourses.length}     sub="Active enrollments"    icon="📚" accent="blue"/>
-        <StatCard theme={C} label="Sessions Logged"  value={Math.round(rate/100*16)*myCourses.length} sub={`${attRecs.length} QR/manual check-ins`} icon="📊" accent="purple"/>
-        <StatCard theme={C} label="Standing"         value={rate>=75?'Good':'At Risk'} sub={rate>=75?'Continue this pace':'Attend more classes'} icon={rate>=75?'👍':'⚠️'} accent={rate>=75?'green':'red'}/>
+        <StatCard theme={C} label={t('attendance_rate')} value={`${rate}%`} sub={t('semester')} icon="✅" accent="green"/>
+        <StatCard theme={C} label={t('course')} value={myCourses.length} sub={t('enrolled_students')} icon="📚" accent="blue"/>
+        <StatCard theme={C} label={t('tab_records')} value={Math.round(rate/100*16)*myCourses.length} sub={`${attRecs.length} QR/manual`} icon="📊" accent="purple"/>
+        <StatCard theme={C} label={t('academic_standing')} value={rate>=75?t('good_standing'):t('at_risk')} sub={rate>=75?'✅':'⚠️'} icon={rate>=75?'👍':'⚠️'} accent={rate>=75?'green':'red'}/>
       </div>
 
       <div style={{display:'flex',gap:8,marginBottom:12}}>
-        {TAB('records','📋 Records')}
+        {TAB('records',`📋 ${t('tab_records')}`)}
         {TAB('qr','📱 QR Check-In')}
-        {TAB('excuse','📄 Submit Excuse')}
+        {TAB('excuse',`📄 ${t('submit')} ${t('excused')}`)}
       </div>
 
       {tab==='records' && (
@@ -642,6 +643,7 @@ function StudentAttendance({ theme: C, stu }) {
 
 /* ══ EMOTIONS ══ */
 function StudentEmotions({ theme: C, stu }) {
+  const { t, isRTL } = useLang();
   // Deterministic values — seeded by student id so they're consistent across renders
   const idNum = stu.id.split('').reduce((a,c)=>a+c.charCodeAt(0),0);
   const emoRows = Array.from({length:20},(_,i)=>{
@@ -660,7 +662,7 @@ function StudentEmotions({ theme: C, stu }) {
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
-      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:12 }}>My Emotion Profile</div>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:12 }}>😊 {t('page_emotions')}</div>
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
         <Card theme={C} title="Emotion Frequency">
@@ -690,6 +692,7 @@ function StudentEmotions({ theme: C, stu }) {
 
 /* ══ SCHEDULE ══ */
 function StudentSchedule({ theme: C, stu }) {
+  const { t, isRTL } = useLang();
   const myCourses = store.getStudentCourses(stu.id);
 
   if (!myCourses.length) {
@@ -703,7 +706,7 @@ function StudentSchedule({ theme: C, stu }) {
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
-      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:12 }}>My Schedule</div>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:12 }}>📅 {t('page_schedule')}</div>
       <Card theme={C} title={`My Courses (${myCourses.length})`}>
         <div style={{ padding:'4px 14px 14px', display:'flex', flexDirection:'column', gap:8 }}>
           {myCourses.map((course,i)=>{
@@ -731,6 +734,7 @@ function StudentSchedule({ theme: C, stu }) {
 
 /* ══ PERFORMANCE ══ */
 function StudentPerformance({ theme: C, stu }) {
+  const { t, isRTL } = useLang();
   const myCourses = store.getStudentCourses(stu.id);
   const results   = store.getStudentResults(stu.id);
   const idHash    = stu.id.split('').reduce((a,c)=>a+c.charCodeAt(0),0);
@@ -750,7 +754,7 @@ function StudentPerformance({ theme: C, stu }) {
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
-      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:12 }}>Performance Analytics</div>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:12 }}>📈 {t('page_performance')}</div>
       <div style={{ display:'flex', gap:12, marginBottom:12 }}>
         <StatCard theme={C} label="GPA"              value={stu.gpa||'—'}          sub="Current semester"           icon="📈" accent="blue"/>
         <StatCard theme={C} label="Avg Engagement"   value={`${stu.engagement}%`}  sub="In-class average"           icon="🧠" accent="green"/>
@@ -772,6 +776,7 @@ function StudentPerformance({ theme: C, stu }) {
 
 /* ══ GRADES ══ */
 function StudentGrades({ theme: C, stu }) {
+  const { t, isRTL } = useLang();
   const feeStatus = store.getStudentFeeStatus(stu.id);
   if(!feeStatus.paid) return (
     <div style={{padding:'8px 20px 20px'}}>
@@ -808,16 +813,16 @@ function StudentGrades({ theme: C, stu }) {
   return (
     <div style={{ padding:'8px 20px 20px' }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
-        <div style={{ fontSize:22, fontWeight:700, color:C.text }}>📝 My Exam Results</div>
+        <div style={{ fontSize:22, fontWeight:700, color:C.text }}>📝 {t('page_grades')}</div>
         <button onClick={() => window.print()}
           style={{ background:C.blue3, border:'none', borderRadius:8, padding:'8px 16px', fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer' }}>
-          🖨️ Export PDF
+          🖨️ {t('export_pdf')}
         </button>
       </div>
 
       {/* Mini stats */}
       <div style={{ display:'flex', gap:12, marginBottom:16 }}>
-        {[['Subjects Graded',grades.length,C.blue],['Average',`${avg}%`,C.amber],['Passed',passed,C.green],['Highest',`${highest}%`,C.purple]].map(([lbl,val,col],i)=>(
+        {[[t('subjects_graded'),grades.length,C.blue],[t('average'),`${avg}%`,C.amber],[t('passed'),passed,C.green],[t('highest'),`${highest}%`,C.purple]].map(([lbl,val,col],i)=>(
           <div key={i} style={{ flex:1, background:C.card, borderRadius:12, border:`1px solid ${C.border}`, padding:'14px 12px', textAlign:'center' }}>
             <div style={{ fontSize:24, fontWeight:700, color:col }}>{val}</div>
             <div style={{ fontSize:11, color:C.text2, marginTop:2 }}>{lbl}</div>
@@ -854,6 +859,7 @@ function StudentGrades({ theme: C, stu }) {
 
 /* ══ PORTFOLIO ══ */
 function StudentPortfolio({ theme: C, user, stu }) {
+  const { t, isRTL } = useLang();
   const [capturedSelfie, setCapturedSelfie] = useState(null);
   const results = store.getStudentResults(stu.id);
   const entries = Object.entries(results);
@@ -862,8 +868,8 @@ function StudentPortfolio({ theme: C, user, stu }) {
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
-      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>🎓 My Academic Portfolio</div>
-      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Your complete academic year summary</div>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>🎓 {t('page_portfolio')}</div>
+      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>{t('sub_portfolio')}</div>
 
       {/* Preview card */}
       <div style={{ background:C.card, borderRadius:16, border:`1px solid ${C.border}`, padding:16, marginBottom:12 }}>
@@ -954,6 +960,7 @@ function StudentPortfolio({ theme: C, user, stu }) {
 
 /* ══ COMMUNITY CHAT ══ */
 function StudentChat({ theme: C, user, stu, isDark }) {
+  const { t, isRTL } = useLang();
   const myCourses = store.getStudentCourses(stu.id);
   const [selIdx, setSelIdx] = useState(0);
   const [msg, setMsg] = useState('');
@@ -982,7 +989,7 @@ function StudentChat({ theme: C, user, stu, isDark }) {
     <div style={{ display:'flex', flexDirection:'column', height:'calc(100vh - 64px)', padding:'0' }}>
       {/* Header */}
       <div style={{ padding:'18px 24px 8px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-        <div style={{ fontSize:22, fontWeight:700, color:C.text }}>💬 Community Chat</div>
+        <div style={{ fontSize:22, fontWeight:700, color:C.text }}>💬 {t('page_chat')}</div>
         <select
           value={selIdx}
           onChange={e=>setSelIdx(parseInt(e.target.value))}
@@ -1008,10 +1015,10 @@ function StudentChat({ theme: C, user, stu, isDark }) {
           <input
             value={msg} onChange={e=>setMsg(e.target.value)}
             onKeyDown={e=>e.key==='Enter'&&sendMsg()}
-            placeholder="Write a message..."
+            placeholder={t('page_chat') + '…'}
             style={{ flex:1, height:38, background:C.bg3, border:`1px solid ${C.border}`, borderRadius:8, padding:'0 12px', fontSize:12, color:C.text }}
           />
-          <button onClick={sendMsg} style={{ height:38, padding:'0 18px', background:C.blue3, border:'none', borderRadius:8, fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer' }}>Send ➤</button>
+          <button onClick={sendMsg} style={{ height:38, padding:'0 18px', background:C.blue3, border:'none', borderRadius:8, fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer' }}>{t('submit')} ➤</button>
         </div>
       </div>
     </div>
@@ -1054,6 +1061,7 @@ function ChatMessage({ msg, myId, theme: C, course, onReact }) {
 
 /* ══ APPEALS ══ */
 function StudentAppeals({ theme: C, user, stu }) {
+  const { t, isRTL } = useLang();
   const myCourses = store.getStudentCourses(stu.id);
   const [complaints, setComplaints] = useState(store.getStudentComplaints(stu.id));
   const [form, setForm] = useState({ type:'absence_excuse', courseId: myCourses[0]?.id||'', description:'' });
@@ -1080,13 +1088,13 @@ function StudentAppeals({ theme: C, user, stu }) {
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>My Appeals & Complaints</div>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>📋 {t('page_appeals')}</div>
 
-      <Card theme={C} title="Submit New Appeal">
+      <Card theme={C} title={t('submit_appeal')}>
         <div style={{padding:'4px 16px 16px',display:'flex',flexDirection:'column',gap:12}}>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
             <div>
-              <div style={{fontSize:10,color:C.text3,fontWeight:700,textTransform:'uppercase',marginBottom:4}}>Type</div>
+              <div style={{fontSize:10,color:C.text3,fontWeight:700,textTransform:'uppercase',marginBottom:4}}>{t('appeal_type')}</div>
               <select value={form.type} onChange={e=>setForm({...form,type:e.target.value})}
                 style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}>
                 <option value="absence_excuse">Absence Excuse</option>
@@ -1095,7 +1103,7 @@ function StudentAppeals({ theme: C, user, stu }) {
               </select>
             </div>
             <div>
-              <div style={{fontSize:10,color:C.text3,fontWeight:700,textTransform:'uppercase',marginBottom:4}}>Course</div>
+              <div style={{fontSize:10,color:C.text3,fontWeight:700,textTransform:'uppercase',marginBottom:4}}>{t('course')}</div>
               <select value={form.courseId} onChange={e=>setForm({...form,courseId:e.target.value})}
                 style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}>
                 {myCourses.map(c=><option key={c.id} value={c.id}>{c.name} ({c.code})</option>)}
@@ -1103,7 +1111,7 @@ function StudentAppeals({ theme: C, user, stu }) {
             </div>
           </div>
           <div>
-            <div style={{fontSize:10,color:C.text3,fontWeight:700,textTransform:'uppercase',marginBottom:4}}>Description</div>
+            <div style={{fontSize:10,color:C.text3,fontWeight:700,textTransform:'uppercase',marginBottom:4}}>{t('describe_issue')}</div>
             <textarea value={form.description} onChange={e=>setForm({...form,description:e.target.value})}
               placeholder="Describe your appeal or excuse in detail..."
               rows={4} style={{width:'100%',background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:12,color:C.text,resize:'vertical',boxSizing:'border-box'}}/>
@@ -1111,9 +1119,9 @@ function StudentAppeals({ theme: C, user, stu }) {
           <div style={{display:'flex',alignItems:'center',gap:12}}>
             <button onClick={submit} disabled={!form.description.trim()}
               style={{background:C.blue3,border:'none',borderRadius:8,padding:'10px 24px',fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer',opacity:form.description.trim()?1:0.5}}>
-              📤 Submit
+              📤 {t('submit_appeal')}
             </button>
-            {submitted && <span style={{color:C.green,fontSize:12,fontWeight:700}}>✅ Submitted successfully!</span>}
+            {submitted && <span style={{color:C.green,fontSize:12,fontWeight:700}}>✅ {t('appeal_submitted')}</span>}
           </div>
         </div>
       </Card>
@@ -1142,6 +1150,7 @@ function StudentAppeals({ theme: C, user, stu }) {
 
 /* ══ TRANSCRIPT ══ */
 function StudentTranscript({ theme: C, stu }) {
+  const { t, isRTL } = useLang();
   const myCourses = store.getStudentCourses(stu.id);
   const results   = store.getStudentResults(stu.id);
   const reg       = store.getRegistrationStatus();
@@ -1164,25 +1173,25 @@ function StudentTranscript({ theme: C, stu }) {
   return (
     <div style={{padding:'8px 20px 20px'}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
-        <div style={{fontSize:22,fontWeight:700,color:C.text}}>Academic Transcript</div>
+        <div style={{fontSize:22,fontWeight:700,color:C.text}}>{t('page_transcript')}</div>
         <button onClick={()=>window.print()}
           style={{background:C.blue3,border:'none',borderRadius:8,padding:'8px 16px',fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer'}}>
-          🖨️ Print / Export PDF
+          🖨️ {t('export_pdf')}
         </button>
       </div>
 
-      <Card theme={C} title="Student Information">
+      <Card theme={C} title={t('name')}>
         <div style={{padding:'4px 16px 16px',display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:12}}>
           {[
-            ['Name',      stu.name],
-            ['Student ID',stu.id],
-            ['Department',stu.dept],
-            ['Year',      `Year ${stu.year}`],
-            ['Email',     stu.email||'—'],
-            ['Semester',  reg.semester],
-            ['Semester GPA', semGPA],
-            ['Academic Standing', standing],
-            ['Reg. Status', fee.paid?'✅ Cleared':'⚠️ Fees Pending'],
+            [t('name'),             stu.name],
+            [t('student_id'),       stu.id],
+            [t('dept'),             stu.dept],
+            [t('year_label'),       `${stu.year}`],
+            ['Email',               stu.email||'—'],
+            [t('semester'),         reg.semester],
+            ['GPA',                 semGPA],
+            [t('academic_standing'),standing],
+            ['Reg. Status',         fee.paid?'✅ Cleared':'⚠️ Fees Pending'],
           ].map(([label,val],i)=>(
             <div key={i}>
               <div style={{fontSize:10,color:C.text3,textTransform:'uppercase',fontWeight:700,marginBottom:2}}>{label}</div>
@@ -1198,7 +1207,7 @@ function StudentTranscript({ theme: C, stu }) {
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
               <thead>
                 <tr style={{borderBottom:`2px solid ${C.border}`}}>
-                  {['Course','Code','Credits','Attendance','Grade','Letter','Status'].map(h=>(
+                  {[t('course'),'Code',t('credits'),t('attendance_rate'),t('grade'),t('letter_grade'),t('status')].map(h=>(
                     <th key={h} style={{textAlign:'left',padding:'8px 10px',fontSize:10,color:C.text3,textTransform:'uppercase',fontWeight:700}}>{h}</th>
                   ))}
                 </tr>
@@ -1230,13 +1239,14 @@ function StudentTranscript({ theme: C, stu }) {
 
 /* ══ ANNOUNCEMENTS ══ */
 function StudentAnnouncements({ theme: C, stu }) {
+  const { t, isRTL } = useLang();
   const announcements = store.getStudentAnnouncements(stu.id);
   const TYPE_COLOR = { blue: C.blue, purple: C.purple, green: C.green, amber: C.amber };
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
-      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>📢 Announcements</div>
-      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Posted by your lecturers for your enrolled courses</div>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>📢 {t('page_announcements')}</div>
+      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>{t('sub_announcements')}</div>
 
       {announcements.length === 0
         ? (
@@ -1271,6 +1281,7 @@ function StudentAnnouncements({ theme: C, stu }) {
 
 /* ══ EXAM SCHEDULE ══ */
 function StudentExamSchedule({ theme: C, stu }) {
+  const { t, isRTL } = useLang();
   const exams = store.getStudentExams(stu.id);
   const today = new Date().toISOString().slice(0,10);
   const TYPE_CFG = {
@@ -1281,8 +1292,8 @@ function StudentExamSchedule({ theme: C, stu }) {
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
-      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>🗓️ Exam Schedule</div>
-      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Your upcoming exams for this semester</div>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>🗓️ {t('page_exams')}</div>
+      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>{t('sub_exams')}</div>
 
       {exams.length === 0
         ? (
@@ -1329,6 +1340,7 @@ function StudentExamSchedule({ theme: C, stu }) {
 
 /* ══ DEGREE AUDIT ══ */
 function StudentDegreeAudit({ theme: C, stu }) {
+  const { t, isRTL } = useLang();
   const audit = store.getDegreeAudit(stu.id);
   const gpa = store.calculateSemesterGPA(stu.id);
   const standing = store.getAcademicStanding(stu.id);
@@ -1350,16 +1362,16 @@ function StudentDegreeAudit({ theme: C, stu }) {
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
-      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>🏛️ Degree Audit</div>
-      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Track your progress toward graduation</div>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>🏛️ {t('page_degreeaudit')}</div>
+      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>{t('sub_degreeaudit')}</div>
 
       {/* Summary cards */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:16 }}>
         {[
-          ['Credits Earned', `${audit.creditsEarned}/${audit.creditsRequired}`, C.blue],
-          ['Courses Done',   `${audit.completed.length}/5`, C.green],
+          [t('credits_earned'), `${audit.creditsEarned}/${audit.creditsRequired}`, C.blue],
+          [t('completed'), `${audit.completed.length}/5`, C.green],
           ['GPA', gpa !== null ? gpa : '—', C.amber],
-          ['Status', audit.readyToGraduate ? '🎓 Ready' : 'In Progress', audit.readyToGraduate ? C.green : C.purple],
+          [t('status'), audit.readyToGraduate ? `🎓 ${t('completed')}` : t('in_progress'), audit.readyToGraduate ? C.green : C.purple],
         ].map(([lbl,val,col],i)=>(
           <div key={i} style={{ background:C.card, borderRadius:12, border:`1px solid ${C.border}`, padding:'14px 12px', textAlign:'center' }}>
             <div style={{ fontSize:22, fontWeight:700, color:col }}>{val}</div>
@@ -1371,7 +1383,7 @@ function StudentDegreeAudit({ theme: C, stu }) {
       {/* Progress bar */}
       <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, padding:'16px 20px', marginBottom:16 }}>
         <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
-          <span style={{ fontSize:13, fontWeight:700, color:C.text }}>Overall Progress</span>
+          <span style={{ fontSize:13, fontWeight:700, color:C.text }}>{t('graduation_progress')}</span>
           <span style={{ fontSize:13, fontWeight:700, color:C.blue }}>{audit.progressPct}%</span>
         </div>
         <div style={{ background:C.bg3, borderRadius:99, height:10 }}>
@@ -1401,7 +1413,7 @@ function StudentDegreeAudit({ theme: C, stu }) {
       {/* Course checklist */}
       <div style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, overflow:'hidden' }}>
         <div style={{ padding:'12px 18px', borderBottom:`1px solid ${C.border}`, fontSize:13, fontWeight:700, color:C.text }}>
-          Required Courses Checklist
+          {t('requirements')}
         </div>
         {audit.audit.map((item, i) => {
           const cfg = STATUS_CFG[item.status];
@@ -1428,6 +1440,7 @@ function StudentDegreeAudit({ theme: C, stu }) {
 
 /* ══ STUDY RESOURCES ══ */
 function StudentResources({ theme: C, stu }) {
+  const { t, isRTL } = useLang();
   const myCourses = store.getStudentCourses(stu.id);
   const [selCourse, setSelCourse] = useState('all');
   const weeks = Array.from({length:14},(_,i)=>i+1);
@@ -1447,8 +1460,8 @@ function StudentResources({ theme: C, stu }) {
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
-      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>📖 Study Resources</div>
-      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Materials attached by your instructors — links, PDFs, videos, and notes</div>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>📖 {t('page_resources')}</div>
+      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>{t('sub_resources')}</div>
 
       {/* Filter bar */}
       <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap', alignItems:'center' }}>
@@ -1456,7 +1469,7 @@ function StudentResources({ theme: C, stu }) {
           style={{ padding:'6px 16px', borderRadius:20, border:`1.5px solid ${selCourse==='all'?C.blue:C.border}`,
             background:selCourse==='all'?C.blue_dim:'transparent', fontSize:12, fontWeight:700,
             color:selCourse==='all'?C.blue2:C.text3, cursor:'pointer' }}>
-          All Courses
+          {t('all')}
         </button>
         {myCourses.map(c=>(
           <button key={c.id} onClick={()=>setSelCourse(c.id)}
@@ -1564,6 +1577,7 @@ function checkPlagiarism(asnId, myText, myStudentId) {
 
 /* ══ ASSIGNMENTS ══ */
 function StudentAssignments({ theme: C, stu }) {
+  const { t, isRTL } = useLang();
   const assignments = store.getStudentAssignments(stu.id);
   const [expanded,   setExpanded]  = useState(null);
   const [content,    setContent]   = useState({});
@@ -1612,10 +1626,10 @@ function StudentAssignments({ theme: C, stu }) {
   }).length;
 
   const STATUS = {
-    graded:    { label:'Graded',        color:'#10b981', bg:'#10b98115', icon:'✅' },
-    submitted: { label:'Submitted',     color:'#3b82f6', bg:'#3b82f615', icon:'📤' },
-    overdue:   { label:'Overdue',       color:'#ef4444', bg:'#ef444415', icon:'⚠️' },
-    pending:   { label:'Not Submitted', color:'#f59e0b', bg:'#f59e0b15', icon:'📋' },
+    graded:    { label: t('graded'),        color:'#10b981', bg:'#10b98115', icon:'✅' },
+    submitted: { label: t('submitted'),     color:'#3b82f6', bg:'#3b82f615', icon:'📤' },
+    overdue:   { label: t('overdue'),       color:'#ef4444', bg:'#ef444415', icon:'⚠️' },
+    pending:   { label: t('not_submitted'), color:'#f59e0b', bg:'#f59e0b15', icon:'📋' },
   };
 
   function getStatus(asn) {
@@ -1628,16 +1642,16 @@ function StudentAssignments({ theme: C, stu }) {
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
-      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>📋 Assignments</div>
-      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Submit your work and view grades from your instructors</div>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>📋 {t('page_assignments')}</div>
+      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>{t('sub_assignments')}</div>
 
       {/* Summary bar */}
       <div style={{ display:'flex', gap:10, marginBottom:16 }}>
         {[
-          ['Total', assignments.length, C.blue],
-          ['Pending', pending, C.amber],
-          ['Submitted', assignments.filter(a=>{ const s=store.getSubmission(a.id,stu.id); return s&&s.grade==null; }).length, '#3b82f6'],
-          ['Graded', assignments.filter(a=>store.getSubmission(a.id,stu.id)?.grade!=null).length, C.green],
+          [t('total'), assignments.length, C.blue],
+          [t('pending'), pending, C.amber],
+          [t('submitted'), assignments.filter(a=>{ const s=store.getSubmission(a.id,stu.id); return s&&s.grade==null; }).length, '#3b82f6'],
+          [t('graded'), assignments.filter(a=>store.getSubmission(a.id,stu.id)?.grade!=null).length, C.green],
         ].map(([lbl,val,col])=>(
           <div key={lbl} style={{ flex:1, background:C.card, borderRadius:12, border:`1px solid ${C.border}`, padding:'12px', textAlign:'center' }}>
             <div style={{ fontSize:22, fontWeight:700, color:col }}>{val}</div>
@@ -1728,7 +1742,7 @@ function StudentAssignments({ theme: C, stu }) {
                 {/* Submitted — awaiting grade */}
                 {sub && sub.grade==null && (
                   <div style={{ background:`${C.blue}15`, border:`1px solid ${C.blue}44`, borderRadius:10, padding:'10px 14px', marginBottom:14 }}>
-                    <div style={{ fontSize:12, fontWeight:700, color:C.blue2 }}>📤 Submitted — awaiting grade</div>
+                    <div style={{ fontSize:12, fontWeight:700, color:C.blue2 }}>📤 {t('awaiting_grade')}</div>
                     <div style={{ fontSize:11, color:C.text3, marginTop:2 }}>{new Date(sub.submittedAt).toLocaleString()}</div>
                     {sub.content && <div style={{ fontSize:12, color:C.text2, marginTop:6 }}>{sub.content}</div>}
                     {sub.fileData && sub.fileName && (
@@ -1774,7 +1788,7 @@ function StudentAssignments({ theme: C, stu }) {
                         style={{ background:'linear-gradient(135deg,#3b82f6,#6366f1)', border:'none', borderRadius:8,
                           padding:'9px 22px', fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer',
                           opacity:((content[asn.id]||'').trim()||fileState[asn.id])?1:0.5 }}>
-                        📤 {sub?'Resubmit':'Submit'}
+                        📤 {sub ? t('resubmit') : t('submit')}
                       </button>
                       {submitted[asn.id] && <span style={{ fontSize:12, color:C.green, fontWeight:700 }}>✅ Submitted!</span>}
                       {/* Plagiarism badge */}
@@ -1806,16 +1820,17 @@ function StudentAssignments({ theme: C, stu }) {
 
 /* ══ MOODLE ══ */
 function StudentMoodle({ theme: C }) {
+  const { t } = useLang();
   return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'80vh' }}>
       <div style={{ textAlign:'center' }}>
         <div style={{ width:120, height:120, borderRadius:'50%', background:'#F98012', margin:'0 auto 16px', display:'flex', alignItems:'center', justifyContent:'center', fontSize:64, fontWeight:700, color:'#fff' }}>M</div>
-        <div style={{ fontSize:28, fontWeight:700, color:C.text }}>Moodle</div>
-        <div style={{ fontSize:13, color:C.text2, margin:'4px 0 20px' }}>University Learning Management System</div>
+        <div style={{ fontSize:28, fontWeight:700, color:C.text }}>{t('page_moodle')}</div>
+        <div style={{ fontSize:13, color:C.text2, margin:'4px 0 20px' }}>{t('sub_attendance') ? 'University Learning Management System' : 'University Learning Management System'}</div>
         <button
           onClick={()=>alert('Moodle integration coming soon!\n\nThis feature will connect to your university\'s Moodle portal.')}
           style={{ background:'#F98012', border:'none', borderRadius:12, padding:'13px 32px', fontSize:14, fontWeight:700, color:'#fff', cursor:'pointer' }}
-        >🌐  Open Moodle</button>
+        >🌐  {t('page_moodle')}</button>
         <div style={{ fontSize:11, color:C.text3, marginTop:12 }}>⚠️  Prototype — not connected</div>
       </div>
     </div>

@@ -55,7 +55,14 @@ const PAGE_TITLES = {
 export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogout,
   onOpenProctoring, onOpenAdvising, onOpenAtRisk }) {
   const [page, setPage] = useState('dashboard');
-  const { isRTL } = useLang();
+  const { isRTL, t } = useLang();
+
+  const ADMIN_PAGE_KEYS = {
+    dashboard:'dashboard', analytics:'system_analytics', students:'students',
+    doctors:'doctors', courses:'courses', enrollments:'enrollments',
+    appeals:'appeals', registration:'reg_fees', examschedule:'page_exams',
+    parents:'parents', r_reports:'ranalysis', settings:'settings',
+  };
 
   function handleNav(id) {
     if (id === '__proctoring') { onOpenProctoring?.(); return; }
@@ -64,11 +71,13 @@ export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogo
     setPage(id);
   }
 
+  const adminPageTitle = ADMIN_PAGE_KEYS[page] ? t(ADMIN_PAGE_KEYS[page]) : (PAGE_TITLES[page] || page);
+
   return (
     <div style={{display:'flex',height:'100%',background:C.bg,overflow:'hidden', flexDirection: isRTL ? 'row-reverse' : 'row'}}>
       <Sidebar theme={C} navItems={NAV} activeId={page} onNav={handleNav}/>
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
-        <Topbar theme={C} user={user} pageTitle={PAGE_TITLES[page]||page} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout}/>
+        <Topbar theme={C} user={user} pageTitle={adminPageTitle} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout}/>
         <div className="content-scroll" style={{flex:1,overflowY:'auto',background:C.bg}}>
           <AnimatedPage pageKey={page}>
             {page==='dashboard'   && <AdminDashboard theme={C}/>}
@@ -92,6 +101,7 @@ export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogo
 
 /* ── DASHBOARD ── */
 function AdminDashboard({ theme: C }) {
+  const { t } = useLang();
   const depts      = ['Computer Science','Engineering','Mathematics','Physics','Data Science'];
   const deptShort  = ['CS','Engineering','Math','Physics','Data Sci'];
   const deptColors = [C.blue,C.purple,C.green,C.amber,C.cyan];
@@ -109,15 +119,15 @@ function AdminDashboard({ theme: C }) {
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:24,fontWeight:700,color:C.text,marginBottom:4}}>System Dashboard</div>
-      <div style={{fontSize:12,color:C.text2,marginBottom:12}}>University-wide overview</div>
+      <div style={{fontSize:24,fontWeight:700,color:C.text,marginBottom:4}}>{t('dashboard')}</div>
+      <div style={{fontSize:12,color:C.text2,marginBottom:12}}>{t('doc_overview')}</div>
 
       <div style={{display:'flex',gap:12,marginBottom:12}}>
-        <StatCard theme={C} label="Total Students"  value={store.students.length} sub="Enrolled"              icon="🎓" accent="blue"/>
-        <StatCard theme={C} label="Lecturers"        value={store.doctors.length}  sub="Active faculty"        icon="👨‍🏫" accent="purple"/>
-        <StatCard theme={C} label="Active Lectures"  value={activeLectures}        sub="Running right now"     icon="📚" accent="green"/>
-        <StatCard theme={C} label="Avg Engagement"   value={`${avgEng}%`}          sub="Across all students"   icon="🧠" accent="amber"/>
-        <StatCard theme={C} label="On Probation"     value={store.getStudentsOnProbation().length} sub="Academic probation" icon="🚨" accent="red"/>
+        <StatCard theme={C} label={t('students')}      value={store.students.length} sub={t('enrolled_students')}  icon="🎓" accent="blue"/>
+        <StatCard theme={C} label={t('doctors')}        value={store.doctors.length}  sub={t('live_session')}       icon="👨‍🏫" accent="purple"/>
+        <StatCard theme={C} label={t('live_session')}   value={activeLectures}        sub={t('analytics')}          icon="📚" accent="green"/>
+        <StatCard theme={C} label={t('avg_engagement')} value={`${avgEng}%`}          sub={t('analytics')}          icon="🧠" accent="amber"/>
+        <StatCard theme={C} label={t('at_risk')}        value={store.getStudentsOnProbation().length} sub={t('academic_standing')} icon="🚨" accent="red"/>
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'3fr 2fr',gap:12,marginBottom:12}}>
@@ -162,6 +172,7 @@ function AdminDashboard({ theme: C }) {
 
 /* ── ANALYTICS ── */
 function AdminAnalytics({ theme: C }) {
+  const { t } = useLang();
   const totalEnrolled = store.courses.reduce((a,c)=>a+(store.courseEnrollments[c.id]||[]).length,0);
   const atRisk        = store.students.filter(s=>(s.attendanceRate||100)<65||(s.engagement||100)<40).length;
   const avgAtt        = store.students.length
@@ -170,7 +181,7 @@ function AdminAnalytics({ theme: C }) {
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>System Analytics</div>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('system_analytics')}</div>
 
       <div style={{display:'flex',gap:12,marginBottom:12}}>
         <StatCard theme={C} label="Avg Attendance"   value={`${avgAtt}%`}           sub="Across all students"   icon="✅" accent="green"/>
@@ -383,6 +394,7 @@ function BulkImportModal({ theme: C, onClose, onImported }) {
 }
 
 function AdminStudents({ theme: C }) {
+  const { t } = useLang();
   const [students, setStudents] = useState(store.students);
   const [search, setSearch] = useState('');
   const [showAdd, setShowAdd] = useState(false);
@@ -422,7 +434,7 @@ function AdminStudents({ theme: C }) {
       {createdAccount && <CredentialsModal theme={C} account={createdAccount} onClose={()=>setCreatedAccount(null)}/>}
       {showImport && <BulkImportModal theme={C} onClose={()=>setShowImport(false)} onImported={()=>setStudents([...store.students])}/>}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
-        <div style={{fontSize:22,fontWeight:700,color:C.text}}>Students ({store.students.length})</div>
+        <div style={{fontSize:22,fontWeight:700,color:C.text}}>{t('students')} ({store.students.length})</div>
         <div style={{display:'flex',gap:8}}>
           <button onClick={deleteSelected} style={{background:C.red_dim,border:`1px solid ${C.red}`,borderRadius:8,padding:'8px 14px',fontSize:11,color:C.red2,cursor:'pointer'}}>🗑️ Delete Selected</button>
           <button onClick={()=>setShowImport(true)} style={{background:'linear-gradient(135deg,#8b5cf6,#6366f1)',border:'none',borderRadius:8,padding:'8px 14px',fontSize:11,fontWeight:700,color:'#fff',cursor:'pointer'}}>📥 Import Excel/CSV</button>
@@ -548,6 +560,7 @@ function AdminStudents({ theme: C }) {
 
 /* ── DOCTORS/LECTURERS ── */
 function AdminDoctors({ theme: C }) {
+  const { t } = useLang();
   const [doctors, setDoctors] = useState(store.doctors);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({name:'',dept:DEPARTMENTS[0],title:TITLES[0],email:'',phone:''});
@@ -576,7 +589,7 @@ function AdminDoctors({ theme: C }) {
     <div style={{padding:'8px 20px 20px'}}>
       {createdAccount && <CredentialsModal theme={C} account={createdAccount} onClose={()=>setCreatedAccount(null)}/>}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
-        <div style={{fontSize:22,fontWeight:700,color:C.text}}>Lecturers ({doctors.length})</div>
+        <div style={{fontSize:22,fontWeight:700,color:C.text}}>{t('doctors')} ({doctors.length})</div>
         <div style={{display:'flex',gap:8}}>
           <button onClick={deleteSelected} style={{background:C.red_dim,border:`1px solid ${C.red}`,borderRadius:8,padding:'8px 14px',fontSize:11,color:C.red2,cursor:'pointer'}}>🗑️ Delete</button>
           <button onClick={()=>setShowAdd(true)} style={{background:C.blue3,border:'none',borderRadius:8,padding:'8px 14px',fontSize:11,fontWeight:700,color:'#fff',cursor:'pointer'}}>+ Add Lecturer</button>
@@ -658,6 +671,7 @@ function AdminDoctors({ theme: C }) {
 
 /* ── COURSES ── */
 function AdminCourses({ theme: C }) {
+  const { t } = useLang();
   const [courses, setCourses]       = useState(store.courses);
   const [showAdd, setShowAdd]       = useState(false);
   const [weeksOpen, setWeeksOpen]   = useState(null); // courseId with weeks panel open
@@ -696,7 +710,7 @@ function AdminCourses({ theme: C }) {
   return (
     <div style={{padding:'8px 20px 20px'}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
-        <div style={{fontSize:22,fontWeight:700,color:C.text}}>Courses ({courses.length})</div>
+        <div style={{fontSize:22,fontWeight:700,color:C.text}}>{t('courses')} ({courses.length})</div>
         <button onClick={()=>setShowAdd(true)} style={{background:C.blue3,border:'none',borderRadius:8,padding:'8px 14px',fontSize:11,fontWeight:700,color:'#fff',cursor:'pointer'}}>+ Add Course</button>
       </div>
 
@@ -843,6 +857,7 @@ function AdminCourses({ theme: C }) {
 
 /* ── ENROLLMENTS ── */
 function AdminEnrollments({ theme: C }) {
+  const { t } = useLang();
   const [selCourse, setSelCourse] = useState(store.courses[0]?.id||'');
   const [search, setSearch]       = useState('');
   const [, forceUpdate] = useState(0);
@@ -857,7 +872,7 @@ function AdminEnrollments({ theme: C }) {
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>Enrollment Management</div>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('enrollments')}</div>
 
       <div style={{display:'flex',gap:10,marginBottom:12,flexWrap:'wrap'}}>
         <select value={selCourse} onChange={e=>setSelCourse(e.target.value)}
@@ -967,6 +982,7 @@ function AdminEnrollments({ theme: C }) {
 
 /* ── ADMIN APPEALS ── */
 function AdminAppeals({ theme: C }) {
+  const { t } = useLang();
   const [complaints, setComplaints] = useState(store.getAllComplaints());
   const [filter, setFilter] = useState('all');
   const [response, setResponse] = useState({});
@@ -984,7 +1000,7 @@ function AdminAppeals({ theme: C }) {
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:4}}>Appeals Management</div>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:4}}>{t('appeals_mgmt')}</div>
       <div style={{fontSize:12,color:C.text3,marginBottom:12}}>{complaints.filter(c=>c.status==='pending').length} pending · {complaints.filter(c=>c.status==='reviewed').length} reviewed · {complaints.filter(c=>c.status==='resolved').length} resolved</div>
 
       <div style={{display:'flex',gap:8,marginBottom:16}}>
@@ -1031,6 +1047,7 @@ function AdminAppeals({ theme: C }) {
 
 /* ── ADMIN REGISTRATION & FEES ── */
 function AdminRegistration({ theme: C }) {
+  const { t } = useLang();
   const [reg, setReg] = useState(store.getRegistrationStatus());
   const [search, setSearch]   = useState('');
   const [, forceUpdate] = useState(0);
@@ -1051,7 +1068,7 @@ function AdminRegistration({ theme: C }) {
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>Registration & Fees</div>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('reg_fees')}</div>
 
       <Card theme={C} title="Semester Registration">
         <div style={{padding:'4px 16px 16px',display:'flex',alignItems:'center',gap:20}}>
@@ -1113,6 +1130,7 @@ function AdminRegistration({ theme: C }) {
 
 /* ── PARENTS ── */
 function AdminParents({ theme: C }) {
+  const { t } = useLang();
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({name:'',username:'',password:'demo123',email:'',studentId:''});
   const [parents, setParents] = useState(store.users.filter(u=>u.role==='parent'));
@@ -1131,7 +1149,7 @@ function AdminParents({ theme: C }) {
     <div style={{padding:'8px 20px 20px'}}>
       {createdAccount && <CredentialsModal theme={C} account={createdAccount} onClose={()=>setCreatedAccount(null)}/>}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
-        <div style={{fontSize:22,fontWeight:700,color:C.text}}>Parents ({parents.length})</div>
+        <div style={{fontSize:22,fontWeight:700,color:C.text}}>{t('parents')} ({parents.length})</div>
         <button onClick={()=>setShowAdd(true)} style={{background:C.blue3,border:'none',borderRadius:8,padding:'8px 14px',fontSize:11,fontWeight:700,color:'#fff',cursor:'pointer'}}>+ Add Parent</button>
       </div>
 
@@ -1167,6 +1185,7 @@ function AdminParents({ theme: C }) {
 
 /* ── R REPORTS ── */
 function AdminRReports({ theme: C }) {
+  const { t } = useLang();
   const [output, setOutput]   = useState('# R output will appear here...');
   const [running, setRunning] = useState('');
 
@@ -1225,7 +1244,7 @@ function AdminRReports({ theme: C }) {
 
   return (
     <div style={{ padding: '8px 20px 20px' }}>
-      <div style={{ fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 4 }}>R Analysis Reports</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t('ranalysis')}</div>
       <div style={{ fontSize: 12, color: C.text2, marginBottom: 12 }}>Run R scripts directly — no need to open R manually</div>
 
       <div style={{
@@ -1587,6 +1606,7 @@ function StudentPortfolioModal({ theme: C, student, onClose }) {
 
 /* ── EXAM SCHEDULE ── */
 function AdminExamSchedule({ theme: C }) {
+  const { t } = useLang();
   const [form, setForm] = useState({ courseId: store.courses[0]?.id||'', type:'midterm', date:'', time:'', room:'', duration:120, notes:'' });
   const [, refresh] = useState(0);
   const exams = store.getAllExams();
@@ -1612,8 +1632,8 @@ function AdminExamSchedule({ theme: C }) {
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
-      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>🗓️ Exam Schedule Management</div>
-      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Schedule exams across all courses — students and lecturers see their relevant exams</div>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>🗓️ {t('page_exams')}</div>
+      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>{t('sub_exams')}</div>
 
       <div style={{ display:'grid', gridTemplateColumns:'340px 1fr', gap:16, alignItems:'start' }}>
         {/* Form */}
@@ -1689,6 +1709,7 @@ function AdminExamSchedule({ theme: C }) {
 
 /* ── SETTINGS ── */
 function AdminSettings({ theme: C }) {
+  const { t } = useLang();
   const [settings, setSettings] = useState({
     faceRecognition: true, emotionDetection: true, autoAttendance: true,
     emailNotifications: false, weeklyReports: true, parentAccess: true,
@@ -1707,7 +1728,7 @@ function AdminSettings({ theme: C }) {
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>System Settings</div>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('settings')}</div>
       <Card theme={C} title="Feature Toggles">
         <div style={{padding:'4px 18px 18px',display:'flex',flexDirection:'column',gap:0}}>
           {items.map(({key,label,desc},i)=>(

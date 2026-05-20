@@ -38,15 +38,22 @@ function gradeColor(g,C){return g>=75?C.green:g>=50?C.amber:C.red;}
 
 export default function ParentPage({ theme: C, user, isDark, onToggleMode, onLogout }) {
   const [page, setPage] = useState('overview');
-  const { isRTL } = useLang();
+  const { isRTL, t } = useLang();
   const sid   = user.studentId || user.id || '';
   const child = store.getStudent(sid) || store.students[0];
+
+  const PARENT_PAGE_KEYS = {
+    overview:'overview', grades:'page_grades', attendance:'page_attendance',
+    exams:'page_exams', alerts:'alerts', performance:'page_performance',
+    emotions:'page_emotions', schedule:'page_schedule', riskstatus:'child_risk',
+  };
+  const parentPageTitle = PARENT_PAGE_KEYS[page] ? t(PARENT_PAGE_KEYS[page]) : (PAGE_TITLES[page] || page);
 
   return (
     <div style={{display:'flex',height:'100%',background:C.bg,overflow:'hidden', flexDirection: isRTL ? 'row-reverse' : 'row'}}>
       <Sidebar theme={C} navItems={NAV} activeId={page} onNav={setPage}/>
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
-        <Topbar theme={C} user={user} pageTitle={PAGE_TITLES[page]||page} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout}/>
+        <Topbar theme={C} user={user} pageTitle={parentPageTitle} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout}/>
         {/* Read-only banner */}
         <div style={{background:'rgba(139,92,246,0.08)',borderBottom:`1px solid rgba(139,92,246,0.2)`,padding:'6px 20px',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
           <span style={{fontSize:13}}>👁️</span>
@@ -72,6 +79,7 @@ export default function ParentPage({ theme: C, user, isDark, onToggleMode, onLog
 
 /* ── OVERVIEW ── */
 function ParentOverview({ theme: C, child }) {
+  const { t } = useLang();
   const results   = store.getStudentResults(child.id);
   const grades    = Object.values(results).map(r=>r.grade);
   const avgG      = grades.length ? +(grades.reduce((a,b)=>a+b,0)/grades.length).toFixed(1) : 0;
@@ -188,6 +196,7 @@ function ParentOverview({ theme: C, child }) {
 
 /* ── GRADES ── */
 function ParentGrades({ theme: C, child }) {
+  const { t } = useLang();
   const results = store.getStudentResults(child.id);
   const entries = Object.entries(results);
   const calcGPA = store.calculateSemesterGPA(child.id);
@@ -195,7 +204,7 @@ function ParentGrades({ theme: C, child }) {
 
   if(!entries.length) return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>Grades — {child.name}</div>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('page_grades')} — {child.name}</div>
       <div style={{textAlign:'center',paddingTop:60}}>
         <div style={{fontSize:48}}>📝</div>
         <div style={{fontSize:16,fontWeight:700,color:C.text,marginTop:8}}>No grades available yet.</div>
@@ -211,7 +220,7 @@ function ParentGrades({ theme: C, child }) {
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>Grades — {child.name}</div>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('page_grades')} — {child.name}</div>
 
       <div style={{display:'flex',gap:12,marginBottom:16}}>
         {[['Subjects Graded',grades.length,C.blue],['Average',`${avg}%`,C.amber],['Passed',passed,C.green],['Highest',`${highest}%`,C.purple]].map(([lbl,val,col],i)=>(
@@ -256,6 +265,7 @@ function ParentGrades({ theme: C, child }) {
 
 /* ── ATTENDANCE ── */
 function ParentAttendance({ theme: C, child }) {
+  const { t } = useLang();
   const myCourses = store.getStudentCourses(child.id);
   const attRecs   = store.getStudentAttendance(child.id);
   const rate      = child.attendanceRate || 0;
@@ -279,8 +289,8 @@ function ParentAttendance({ theme: C, child }) {
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:4}}>Attendance — {child.name}</div>
-      <div style={{fontSize:12,color:C.text2,marginBottom:12}}>Your child's attendance records this semester</div>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:4}}>{t('page_attendance')} — {child.name}</div>
+      <div style={{fontSize:12,color:C.text2,marginBottom:12}}>{t('sub_attendance')}</div>
 
       <div style={{display:'flex',gap:12,marginBottom:12}}>
         <StatCard theme={C} label="Attendance Rate"  value={`${rate}%`}         sub="This semester"        icon="✅" accent="green"/>
@@ -329,6 +339,7 @@ function ParentAttendance({ theme: C, child }) {
 
 /* ── EXAM SCHEDULE ── */
 function ParentExams({ theme: C, child }) {
+  const { t } = useLang();
   const exams = store.getStudentExams(child.id);
   const today = new Date().toISOString().slice(0,10);
   const TYPE_CFG = {
@@ -342,8 +353,8 @@ function ParentExams({ theme: C, child }) {
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:4}}>Exam Schedule — {child.name}</div>
-      <div style={{fontSize:12,color:C.text2,marginBottom:16}}>All scheduled exams for your child's enrolled courses</div>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:4}}>{t('page_exams')} — {child.name}</div>
+      <div style={{fontSize:12,color:C.text2,marginBottom:16}}>{t('sub_exams')}</div>
 
       <div style={{display:'flex',gap:12,marginBottom:16}}>
         {[['Upcoming',upcoming.length,C.blue],['Past',past.length,C.text3],['Total',exams.length,C.green]].map(([lbl,val,col],i)=>(
@@ -394,6 +405,7 @@ function ParentExams({ theme: C, child }) {
 
 /* ── ACADEMIC ALERTS ── */
 function ParentAlerts({ theme: C, child }) {
+  const { t } = useLang();
   const allAlerts = (store.systemAlerts||[]).filter(a=>a.studentId===child.id);
   const unread    = allAlerts.filter(a=>!a.read).length;
 
@@ -408,7 +420,7 @@ function ParentAlerts({ theme: C, child }) {
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:4}}>Academic Alerts — {child.name}</div>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:4}}>{t('alerts')} — {child.name}</div>
       <div style={{fontSize:12,color:C.text2,marginBottom:16}}>
         System notifications about your child's academic activity · {unread} unread
       </div>
@@ -450,6 +462,7 @@ function ParentAlerts({ theme: C, child }) {
 
 /* ── PERFORMANCE ── */
 function ParentPerformance({ theme: C, child }) {
+  const { t } = useLang();
   const myCourses = store.getStudentCourses(child.id);
   const results   = store.getStudentResults(child.id);
   const idHash    = child.id.split('').reduce((a,c)=>a+c.charCodeAt(0),0);
@@ -466,7 +479,7 @@ function ParentPerformance({ theme: C, child }) {
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>Performance — {child.name}</div>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('page_performance')} — {child.name}</div>
       <div style={{display:'flex',gap:12,marginBottom:12}}>
         <StatCard theme={C} label="GPA"            value={child.gpa}              sub="Current semester"    icon="📈" accent="blue"/>
         <StatCard theme={C} label="Avg Engagement" value={`${child.engagement}%`} sub="In class"            icon="🧠" accent="green"/>
@@ -491,9 +504,10 @@ function ParentPerformance({ theme: C, child }) {
 
 /* ── EMOTIONS ── */
 function ParentEmotions({ theme: C, child }) {
+  const { t } = useLang();
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>Emotions — {child.name}</div>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('page_emotions')} — {child.name}</div>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
         <Card theme={C} title="Emotion Frequency">
           <div style={{padding:'4px 12px 12px'}}>
@@ -528,11 +542,12 @@ function ParentEmotions({ theme: C, child }) {
 
 /* ── SCHEDULE ── */
 function ParentSchedule({ theme: C, child }) {
+  const { t } = useLang();
   const myCourses = store.getStudentCourses(child.id);
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>Schedule — {child.name}</div>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('page_schedule')} — {child.name}</div>
       <Card theme={C} title={`Enrolled Courses (${myCourses.length})`}>
         <div style={{padding:'4px 14px 14px',display:'flex',flexDirection:'column',gap:8}}>
           {myCourses.length===0
@@ -562,6 +577,7 @@ function ParentSchedule({ theme: C, child }) {
 
 /* ── CHILD RISK STATUS ── */
 function ParentChildRisk({ theme: C, child }) {
+  const { t } = useLang();
   const sid = child?.id || '';
 
   function calcRisk() {
@@ -642,7 +658,7 @@ function ParentChildRisk({ theme: C, child }) {
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:4}}>🚨 Child Risk Status</div>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:4}}>🚨 {t('child_risk')}</div>
       <div style={{fontSize:12,color:C.text2,marginBottom:16}}>
         AI early-warning indicators for {child?.name}
       </div>

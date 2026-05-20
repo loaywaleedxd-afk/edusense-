@@ -170,20 +170,21 @@ export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLog
 
 /* ── DASHBOARD ── */
 function DocDashboard({ theme: C, doctor, myCourses }) {
+  const { t, isRTL } = useLang();
   const enrolled = myCourses.flatMap(c=>store.getEnrolledStudents(c.id));
   const uniqueStudents = [...new Map(enrolled.map(s=>[s.id,s])).values()];
   const presentToday = uniqueStudents.filter(s=>s.present).length;
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:4}}>Dashboard</div>
-      <div style={{fontSize:12,color:C.text2,marginBottom:12}}>Your teaching overview</div>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:4}}>{t('dashboard')}</div>
+      <div style={{fontSize:12,color:C.text2,marginBottom:12}}>{t('doc_overview')}</div>
 
       <div style={{display:'flex',gap:12,marginBottom:12}}>
-        <StatCard theme={C} label="My Courses"    value={myCourses.length} sub="This semester"   icon="📚" accent="blue"/>
-        <StatCard theme={C} label="My Students"   value={uniqueStudents.length} sub="Enrolled"   icon="👥" accent="purple"/>
-        <StatCard theme={C} label="Present Today" value={presentToday}     sub="In sessions"    icon="✅" accent="green"/>
-        <StatCard theme={C} label="Avg Engagement"value={`${doctor.engagement}%`} sub="Across all courses" icon="🧠" accent="amber"/>
+        <StatCard theme={C} label={t('lectures')}       value={myCourses.length} sub={t('semester')}   icon="📚" accent="blue"/>
+        <StatCard theme={C} label={t('students')}       value={uniqueStudents.length} sub={t('enrolled_students')}   icon="👥" accent="purple"/>
+        <StatCard theme={C} label={t('present_today')}  value={presentToday}     sub={t('live_session')}    icon="✅" accent="green"/>
+        <StatCard theme={C} label={t('avg_engagement')} value={`${doctor.engagement}%`} sub={t('analytics')} icon="🧠" accent="amber"/>
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'3fr 2fr',gap:12,marginBottom:12}}>
@@ -219,6 +220,7 @@ function DocDashboard({ theme: C, doctor, myCourses }) {
 
 /* ── LIVE SESSION ── */
 function DocLive({ theme: C, myCourses }) {
+  const { t } = useLang();
   const [selCourse, setSelCourse]   = useState(myCourses[0]?.id||'');
   const [detections, setDetections] = useState(0);
   const [lastMarked, setLastMarked] = useState('');
@@ -287,7 +289,7 @@ function DocLive({ theme: C, myCourses }) {
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
         <div>
           <div style={{fontSize:22,fontWeight:700,color:C.text,display:'flex',alignItems:'center',gap:8}}>
-            📷 Live Session
+            📷 {t('live')}
             <span className="live-dot" style={{color:C.red,fontSize:12}}>● LIVE</span>
           </div>
           <div style={{fontSize:12,color:C.text2}}>Real-time classroom monitoring</div>
@@ -375,6 +377,7 @@ function DocLive({ theme: C, myCourses }) {
 
 /* ── ATTENDANCE ── */
 function DocAttendance({ theme: C, myCourses }) {
+  const { t } = useLang();
   const [selCourse, setSelCourse] = useState(myCourses[0]?.id||'');
   const [week, setWeek]           = useState(1);
   const [tick, setTick]           = useState(0);
@@ -437,7 +440,7 @@ function DocAttendance({ theme: C, myCourses }) {
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:4}}>Attendance Management</div>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:4}}>{t('attendance')}</div>
       <div style={{fontSize:12,color:C.text2,marginBottom:12}}>Click a student row to toggle · Generate QR for student self check-in · Review excuses</div>
 
       {/* Controls */}
@@ -623,9 +626,10 @@ function DocAttendance({ theme: C, myCourses }) {
 
 /* ── LECTURES ── */
 function DocLectures({ theme: C, myCourses }) {
+  const { t } = useLang();
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>My Lectures</div>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('lectures')}</div>
 
       {(() => {
         const totalStudents = myCourses.reduce((a,c)=>a+c.enrolledCount,0);
@@ -718,6 +722,7 @@ async function sendWithdrawalEmail(studentEmail, studentName, studentId, courseN
 }
 
 function DocStudents({ theme: C, myCourses, doctor }) {
+  const { t } = useLang();
   const [selCourse, setSelCourse] = useState('all');
   const [search, setSearch] = useState('');
   const [portfolioStudent, setPortfolioStudent] = useState(null);
@@ -845,7 +850,7 @@ function DocStudents({ theme: C, myCourses, doctor }) {
         </div>
       )}
 
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>Students</div>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('students')}</div>
 
       <div style={{display:'flex',gap:12,marginBottom:12,flexWrap:'wrap'}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search students..."
@@ -895,6 +900,7 @@ function DocStudents({ theme: C, myCourses, doctor }) {
 
 /* ── EXAM RESULTS (GRADES) ── */
 function DocGrades({ theme: C, user, doctor, myCourses }) {
+  const { t } = useLang();
   const [selCourse, setSelCourse]   = useState(myCourses[0]?.id||'');
   const [search, setSearch]         = useState('');
   const [editStudent, setEditStudent] = useState(null);
@@ -965,7 +971,7 @@ function DocGrades({ theme: C, user, doctor, myCourses }) {
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:4}}>Exam Results</div>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:4}}>{t('exam_results')}</div>
 
       <div style={{display:'flex',gap:12,marginBottom:12,flexWrap:'wrap',alignItems:'center'}}>
         <select value={selCourse} onChange={e=>{setSelCourse(e.target.value);setShowWeights(false);setShowCalc(null);}}
@@ -1146,6 +1152,7 @@ function DocGrades({ theme: C, user, doctor, myCourses }) {
 
 /* ── COMMUNITY CHAT ── */
 function DocChat({ theme: C, user, doctor, myCourses }) {
+  const { t } = useLang();
   const [selIdx, setSelIdx] = useState(0);
   const [msg, setMsg] = useState('');
   const [isAnnounce, setIsAnnounce] = useState(false);
@@ -1163,7 +1170,7 @@ function DocChat({ theme: C, user, doctor, myCourses }) {
   return (
     <div style={{display:'flex',flexDirection:'column',height:'calc(100vh - 64px)'}}>
       <div style={{padding:'18px 24px 8px',display:'flex',alignItems:'center',gap:12}}>
-        <div style={{fontSize:22,fontWeight:700,color:C.text,flex:1}}>💬 Community Chat</div>
+        <div style={{fontSize:22,fontWeight:700,color:C.text,flex:1}}>💬 {t('page_chat')}</div>
         <select value={selIdx} onChange={e=>setSelIdx(parseInt(e.target.value))}
           style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:'7px 12px',fontSize:12,color:C.text}}>
           {myCourses.map((c,i)=><option key={i} value={i}>{c.name} ({c.code})</option>)}
@@ -1314,6 +1321,7 @@ Only include weeks with difficulty score >= 30. Return only the JSON array, no o
 }
 
 function DocTopicDetector({ theme: C, doctor, myCourses }) {
+  const { t } = useLang();
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const [weekData, setWeekData] = useState([]);
@@ -1340,7 +1348,7 @@ function DocTopicDetector({ theme: C, doctor, myCourses }) {
     <div style={{padding:'8px 20px 20px'}}>
       <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:16,flexWrap:'wrap',gap:12}}>
         <div>
-          <div style={{fontSize:22,fontWeight:700,color:C.text}}>🎯 AI Difficult Topic Detector</div>
+          <div style={{fontSize:22,fontWeight:700,color:C.text}}>🎯 {t('page_detector')}</div>
           <div style={{fontSize:12,color:C.text3,marginTop:2}}>AI analyzes weekly emotion data to find which lectures students struggled with most</div>
         </div>
         <button onClick={runDetector} disabled={loading}
@@ -1450,6 +1458,7 @@ function DocTopicDetector({ theme: C, doctor, myCourses }) {
 }
 
 function DocAnalytics({ theme: C }) {
+  const { t } = useLang();
   const avgEng = store.students.length ? Math.round(store.students.reduce((a,s)=>a+s.engagement,0)/store.students.length) : 0;
   const avgAtt = store.students.length ? Math.round(store.students.reduce((a,s)=>a+s.attendanceRate,0)/store.students.length) : 0;
   const happyPct = store.students.length ? Math.round(store.students.filter(s=>['happy','neutral'].includes(s.emotion)).length/store.students.length*100) : 0;
@@ -1457,7 +1466,7 @@ function DocAnalytics({ theme: C }) {
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>Analytics</div>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('analytics')}</div>
 
       <div style={{display:'flex',gap:12,marginBottom:12}}>
         <StatCard theme={C} label="Avg Engagement" value={`${avgEng}%`} sub="Across all students" icon="🧠" accent="blue"/>
@@ -1501,6 +1510,7 @@ function DocAnalytics({ theme: C }) {
 
 /* ── ALERTS ── */
 function DocAlerts({ theme: C, user }) {
+  const { t } = useLang();
   const [, refresh] = useState(0);
   const alerts = store.getUserNotifications(user);
   const unread = alerts.filter(a=>!a.read).length;
@@ -1515,7 +1525,7 @@ function DocAlerts({ theme: C, user }) {
   return (
     <div style={{padding:'8px 20px 20px'}}>
       <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:12}}>
-        <div style={{fontSize:22,fontWeight:700,color:C.text}}>🔔 Alerts</div>
+        <div style={{fontSize:22,fontWeight:700,color:C.text}}>🔔 {t('alerts')}</div>
         {unread>0 && <span style={{background:'#ef4444',color:'#fff',borderRadius:20,padding:'2px 10px',fontSize:11,fontWeight:800}}>{unread} new</span>}
         <div style={{flex:1}}/>
         {unread>0 && <button onClick={()=>{store.markAllUserAlertsRead(user);refresh(n=>n+1);}}
@@ -1721,6 +1731,7 @@ function StudentPortfolioModal({ theme: C, student, onClose }) {
 
 /* ── R ANALYSIS REPORTS ── */
 function DocRAnalysis({ theme: C }) {
+  const { t } = useLang();
   const [output, setOutput]   = useState('# R output will appear here...');
   const [running, setRunning] = useState('');
 
@@ -1782,7 +1793,7 @@ function DocRAnalysis({ theme: C }) {
 
   return (
     <div style={{ padding: '8px 20px 20px' }}>
-      <div style={{ fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 4 }}>R Analysis Reports</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 4 }}>{t('ranalysis')}</div>
       <div style={{ fontSize: 12, color: C.text2, marginBottom: 12 }}>Run R scripts directly — no need to open R manually</div>
 
       {/* R detected banner */}
@@ -1855,6 +1866,7 @@ function DocRAnalysis({ theme: C }) {
 
 /* ── DOC APPEALS ── */
 function DocAppeals({ theme: C, doctor, myCourses }) {
+  const { t } = useLang();
   const [complaints, setComplaints] = useState(store.getDoctorComplaints(doctor.id));
   const [filter, setFilter] = useState('all');
   const [response, setResponse] = useState({});
@@ -1873,7 +1885,7 @@ function DocAppeals({ theme: C, doctor, myCourses }) {
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>Student Appeals ({complaints.filter(c=>c.status==='pending').length} pending)</div>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('page_appeals')} ({complaints.filter(c=>c.status==='pending').length} {t('pending')})</div>
 
       <div style={{display:'flex',gap:8,marginBottom:16}}>
         {['all','pending','reviewed','resolved'].map(s=>(
@@ -1918,6 +1930,7 @@ function DocAppeals({ theme: C, doctor, myCourses }) {
 
 /* ── ANNOUNCEMENTS ── */
 function DocAnnouncements({ theme: C, doctor, myCourses }) {
+  const { t } = useLang();
   const [selCourse, setSelCourse] = useState(myCourses[0]?.id || '');
   const [form, setForm] = useState({ title:'', body:'' });
   const [posted, setPosted] = useState(false);
@@ -1942,7 +1955,7 @@ function DocAnnouncements({ theme: C, doctor, myCourses }) {
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
-      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>📢 Announcements</div>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>📢 {t('page_announcements_doc')}</div>
       <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Post announcements to enrolled students — they get a bell notification instantly</div>
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, alignItems:'start' }}>
@@ -2006,6 +2019,7 @@ function DocAnnouncements({ theme: C, doctor, myCourses }) {
 
 /* ── EXAM SCHEDULE ── */
 function DocExamSchedule({ theme: C, doctor, myCourses }) {
+  const { t } = useLang();
   const [form, setForm] = useState({ courseId: myCourses[0]?.id||'', type:'midterm', date:'', time:'', room:'', duration:120, notes:'' });
   const [, refresh] = useState(0);
   const exams = store.getDoctorExams(doctor.id);
@@ -2026,8 +2040,8 @@ function DocExamSchedule({ theme: C, doctor, myCourses }) {
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
-      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>🗓️ Exam Schedule</div>
-      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Schedule exams for your courses — students will see them in their exam calendar</div>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>🗓️ {t('page_exams')}</div>
+      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>{t('sub_exams')}</div>
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1.6fr', gap:16, alignItems:'start' }}>
         {/* Add form */}
@@ -2092,6 +2106,7 @@ function DocExamSchedule({ theme: C, doctor, myCourses }) {
 
 /* ── STUDY RESOURCES ── */
 function DocResources({ theme: C, doctor, myCourses }) {
+  const { t } = useLang();
   const weeks = Array.from({length:14},(_,i)=>i+1);
   const [selCourse, setSelCourse] = useState(myCourses[0]?.id||'');
   const [selWeek,   setSelWeek]   = useState(1);
@@ -2138,8 +2153,8 @@ function DocResources({ theme: C, doctor, myCourses }) {
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
-      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>📖 Study Resources</div>
-      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Attach links, PDFs, videos, Word docs, PowerPoints, or images per lecture week</div>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>📖 {t('page_resources')}</div>
+      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>{t('sub_resources')}</div>
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:20 }}>
         {/* Add form */}
@@ -2289,6 +2304,7 @@ function DocResources({ theme: C, doctor, myCourses }) {
 
 /* ── ASSIGNMENTS ── */
 function DocAssignments({ theme: C, doctor, myCourses }) {
+  const { t } = useLang();
   const [selCourse, setSelCourse] = useState(myCourses[0]?.id||'');
   const [form, setForm] = useState({ title:'', description:'', deadline:'', maxScore:'100', attachmentData:null, attachmentName:'', attachmentSize:0 });
   const [attachError, setAttachError] = useState('');
@@ -2331,8 +2347,8 @@ function DocAssignments({ theme: C, doctor, myCourses }) {
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
-      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>📋 Assignments</div>
-      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>Create assignments with file attachments, view submissions, and grade students</div>
+      <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:4 }}>📋 {t('page_assignments')}</div>
+      <div style={{ fontSize:12, color:C.text2, marginBottom:16 }}>{t('sub_assignments')}</div>
 
       {/* Course selector */}
       <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
@@ -2521,15 +2537,16 @@ function DocAssignments({ theme: C, doctor, myCourses }) {
 
 /* ── MOODLE ── */
 function DocMoodle({ theme: C }) {
+  const { t } = useLang();
   return (
     <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'80vh'}}>
       <div style={{textAlign:'center'}}>
         <div style={{width:120,height:120,borderRadius:'50%',background:'#F98012',margin:'0 auto 16px',display:'flex',alignItems:'center',justifyContent:'center',fontSize:64,fontWeight:700,color:'#fff'}}>M</div>
-        <div style={{fontSize:28,fontWeight:700,color:C.text}}>Moodle</div>
+        <div style={{fontSize:28,fontWeight:700,color:C.text}}>{t('page_moodle')}</div>
         <div style={{fontSize:13,color:C.text2,margin:'4px 0 20px'}}>University Learning Management System</div>
         <button onClick={()=>alert('Moodle integration coming soon!')}
           style={{background:'#F98012',border:'none',borderRadius:12,padding:'13px 32px',fontSize:14,fontWeight:700,color:'#fff',cursor:'pointer'}}>
-          🌐  Open Moodle
+          🌐  {t('page_moodle')}
         </button>
         <div style={{fontSize:11,color:C.text3,marginTop:12}}>⚠️  Prototype — not connected</div>
       </div>
