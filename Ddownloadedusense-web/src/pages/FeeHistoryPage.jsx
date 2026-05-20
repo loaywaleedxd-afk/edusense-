@@ -1,8 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import store from '../dataStore';
 import { get } from '../api.js';
 import { useLang } from '../context/LanguageContext';
+
+/* ── Admin override persistence ── */
+function loadFeeOverrides(stuId) {
+  try { return JSON.parse(localStorage.getItem(`es_fees_${stuId}`) || '{}'); } catch { return {}; }
+}
+function saveFeeOverrides(stuId, overrides) {
+  localStorage.setItem(`es_fees_${stuId}`, JSON.stringify(overrides));
+}
 
 /* ── Local fee data generator ── */
 function buildLocalFees(stuId) {
@@ -85,25 +93,74 @@ function downloadReceipt(record, stuName) {
   URL.revokeObjectURL(url);
 }
 
-export default function FeeHistoryPage({ theme: C, stu, user }) {
-  const { t } = useLang();
-  const [data, setData] = useState(() => buildLocalFees(stu?.id || ''));
-  const [tab, setTab]   = useState('fees'); // 'fees' | 'aid'
+export default function FeeHistoryPage({ theme: C, stu, user, role }) {
+  const { t, isRTL } = useLang();
+  const isAdmin = role === 'admin';
+
+  // Admin student picker
+  const [selectedStuId, setSelectedStuId] = useState(
+    isAdmin ? (store.students[0]?.id || '') : (stu?.id || '')
+  );
+  const activeStu = isAdmin
+    ? store.students.find(s => s.id === selectedStuId) || store.students[0]
+    : (stu || user);
+
+  const [feeOverrides, setFeeOverrides] = useState(() =>
+    isAdmin ? loadFeeOverrides(selectedStuId) : {}
+  );
+
+  const reloadOverrides = useCallback((id) => {
+    setFeeOverrides(loadFeeOverrides(id));
+  }, []);
+
+  useEffect(() => {
+    if (isAdmin) reloadOverrides(selectedStuId);
+  }, [selectedStuId, isAdmin, reloadOverrides]);
+
+  const [data, setData] = useState(() => buildLocalFees(activeStu?.id || ''));
+  const [tab, setTab]   = useState('fees');
   const [fromAPI, setFromAPI] = useState(false);
 
   useEffect(() => {
-    get(`/api/fees/${stu?.id}`)
-      .then(res => {
-        if (res?.records) { setData(res); setFromAPI(true); }
-      })
+    const id = isAdmin ? selectedStuId : stu?.id;
+    setData(buildLocalFees(id || ''));
+    setFromAPI(false);
+    get(`/api/fees/${id}`)
+      .then(res => { if (res?.records) { setData(res); setFromAPI(true); } })
       .catch(() => {});
-  }, [stu?.id]);
+  }, [selectedStuId, stu?.id, isAdmin]);
 
-  const { records, aid, totalFees, totalPaid, totalAid, balance } = data;
+  // Merge overrides into records
+  const mergedRecords = data.records.map(r => {
+    const ov = feeOverrides[r.id];
+    return ov ? { ...r, ...ov } : r;
+  });
+
+  function markAsPaid(recordId) {
+    const today = new Date();
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const paidDate = `${months[today.getMonth()]} ${today.getDate()}, ${today.getFullYear()}`;
+    const newOverrides = { ...feeOverrides, [recordId]: { status: 'paid', paidDate, method: 'Admin Override' } };
+    saveFeeOverrides(selectedStuId, newOverrides);
+    setFeeOverrides(newOverrides);
+  }
+
+  function revertToPending(recordId) {
+    const newOverrides = { ...feeOverrides };
+    delete newOverrides[recordId];
+    saveFeeOverrides(selectedStuId, newOverrides);
+    setFeeOverrides(newOverrides);
+  }
+
+  const records = mergedRecords;
+  const { aid, totalFees } = data;
+  const totalAid  = data.totalAid;
+  const totalPaid = records.filter(r => r.status === 'paid').reduce((a, r) => a + r.amount, 0);
+  const balance   = +(totalFees - totalPaid - totalAid).toFixed(2);
 
   return (
     <div style={{ padding: '8px 20px 40px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 22, fontWeight: 700, color: C.text }}>💳 {t('fee_title')}</div>
         <div style={{
           fontSize: 9, padding: '2px 8px', borderRadius: 20, fontWeight: 700,
@@ -113,8 +170,38 @@ export default function FeeHistoryPage({ theme: C, stu, user }) {
         }}>
           {fromAPI ? '🟢 Live' : '🟡 Demo data'}
         </div>
+        {isAdmin && (
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label style={{ fontSize: 11, color: C.text2, fontWeight: 600 }}>Student:</label>
+            <select
+              value={selectedStuId}
+              onChange={e => setSelectedStuId(e.target.value)}
+              style={{
+                padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+                background: C.card, color: C.text, border: `1px solid ${C.border}`,
+                cursor: 'pointer', outline: 'none',
+              }}
+            >
+              {store.students.map(s => (
+                <option key={s.id} value={s.id}>{s.name} — {s.id}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
-      <div style={{ fontSize: 12, color: C.text2, marginBottom: 20 }}>{t('fee_sub')}</div>
+      {isAdmin && activeStu && (
+        <div style={{
+          fontSize: 11, color: C.text2, marginBottom: 12,
+          padding: '8px 14px', background: C.card, borderRadius: 10,
+          border: `1px solid ${C.border}`, display: 'inline-flex', gap: 16,
+        }}>
+          <span>🎓 <b>{activeStu.name}</b></span>
+          <span>🏛️ {activeStu.dept}</span>
+          <span>📅 Year {activeStu.year}</span>
+          <span>🆔 {activeStu.id}</span>
+        </div>
+      )}
+      {!isAdmin && <div style={{ fontSize: 12, color: C.text2, marginBottom: 20 }}>{t('fee_sub')}</div>}
 
       {/* ── Summary cards ── */}
       <div style={{ display: 'flex', gap: 14, marginBottom: 24, flexWrap: 'wrap' }}>
@@ -241,9 +328,9 @@ export default function FeeHistoryPage({ theme: C, stu, user }) {
                 </div>
               </div>
 
-              {rec.status === 'paid' && (
+              {rec.status === 'paid' && !isAdmin && (
                 <button
-                  onClick={() => downloadReceipt(rec, stu?.name || user?.name || 'Student')}
+                  onClick={() => downloadReceipt(rec, activeStu?.name || 'Student')}
                   title={t('download_receipt')}
                   style={{
                     flexShrink: 0, background: C.bg3, border: `1px solid ${C.border}`,
@@ -252,6 +339,31 @@ export default function FeeHistoryPage({ theme: C, stu, user }) {
                   }}
                 >
                   ⬇️ Receipt
+                </button>
+              )}
+              {isAdmin && rec.status === 'pending' && (
+                <button
+                  onClick={() => markAsPaid(rec.id)}
+                  style={{
+                    flexShrink: 0, background: '#10b98120', border: '1px solid #10b98150',
+                    borderRadius: 8, padding: '6px 12px', fontSize: 11,
+                    fontWeight: 700, color: '#10b981', cursor: 'pointer', whiteSpace: 'nowrap',
+                  }}
+                >
+                  ✅ Mark Paid
+                </button>
+              )}
+              {isAdmin && rec.status === 'paid' && feeOverrides[rec.id] && (
+                <button
+                  onClick={() => revertToPending(rec.id)}
+                  title="Revert to pending"
+                  style={{
+                    flexShrink: 0, background: '#f59e0b20', border: '1px solid #f59e0b50',
+                    borderRadius: 8, padding: '6px 12px', fontSize: 11,
+                    fontWeight: 700, color: '#f59e0b', cursor: 'pointer', whiteSpace: 'nowrap',
+                  }}
+                >
+                  ↩️ Revert
                 </button>
               )}
             </motion.div>

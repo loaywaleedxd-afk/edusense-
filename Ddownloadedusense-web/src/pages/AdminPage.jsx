@@ -1,6 +1,8 @@
 import { useState, useRef } from 'react';
 import { useLang } from '../context/LanguageContext';
 import AcademicCalendarPage from './AcademicCalendarPage';
+import GraduationRoadmapPage from './GraduationRoadmapPage';
+import FeeHistoryPage from './FeeHistoryPage';
 import Sidebar from '../components/Sidebar';
 import Topbar  from '../components/Topbar';
 import AnimatedPage from '../components/AnimatedPage';
@@ -45,6 +47,8 @@ const NAV = [
   {id:'__advising',   icon:'🎓', label:'Advising'},
   {id:'__atrisk',     icon:'🚨', label:'Early Warning'},
   {id:'calendar',     icon:'📅', label:'Academic Calendar'},
+  {id:'roadmap',      icon:'🗺️', label:'Graduation Roadmap'},
+  {id:'feehistory',   icon:'💳', label:'Fee History'},
 ];
 
 const PAGE_TITLES = {
@@ -66,6 +70,8 @@ export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogo
     appeals:'appeals', registration:'reg_fees', examschedule:'page_exams',
     parents:'parents', r_reports:'ranalysis', settings:'settings',
     calendar:'academic_calendar',
+    roadmap:'grad_roadmap',
+    feehistory:'fee_title',
   };
 
   function handleNav(id) {
@@ -97,6 +103,8 @@ export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogo
             {page==='r_reports'   && <AdminRReports theme={C}/>}
             {page==='settings'    && <AdminSettings theme={C}/>}
             {page==='calendar'    && <AcademicCalendarPage theme={C} role="admin"/>}
+            {page==='roadmap'     && <GraduationRoadmapPage theme={C} role="admin"/>}
+            {page==='feehistory'  && <FeeHistoryPage theme={C} role="admin"/>}
           </AnimatedPage>
         </div>
       </div>
