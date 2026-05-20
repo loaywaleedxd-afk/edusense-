@@ -12,6 +12,7 @@ import ExamProctoringPage    from './pages/ExamProctoringPage';
 import AdvisingPage          from './pages/AdvisingPage';
 import AtRiskPage            from './pages/AtRiskPage';
 import NotificationToast     from './components/NotificationToast';
+import OnboardingTour        from './components/OnboardingTour';
 import store                 from './dataStore';
 
 export default function App() {
@@ -104,6 +105,7 @@ export default function App() {
       )}
       {user && <ChatWidget user={user} />}
       {user && <NotificationToast user={user} />}
+      {user && <OnboardingTour user={user} theme={C} />}
 
       {/* ── Full-screen overlay pages ── */}
       <AnimatePresence>

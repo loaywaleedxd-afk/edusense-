@@ -103,6 +103,10 @@ class DataStore {
     this.assignments = [];
     this.submissions = [];
     this.qrSessions = {};
+    this.auditLog = [];
+    this.gradeAppeals = [];
+    this.officeSlots = [];
+    this.officeBookings = [];
   }
 
   _loadStudents(){
@@ -349,6 +353,140 @@ class DataStore {
     return `/student_photos/${emailId}.jpg`;
   }
 
+  // ── AUDIT LOG ─────────────────────────────────────────────────────────────
+  _addAudit(action, actorRole, actorName, details){
+    if(!this.auditLog) this.auditLog=[];
+    this.auditLog.unshift({
+      id:`AUD${Date.now()}_${Math.random().toString(36).slice(2,5)}`,
+      action, actorRole, actorName: actorName||'System', details: details||'',
+      timestamp: new Date().toISOString(),
+    });
+    if(this.auditLog.length>500) this.auditLog=this.auditLog.slice(0,500);
+  }
+
+  getAuditLog(filters={}){
+    if(!this.auditLog) return [];
+    let list=[...this.auditLog];
+    if(filters.role) list=list.filter(a=>a.actorRole===filters.role);
+    if(filters.action) list=list.filter(a=>a.action===filters.action);
+    if(filters.search) {
+      const q=filters.search.toLowerCase();
+      list=list.filter(a=>
+        (a.actorName||'').toLowerCase().includes(q)||
+        (a.details||'').toLowerCase().includes(q)||
+        (a.action||'').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }
+
+  // ── GRADE APPEALS ─────────────────────────────────────────────────────────
+  addGradeAppeal(data){
+    if(!this.gradeAppeals) this.gradeAppeals=[];
+    const appeal={
+      id:`GA${Date.now()}`,
+      studentId:data.studentId||'', studentName:data.studentName||'',
+      courseId:data.courseId||'', courseName:data.courseName||'',
+      doctorId:data.doctorId||'',
+      currentGrade:data.currentGrade??null, requestedGrade:data.requestedGrade??null,
+      reason:data.reason||'',
+      status:'pending',
+      doctorResponse:'', doctorDecision:'',
+      adminResponse:'', adminDecision:'',
+      createdAt:new Date().toISOString(),
+      updatedAt:new Date().toISOString(),
+    };
+    this.gradeAppeals.push(appeal);
+    this._addAudit('grade_appeal_submitted', 'student', data.studentName, `Appeal for ${data.courseName}: ${data.currentGrade}% → ${data.requestedGrade}%`);
+    this._persist(); return appeal;
+  }
+
+  updateGradeAppeal(id, updates){
+    if(!this.gradeAppeals) this.gradeAppeals=[];
+    const appeal=this.gradeAppeals.find(a=>a.id===id);
+    if(appeal){
+      Object.assign(appeal, updates, {updatedAt:new Date().toISOString()});
+      this._persist(); return appeal;
+    }
+    return null;
+  }
+
+  getGradeAppeals(filters={}){
+    if(!this.gradeAppeals) return [];
+    let list=[...this.gradeAppeals];
+    if(filters.studentId) list=list.filter(a=>a.studentId===filters.studentId);
+    if(filters.doctorId)  list=list.filter(a=>a.doctorId===filters.doctorId);
+    if(filters.status)    list=list.filter(a=>a.status===filters.status);
+    return list.sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  }
+
+  // ── OFFICE SLOTS & BOOKINGS ───────────────────────────────────────────────
+  addOfficeSlot(data){
+    if(!this.officeSlots) this.officeSlots=[];
+    const slot={
+      id:`OS${Date.now()}`,
+      doctorId:data.doctorId||'', doctorName:data.doctorName||'',
+      day:data.day||'Monday', time:data.time||'09:00',
+      location:data.location||'Office', maxStudents:parseInt(data.maxStudents)||1,
+      notes:data.notes||'', available:true,
+      createdAt:new Date().toISOString(),
+    };
+    this.officeSlots.push(slot);
+    this._persist(); return slot;
+  }
+
+  deleteOfficeSlot(id){
+    if(!this.officeSlots) return false;
+    const n=this.officeSlots.length;
+    this.officeSlots=this.officeSlots.filter(s=>s.id!==id);
+    if(this.officeSlots.length<n){this._persist();return true;} return false;
+  }
+
+  bookOfficeSlot(slotId, studentId, studentName){
+    if(!this.officeBookings) this.officeBookings=[];
+    const slot=this.officeSlots?.find(s=>s.id===slotId);
+    if(!slot) return null;
+    const existing=this.officeBookings.find(b=>b.slotId===slotId&&b.studentId===studentId&&b.status==='confirmed');
+    if(existing) return existing;
+    const booking={
+      id:`OB${Date.now()}`, slotId, studentId, studentName,
+      status:'confirmed', bookedAt:new Date().toISOString(),
+    };
+    this.officeBookings.push(booking);
+    this.addAlert({alertKind:'officehours',type:'info',studentId,
+      title:`Office Hours Booked — ${slot.doctorName}`,
+      message:`You booked a ${slot.day} ${slot.time} slot at ${slot.location}.`});
+    this.addAlert({alertKind:'officehours',type:'info',doctorId:slot.doctorId,
+      title:`New Booking — ${studentName}`,
+      message:`${studentName} booked your ${slot.day} ${slot.time} office hour slot.`});
+    this._persist(); return booking;
+  }
+
+  cancelBooking(bookingId){
+    const b=this.officeBookings?.find(x=>x.id===bookingId);
+    if(b){b.status='cancelled';this._persist();return true;} return false;
+  }
+
+  getOfficeSlots(doctorId){
+    if(!this.officeSlots) return [];
+    return doctorId ? this.officeSlots.filter(s=>s.doctorId===doctorId) : this.officeSlots;
+  }
+
+  getDoctorBookings(doctorId){
+    if(!this.officeBookings||!this.officeSlots) return [];
+    const slots=new Set(this.officeSlots.filter(s=>s.doctorId===doctorId).map(s=>s.id));
+    return this.officeBookings.filter(b=>slots.has(b.slotId)).map(b=>({
+      ...b, slot:this.officeSlots.find(s=>s.id===b.slotId),
+    }));
+  }
+
+  getStudentBookings(studentId){
+    if(!this.officeBookings) return [];
+    return this.officeBookings.filter(b=>b.studentId===studentId).map(b=>({
+      ...b, slot:(this.officeSlots||[]).find(s=>s.id===b.slotId),
+    }));
+  }
+
   _loadPersisted(){
     try {
       const raw = localStorage.getItem('edusense_store');
@@ -386,6 +524,10 @@ class DataStore {
       if(data.courseResources) this.courseResources = data.courseResources;
       if(data.assignments) this.assignments = data.assignments;
       if(data.submissions) this.submissions = data.submissions;
+      if(data.auditLog) this.auditLog = data.auditLog;
+      if(data.gradeAppeals) this.gradeAppeals = data.gradeAppeals;
+      if(data.officeSlots) this.officeSlots = data.officeSlots;
+      if(data.officeBookings) this.officeBookings = data.officeBookings;
     } catch(e){ console.warn('DataStore load error',e); }
     // Remove old QR key from previous code versions so users never need to clear it manually
     try { localStorage.removeItem('edusense_qr'); } catch(e){}
@@ -420,6 +562,10 @@ class DataStore {
         courseResources: this.courseResources,
         assignments: this.assignments,
         submissions: this.submissions,
+        auditLog: this.auditLog,
+        gradeAppeals: this.gradeAppeals,
+        officeSlots: this.officeSlots,
+        officeBookings: this.officeBookings,
       }));
       // NOTE: edusense_qr is intentionally NOT written here.
       // Only createQRSession() writes to it — so no other tab's _persist() call

@@ -959,13 +959,19 @@ function StudentPortfolio({ theme: C, user, stu }) {
 
       {/* PDF button */}
       <button
-        onClick={() => alert('PDF generation requires the desktop Python app.\nThis web version shows a preview only.')}
+        onClick={() => {
+          const style = document.createElement('style');
+          style.textContent = '@media print { .no-print { display: none !important; } }';
+          document.head.appendChild(style);
+          window.print();
+          setTimeout(() => document.head.removeChild(style), 1000);
+        }}
         style={{
           width:'100%', height:50, background:C.blue3, border:'none', borderRadius:12,
           fontSize:14, fontWeight:700, color:'#fff', cursor:'pointer', marginBottom:8,
         }}
-      >📄  Generate Portfolio PDF</button>
-      <div style={{ textAlign:'center', fontSize:11, color:C.text3, marginBottom:16 }}>PDF generation available in the desktop app</div>
+      >📄  Export Portfolio as PDF</button>
+      <div style={{ textAlign:'center', fontSize:11, color:C.text3, marginBottom:16 }}>Opens print dialog — save as PDF</div>
 
       {/* Face capture for profile photo */}
       <Card theme={C} title="📸 Update Profile Photo">

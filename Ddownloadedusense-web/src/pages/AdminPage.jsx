@@ -17,6 +17,7 @@ import AlertItem from '../components/AlertItem';
 import WebcamFeed from '../components/WebcamFeed';
 import store from '../dataStore';
 import { DEPARTMENTS, TITLES } from '../theme';
+import AuditLogPage from './AuditLogPage';
 
 function letterGrade(g){if(g>=90)return'A+';if(g>=85)return'A';if(g>=80)return'B+';if(g>=75)return'B';if(g>=70)return'C+';if(g>=65)return'C';if(g>=60)return'D+';if(g>=50)return'D';return'F';}
 function gradeColor(g,C){return g>=75?C.green:g>=50?C.amber:C.red;}
@@ -50,6 +51,8 @@ const NAV = [
   {id:'calendar',     icon:'📅', label:'Academic Calendar'},
   {id:'roadmap',      icon:'🗺️', label:'Graduation Roadmap'},
   {id:'feehistory',   icon:'💳', label:'Fee History'},
+  {id:'auditlog',     icon:'🗃️', label:'Audit Log'},
+  {id:'gradeappeals', icon:'🏷️', label:'Grade Appeals'},
 ];
 
 const PAGE_TITLES = {
@@ -57,6 +60,7 @@ const PAGE_TITLES = {
   doctors:'Lecturers', courses:'Course Management', enrollments:'Enrollment Management',
   parents:'Parents Management', r_reports:'R Analysis Reports', settings:'Settings',
   appeals:'Appeals Management', registration:'Registration & Fees', examschedule:'Exam Schedule',
+  auditlog:'Audit Log', gradeappeals:'Grade Appeals',
 };
 
 export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogout,
@@ -106,6 +110,8 @@ export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogo
             {page==='calendar'    && <AcademicCalendarPage theme={C} role="admin"/>}
             {page==='roadmap'     && <GraduationRoadmapPage theme={C} role="admin"/>}
             {page==='feehistory'  && <FeeHistoryPage theme={C} role="admin"/>}
+            {page==='auditlog'    && <AuditLogPage theme={C}/>}
+            {page==='gradeappeals'&& <AdminGradeAppeals theme={C}/>}
           </AnimatedPage>
         </div>
       </div>
@@ -1871,6 +1877,113 @@ function AdminSettings({ theme: C }) {
           ))}
         </div>
       </Card>
+    </div>
+  );
+}
+
+/* ── ADMIN GRADE APPEALS ── */
+function AdminGradeAppeals({ theme: C }) {
+  const [filter, setFilter] = useState('all');
+  const [selected, setSelected] = useState(null);
+  const [adminResp, setAdminResp] = useState('');
+
+  const getAppeals = () => store.getGradeAppeals(filter === 'all' ? {} : { status: filter });
+  const [appeals, setAppeals] = useState(getAppeals);
+
+  function refresh(f) {
+    setAppeals(store.getGradeAppeals(f === 'all' ? {} : { status: f }));
+  }
+
+  function handleDecide(id, dec) {
+    store.updateGradeAppeal(id, {
+      status: dec === 'approve' ? 'approved' : 'rejected',
+      adminDecision: dec, adminResponse: adminResp,
+    });
+    store._addAudit('grade_appeal_updated', 'admin', 'Admin', `Appeal ${id} — ${dec}`);
+    setSelected(null); setAdminResp(''); refresh(filter);
+  }
+
+  const STATUS_COLOR = { pending:'amber', under_review:'blue', approved:'green', rejected:'red' };
+  const inp = {
+    background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 8,
+    padding: '6px 10px', fontSize: 12, color: C.text, outline: 'none',
+    width: '100%', boxSizing: 'border-box',
+  };
+
+  return (
+    <div style={{ padding: '12px 20px 24px' }}>
+      <div style={{ fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 12 }}>🏷️ Grade Appeals</div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        {['all','pending','approved','rejected'].map(f => (
+          <button key={f} onClick={() => { setFilter(f); refresh(f); }}
+            style={{ padding: '5px 14px', borderRadius: 8, border: `1px solid ${C.border}`,
+              background: filter === f ? C.blue2 : C.bg3, color: filter === f ? '#fff' : C.text,
+              cursor: 'pointer', fontSize: 12 }}>
+            {f.charAt(0).toUpperCase() + f.slice(1)}
+          </button>
+        ))}
+      </div>
+      {appeals.length === 0 ? (
+        <div style={{ textAlign: 'center', color: C.text3, padding: 48 }}>No grade appeals found.</div>
+      ) : (
+        <Card theme={C} title="">
+          {appeals.map(a => (
+            <div key={a.id} style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{a.studentName} — {a.courseName}</div>
+                  <div style={{ fontSize: 11, color: C.text2, marginTop: 2 }}>
+                    {a.currentGrade}% → {a.requestedGrade}% | {(a.reason || '').slice(0, 80)}
+                  </div>
+                  {a.doctorResponse && <div style={{ fontSize: 11, color: C.text3, marginTop: 2 }}>Lecturer: {a.doctorResponse}</div>}
+                  {a.adminResponse  && <div style={{ fontSize: 11, color: C.text3, marginTop: 2 }}>Admin: {a.adminResponse}</div>}
+                </div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <Badge text={a.status} color={STATUS_COLOR[a.status] || 'gray'}/>
+                  {(a.status === 'pending' || a.status === 'under_review') && (
+                    <button onClick={() => { setSelected(a); setAdminResp(a.adminResponse || ''); }}
+                      style={{ padding: '4px 10px', borderRadius: 7, border: `1px solid ${C.border}`,
+                        background: C.bg3, color: C.text, fontSize: 11, cursor: 'pointer' }}>
+                      Review
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </Card>
+      )}
+      {selected && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setSelected(null)}>
+          <div style={{ background: C.card, borderRadius: 14, padding: 28, width: 460, maxWidth: '92vw' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 12 }}>
+              Review Appeal — {selected.studentName}
+            </div>
+            <div style={{ fontSize: 12, color: C.text2, marginBottom: 16 }}>
+              {selected.courseName}: {selected.currentGrade}% → {selected.requestedGrade}%
+              <br/>{selected.reason}
+            </div>
+            <div style={{ fontSize: 11, color: C.text3, marginBottom: 6 }}>Admin Response</div>
+            <textarea value={adminResp} onChange={e => setAdminResp(e.target.value)}
+              style={{ ...inp, height: 80, resize: 'vertical', marginBottom: 16 }}
+              placeholder="Optional response message…"/>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setSelected(null)}
+                style={{ padding: '7px 16px', borderRadius: 8, border: `1px solid ${C.border}`,
+                  background: C.bg3, color: C.text, cursor: 'pointer', fontSize: 12 }}>Cancel</button>
+              <button onClick={() => handleDecide(selected.id, 'reject')}
+                style={{ padding: '7px 16px', borderRadius: 8, border: 'none',
+                  background: C.red, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Reject</button>
+              <button onClick={() => handleDecide(selected.id, 'approve')}
+                style={{ padding: '7px 16px', borderRadius: 8, border: 'none',
+                  background: C.green, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Approve</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

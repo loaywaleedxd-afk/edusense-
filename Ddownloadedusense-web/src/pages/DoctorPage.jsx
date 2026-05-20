@@ -52,6 +52,7 @@ const NAV = [
   {id:'ai_insight',   icon:'🤖', label:'AI Insights'},
   {id:'calendar',     icon:'📅', label:'Academic Calendar'},
   {id:'livepoll',     icon:'📊', label:'Live Poll'},
+  {id:'gradeappeals', icon:'🏷️', label:'Grade Appeals'},
 ];
 
 const PAGE_TITLES = {
@@ -174,6 +175,7 @@ export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLog
             {page==='ai_insight'    && <AIInsightPage theme={C} doctor={doctor} myCourses={myCourses}/>}
             {page==='calendar'      && <AcademicCalendarPage theme={C} role="doctor"/>}
             {page==='livepoll'      && <DoctorLivePoll theme={C}/>}
+            {page==='gradeappeals'  && <DocGradeAppeals theme={C} doctor={doctor}/>}
           </AnimatedPage>
         </div>
       </div>
@@ -2570,6 +2572,92 @@ function DocMoodle({ theme: C }) {
         </button>
         <div style={{fontSize:11,color:C.text3,marginTop:12}}>⚠️  Prototype — not connected</div>
       </div>
+    </div>
+  );
+}
+
+/* ── DOC GRADE APPEALS ── */
+function DocGradeAppeals({ theme: C, doctor }) {
+  const [filter, setFilter] = useState('all');
+  const [selected, setSelected] = useState(null);
+  const [docResp, setDocResp] = useState('');
+
+  const getAppeals = (f) => store.getGradeAppeals(
+    f === 'all' ? { doctorId: doctor.id } : { doctorId: doctor.id, status: f }
+  );
+  const [appeals, setAppeals] = useState(() => getAppeals('all'));
+
+  function refresh(f) { setAppeals(getAppeals(f)); }
+
+  function respond(id, dec) {
+    store.updateGradeAppeal(id, {
+      status: dec === 'approve' ? 'approved' : dec === 'reject' ? 'rejected' : 'under_review',
+      doctorDecision: dec, doctorResponse: docResp,
+    });
+    store._addAudit('grade_appeal_updated', 'doctor', doctor.name, `Appeal ${id} — ${dec}`);
+    setSelected(null); setDocResp(''); refresh(filter);
+  }
+
+  const STATUS_COLOR = { pending:'amber', under_review:'blue', approved:'green', rejected:'red' };
+  const inp = { background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 8, padding: '6px 10px', fontSize: 12, color: C.text, outline: 'none', width: '100%', boxSizing: 'border-box' };
+
+  return (
+    <div style={{ padding: '12px 20px 24px' }}>
+      <div style={{ fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 12 }}>🏷️ Grade Appeals</div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        {['all','pending','under_review','approved','rejected'].map(f => (
+          <button key={f} onClick={() => { setFilter(f); refresh(f); }}
+            style={{ padding: '5px 14px', borderRadius: 8, border: `1px solid ${C.border}`,
+              background: filter === f ? C.blue2 : C.bg3, color: filter === f ? '#fff' : C.text,
+              cursor: 'pointer', fontSize: 11 }}>
+            {f === 'under_review' ? 'Under Review' : f.charAt(0).toUpperCase() + f.slice(1)}
+          </button>
+        ))}
+      </div>
+      {appeals.length === 0 ? (
+        <div style={{ textAlign: 'center', color: C.text3, padding: 48 }}>No grade appeals for your courses.</div>
+      ) : appeals.map(a => (
+        <div key={a.id} style={{ background: C.card, borderRadius: 12, border: `1px solid ${a.status === 'pending' ? C.amber : C.border}`, padding: 16, marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{a.studentName} — {a.courseName}</div>
+              <div style={{ fontSize: 11, color: C.text2, marginTop: 2 }}>
+                Grade dispute: {a.currentGrade}% → requested {a.requestedGrade}%
+              </div>
+              <div style={{ fontSize: 12, color: C.text, marginTop: 6, lineHeight: 1.5 }}>{a.reason}</div>
+              {a.doctorResponse && <div style={{ fontSize: 11, color: C.text3, marginTop: 4 }}>Your response: {a.doctorResponse}</div>}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+              <Badge text={a.status} color={STATUS_COLOR[a.status] || 'gray'}/>
+              {(a.status === 'pending' || a.status === 'under_review') && (
+                <button onClick={() => { setSelected(a); setDocResp(a.doctorResponse || ''); }}
+                  style={{ padding: '4px 12px', borderRadius: 7, border: `1px solid ${C.border}`, background: C.bg3, color: C.text, fontSize: 11, cursor: 'pointer' }}>
+                  Respond
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
+      {selected && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={() => setSelected(null)}>
+          <div style={{ background: C.card, borderRadius: 14, padding: 28, width: 460, maxWidth: '92vw' }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 12 }}>Respond — {selected.studentName}</div>
+            <div style={{ fontSize: 12, color: C.text2, marginBottom: 16 }}>
+              {selected.courseName}: {selected.currentGrade}% → {selected.requestedGrade}%<br/>{selected.reason}
+            </div>
+            <div style={{ fontSize: 11, color: C.text3, marginBottom: 6 }}>Your Response</div>
+            <textarea value={docResp} onChange={e => setDocResp(e.target.value)}
+              style={{ ...inp, height: 80, resize: 'vertical', marginBottom: 16 }} placeholder="Explain your decision…"/>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setSelected(null)} style={{ padding: '7px 14px', borderRadius: 8, border: `1px solid ${C.border}`, background: C.bg3, color: C.text, cursor: 'pointer', fontSize: 12 }}>Cancel</button>
+              <button onClick={() => respond(selected.id, 'reject')} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: C.red, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Reject</button>
+              <button onClick={() => respond(selected.id, 'approve')} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: C.green, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Approve</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
