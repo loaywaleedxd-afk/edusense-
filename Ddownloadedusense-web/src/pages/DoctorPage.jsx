@@ -573,40 +573,42 @@ function DocAttendance({ theme: C, myCourses }) {
       )}
 
       {/* ── QR TAB ── */}
-      {activeTab==='qr' && (
-        <div style={{background:C.card,borderRadius:14,border:`1px solid ${C.border}`,padding:28,textAlign:'center'}}>
-          {qrMeta ? (()=>{
-            const qrPayload = btoa(JSON.stringify({courseId:qrMeta.courseId,week:qrMeta.week,createdAt:qrMeta.createdAt}));
-            const qrUrl = `${window.location.origin}${window.location.pathname}?checkin=${qrPayload}`;
-            return (<>
-              <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:4}}>📱 QR Code for {course?.name} — Week {week}</div>
-              <div style={{fontSize:11,color:C.text3,marginBottom:20}}>Students scan with phone camera to auto check-in · or enter code manually · Valid 90 min</div>
-              <div style={{display:'flex',justifyContent:'center',marginBottom:20}}>
-                <QRCodeComp value={qrUrl} size={220} color={course?.color||'#3b82f6'}/>
+      {activeTab==='qr' && (() => {
+        const qrUrl = qrMeta
+          ? `${window.location.origin}${window.location.pathname}?checkin=${btoa(JSON.stringify({courseId:qrMeta.courseId,week:qrMeta.week,createdAt:qrMeta.createdAt}))}`
+          : '';
+        return (
+          <div style={{background:C.card,borderRadius:14,border:`1px solid ${C.border}`,padding:28,textAlign:'center'}}>
+            {qrMeta ? (
+              <>
+                <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:4}}>📱 QR Code for {course?.name} — Week {week}</div>
+                <div style={{fontSize:11,color:C.text3,marginBottom:20}}>Students scan with phone camera to auto check-in · or enter code manually · Valid 90 min</div>
+                <div style={{display:'flex',justifyContent:'center',marginBottom:20}}>
+                  <QRCodeComp value={qrUrl} size={220} color={course?.color||'#3b82f6'}/>
+                </div>
+                <div style={{display:'inline-block',background:C.bg3,border:`2px dashed ${C.border}`,borderRadius:12,padding:'12px 32px',marginBottom:20}}>
+                  <div style={{fontSize:11,color:C.text3,marginBottom:4}}>Manual Code (same device)</div>
+                  <div style={{fontSize:36,fontWeight:800,color:course?.color||C.blue,letterSpacing:8,fontFamily:'monospace'}}>{qrMeta.token}</div>
+                </div>
+                <div style={{fontSize:11,color:C.text3}}>📷 Scan with phone → auto check-in &nbsp;·&nbsp; 💻 Same device: enter code in <strong>QR Check-In</strong> tab</div>
+                <button onClick={()=>{const ca=Date.now();const t=store.createQRSession(selCourse,week);setQrMeta({token:t,courseId:selCourse,week,createdAt:ca});}}
+                  style={{marginTop:16,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 20px',fontSize:12,color:C.text2,cursor:'pointer'}}>
+                  🔄 Regenerate Code
+                </button>
+              </>
+            ) : (
+              <div>
+                <div style={{fontSize:48,marginBottom:12}}>📱</div>
+                <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:8}}>QR Code Attendance</div>
+                <div style={{fontSize:12,color:C.text3,marginBottom:20}}>Generate a QR code — students scan it or enter the code to mark themselves present</div>
+                <button onClick={generateQR} style={{background:C.blue3,border:'none',borderRadius:10,padding:'12px 28px',fontSize:14,fontWeight:700,color:'#fff',cursor:'pointer'}}>
+                  📱 Generate QR Code
+                </button>
               </div>
-              <div style={{display:'inline-block',background:C.bg3,border:`2px dashed ${C.border}`,borderRadius:12,padding:'12px 32px',marginBottom:20}}>
-                <div style={{fontSize:11,color:C.text3,marginBottom:4}}>Manual Code (same device)</div>
-                <div style={{fontSize:36,fontWeight:800,color:course?.color||C.blue,letterSpacing:8,fontFamily:'monospace'}}>{qrMeta.token}</div>
-              </div>
-              <div style={{fontSize:11,color:C.text3}}>📷 Scan with phone → auto check-in &nbsp;·&nbsp; 💻 Same device: enter code in <strong>QR Check-In</strong> tab</div>
-              <button onClick={()=>{const ca=Date.now();const t=store.createQRSession(selCourse,week);setQrMeta({token:t,courseId:selCourse,week,createdAt:ca});}}
-                style={{marginTop:16,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 20px',fontSize:12,color:C.text2,cursor:'pointer'}}>
-                🔄 Regenerate Code
-              </button>
-            </>);
-          })()
-          ) : (
-            <div>
-              <div style={{fontSize:48,marginBottom:12}}>📱</div>
-              <div style={{fontSize:14,fontWeight:700,color:C.text,marginBottom:8}}>QR Code Attendance</div>
-              <div style={{fontSize:12,color:C.text3,marginBottom:20}}>Generate a QR code — students scan it or enter the code to mark themselves present</div>
-              <button onClick={generateQR} style={{background:C.blue3,border:'none',borderRadius:10,padding:'12px 28px',fontSize:14,fontWeight:700,color:'#fff',cursor:'pointer'}}>
-                📱 Generate QR Code
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        );
+      })()}
 
       {/* ── EXCUSES TAB ── */}
       {activeTab==='excuses' && (
