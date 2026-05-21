@@ -530,6 +530,13 @@ class DataStore {
       if(data.officeSlots) this.officeSlots = data.officeSlots;
       if(data.officeBookings) this.officeBookings = data.officeBookings;
       if(data.passwordOverrides) this.passwordOverrides = data.passwordOverrides;
+      if(data.users) {
+        data.users.forEach(u => {
+          const existing = this.users.find(x => x.username === u.username);
+          if (existing) Object.assign(existing, u);
+          else this.users.push(u);
+        });
+      }
     } catch(e){ console.warn('DataStore load error',e); }
     // Remove old QR key from previous code versions so users never need to clear it manually
     try { localStorage.removeItem('edusense_qr'); } catch(e){}
@@ -569,6 +576,7 @@ class DataStore {
         officeSlots: this.officeSlots,
         officeBookings: this.officeBookings,
         passwordOverrides: this.passwordOverrides,
+        users: this.users,
       }));
       // NOTE: edusense_qr is intentionally NOT written here.
       // Only createQRSession() writes to it — so no other tab's _persist() call
