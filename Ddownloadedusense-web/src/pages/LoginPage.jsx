@@ -2,6 +2,31 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLang } from '../context/LanguageContext';
 import useMobile from '../hooks/useMobile';
+import store from '../dataStore';
+
+const EJS_SERVICE  = import.meta.env.VITE_EMAILJS_SERVICE_ID;
+const EJS_TEMPLATE = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
+const EJS_KEY      = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
+const EMAIL_CONFIGURED = !!(EJS_SERVICE && EJS_TEMPLATE && EJS_KEY);
+
+async function sendResetEmail(toEmail, toName, code) {
+  if (!EMAIL_CONFIGURED) return false;
+  try {
+    const { default: emailjs } = await import('@emailjs/browser');
+    await emailjs.send(EJS_SERVICE, EJS_TEMPLATE, {
+      to_email: toEmail, to_name: toName,
+      reset_code: code, expiry_minutes: '15',
+    }, EJS_KEY);
+    return true;
+  } catch (e) { console.error('EmailJS:', e); return false; }
+}
+
+function maskEmail(email) {
+  const [local, domain] = (email || '').split('@');
+  if (!local || !domain) return email || '—';
+  const visible = local.length <= 2 ? local[0] : local.slice(0, 2);
+  return `${visible}${'*'.repeat(Math.max(2, local.length - 2))}@${domain}`;
+}
 
 const ROLES = [
   { role: 'student', emoji: '🎓', label: 'Student',            desc: 'View attendance & emotions',       color: '#3b82f6', user: '231014184.0', pass: 'WGaub52Z' },
@@ -38,8 +63,26 @@ export default function LoginPage({ theme: C, onLogin }) {
   const [password, setPassword] = useState('');
   const [error, setError]       = useState('');
   const [busy,  setBusy]        = useState(false);
-  const [forgotOpen, setForgotOpen] = useState(false);
-  const [copied, setCopied]         = useState('');
+  const [forgotOpen,  setForgotOpen]  = useState(false);
+  const [forgotStep,  setForgotStep]  = useState(0); // 0=username 1=code 2=newpass
+  const [forgotUser,  setForgotUser]  = useState('');
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotCode,  setForgotCode]  = useState('');
+  const [forgotPass,  setForgotPass]  = useState('');
+  const [forgotPass2, setForgotPass2] = useState('');
+  const [forgotErr,   setForgotErr]   = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotDemoCode, setForgotDemoCode] = useState('');
+  const [forgotDone,  setForgotDone]  = useState(false);
+
+  function openForgot() {
+    setForgotStep(0); setForgotUser(selected?.user || '');
+    setForgotEmail(''); setForgotCode(''); setForgotPass('');
+    setForgotPass2(''); setForgotErr(''); setForgotDemoCode('');
+    setForgotDone(false); setForgotOpen(true);
+  }
+
+  function closeForgot() { setForgotOpen(false); }
 
   function selectRole(r) {
     setSelected(r);
@@ -49,18 +92,38 @@ export default function LoginPage({ theme: C, onLogin }) {
     setForgotOpen(false);
   }
 
-  function copyText(text, key) {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(key);
-      setTimeout(() => setCopied(''), 2000);
-    });
+  async function handleRequestReset() {
+    if (!forgotUser.trim()) { setForgotErr('Please enter your username.'); return; }
+    setForgotLoading(true); setForgotErr('');
+    const result = store.requestPasswordReset(forgotUser.trim());
+    if (!result.ok) { setForgotErr(result.error); setForgotLoading(false); return; }
+    const sent = await sendResetEmail(result.email, result.name, result.token);
+    setForgotEmail(maskEmail(result.email));
+    setForgotDemoCode(sent ? '' : result.token); // show on-screen if email not configured
+    setForgotLoading(false);
+    setForgotStep(1);
   }
 
-  function autoFillAndClose() {
-    setUsername(selected.user);
-    setPassword(selected.pass);
-    setForgotOpen(false);
-    setError('');
+  function handleVerifyCode() {
+    setForgotErr('');
+    const r = store.verifyResetToken(forgotUser.trim(), forgotCode.trim());
+    if (!r.ok) { setForgotErr(r.error); return; }
+    setForgotStep(2);
+  }
+
+  function handleResetPassword() {
+    if (!forgotPass) { setForgotErr('Enter a new password.'); return; }
+    if (forgotPass.length < 6) { setForgotErr('Password must be at least 6 characters.'); return; }
+    if (forgotPass !== forgotPass2) { setForgotErr('Passwords do not match.'); return; }
+    setForgotErr('');
+    const r = store.resetPassword(forgotUser.trim(), forgotCode.trim(), forgotPass);
+    if (!r.ok) { setForgotErr(r.error); return; }
+    setForgotDone(true);
+    setTimeout(() => {
+      setPassword(forgotPass);
+      setUsername(forgotUser.trim());
+      closeForgot();
+    }, 1800);
   }
 
   async function doLogin() {
@@ -326,7 +389,7 @@ export default function LoginPage({ theme: C, onLogin }) {
                 {/* Forgot password link */}
                 <div style={{ textAlign: isRTL ? 'left' : 'right', marginTop: 6, marginBottom: 4 }}>
                   <button
-                    onClick={() => setForgotOpen(true)}
+                    onClick={openForgot}
                     style={{
                       background: 'none', border: 'none', padding: 0,
                       fontSize: 11, color: selected.color, cursor: 'pointer',
@@ -404,119 +467,239 @@ export default function LoginPage({ theme: C, onLogin }) {
         )}
       </div>
 
-      {/* ── Forgot Password Modal ── */}
+      {/* ── Forgot Password Modal (3-step) ── */}
       <AnimatePresence>
-        {forgotOpen && selected && (
+        {forgotOpen && (
           <motion.div
             key="forgot-backdrop"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
-            onClick={() => setForgotOpen(false)}
+            onClick={closeForgot}
             style={{
               position: 'fixed', inset: 0, zIndex: 500,
-              background: 'rgba(0,0,0,0.55)',
+              background: 'rgba(0,0,0,0.6)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
           >
             <motion.div
               key="forgot-card"
-              initial={{ opacity: 0, scale: 0.88, y: 16 }}
+              initial={{ opacity: 0, scale: 0.88, y: 20 }}
               animate={{ opacity: 1, scale: 1,    y: 0  }}
-              exit={{    opacity: 0, scale: 0.88, y: 16 }}
+              exit={{    opacity: 0, scale: 0.88, y: 20 }}
               transition={{ duration: 0.22, ease: 'easeOut' }}
               onClick={e => e.stopPropagation()}
               style={{
-                background: C.card,
-                border: `1px solid ${selected.color}44`,
-                borderRadius: 18,
-                padding: '28px 28px 22px',
-                width: 340, maxWidth: '90vw',
-                boxShadow: `0 24px 64px rgba(0,0,0,0.45), 0 0 0 1px ${selected.color}22`,
+                background: C.card, borderRadius: 20,
+                border: `1px solid ${C.border2}`,
+                padding: '28px 28px 24px',
+                width: 360, maxWidth: '92vw',
+                boxShadow: '0 28px 72px rgba(0,0,0,0.5)',
                 direction: isRTL ? 'rtl' : 'ltr',
               }}
             >
-              {/* Header */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
-                <div style={{
-                  width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-                  background: `${selected.color}20`,
-                  border: `1px solid ${selected.color}44`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
-                }}>
-                  {selected.emoji}
-                </div>
-                <div>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: C.text }}>
-                    {isRTL ? 'بيانات الدخول' : 'Login Credentials'}
+              {/* ── Header ── */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: 20 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: C.text }}>
+                    {forgotDone
+                      ? (isRTL ? '✅ تم تغيير كلمة المرور' : '✅ Password Updated')
+                      : forgotStep === 0 ? (isRTL ? '🔒 إعادة تعيين كلمة المرور' : '🔒 Reset Password')
+                      : forgotStep === 1 ? (isRTL ? '📧 أدخل الرمز' : '📧 Enter Code')
+                      : (isRTL ? '🔑 كلمة مرور جديدة' : '🔑 New Password')}
                   </div>
-                  <div style={{ fontSize: 10, color: C.text3, marginTop: 1 }}>
-                    {selected.label}
+                  <div style={{ fontSize: 10, color: C.text3, marginTop: 3 }}>
+                    {[
+                      isRTL ? 'أدخل اسم المستخدم لإرسال رمز التحقق' : 'Enter your username to receive a reset code',
+                      isRTL ? `تم إرسال رمز إلى ${forgotEmail}` : `Code sent to ${forgotEmail}`,
+                      isRTL ? 'اختر كلمة مرور جديدة آمنة' : 'Choose a strong new password',
+                      isRTL ? 'يمكنك الآن تسجيل الدخول بكلمة المرور الجديدة' : 'You can now sign in with your new password',
+                    ][forgotDone ? 3 : forgotStep]}
                   </div>
                 </div>
                 <button
-                  onClick={() => setForgotOpen(false)}
+                  onClick={closeForgot}
                   style={{
-                    marginLeft: isRTL ? 0 : 'auto', marginRight: isRTL ? 'auto' : 0,
                     background: C.bg3, border: `1px solid ${C.border}`,
-                    borderRadius: 8, width: 28, height: 28, fontSize: 14,
+                    borderRadius: 8, width: 28, height: 28, fontSize: 13,
                     color: C.text2, cursor: 'pointer', display: 'flex',
                     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    marginLeft: isRTL ? 0 : 8, marginRight: isRTL ? 8 : 0,
                   }}
                 >✕</button>
               </div>
 
-              {/* Credential rows */}
-              {[
-                { label: isRTL ? 'اسم المستخدم' : 'Username', value: selected.user, key: 'user' },
-                { label: isRTL ? 'كلمة المرور'  : 'Password',  value: selected.pass, key: 'pass' },
-              ].map(({ label, value, key }) => (
-                <div key={key} style={{
-                  background: C.bg3, borderRadius: 10,
-                  border: `1px solid ${C.border}`,
-                  padding: '10px 12px', marginBottom: 10,
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-                }}>
-                  <div>
-                    <div style={{ fontSize: 9, fontWeight: 700, color: C.text3, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
-                      {label}
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: C.text, fontFamily: 'monospace' }}>
-                      {key === 'pass' ? '•'.repeat(value.length) : value}
-                    </div>
-                  </div>
-                  <motion.button
-                    onClick={() => copyText(value, key)}
-                    whileHover={{ scale: 1.08 }}
-                    whileTap={{ scale: 0.93 }}
-                    style={{
-                      background: copied === key ? '#10b98120' : `${selected.color}18`,
-                      border: `1px solid ${copied === key ? '#10b981' : selected.color}44`,
-                      borderRadius: 8, padding: '5px 12px', fontSize: 11, fontWeight: 700,
-                      color: copied === key ? '#10b981' : selected.color,
-                      cursor: 'pointer', flexShrink: 0, transition: 'all 0.2s',
-                    }}
-                  >
-                    {copied === key ? (isRTL ? '✓ تم' : '✓ Copied') : (isRTL ? 'نسخ' : 'Copy')}
-                  </motion.button>
+              {/* ── Step progress dots ── */}
+              {!forgotDone && (
+                <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
+                  {[0,1,2].map(i => (
+                    <div key={i} style={{
+                      height: 3, flex: 1, borderRadius: 4,
+                      background: i <= forgotStep ? '#6366f1' : C.border,
+                      transition: 'background 0.3s',
+                    }} />
+                  ))}
                 </div>
-              ))}
+              )}
 
-              {/* Auto-fill button */}
-              <motion.button
-                onClick={autoFillAndClose}
-                whileHover={{ scale: 1.02, boxShadow: `0 6px 20px ${selected.color}44` }}
-                whileTap={{ scale: 0.97 }}
-                style={{
-                  width: '100%', height: 42, marginTop: 6,
-                  background: `linear-gradient(135deg, ${selected.color}, ${selected.color}cc)`,
-                  border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700,
-                  color: '#fff', cursor: 'pointer', letterSpacing: '0.02em',
-                }}
-              >
-                {isRTL ? '⚡ تعبئة تلقائية' : '⚡ Auto-fill & Sign In'}
-              </motion.button>
+              <AnimatePresence mode="wait">
+                {/* ── STEP 0: Username ── */}
+                {!forgotDone && forgotStep === 0 && (
+                  <motion.div key="s0"
+                    initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.18 }}
+                  >
+                    <label style={{ fontSize: 10, fontWeight: 700, color: C.text3, textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 5 }}>
+                      {isRTL ? 'اسم المستخدم' : 'Username'}
+                    </label>
+                    <input
+                      value={forgotUser}
+                      onChange={e => { setForgotUser(e.target.value); setForgotErr(''); }}
+                      onKeyDown={e => e.key === 'Enter' && handleRequestReset()}
+                      placeholder={isRTL ? 'اسم المستخدم' : 'Your username'}
+                      autoFocus
+                      style={{
+                        width: '100%', height: 42, background: C.bg3,
+                        border: `1.5px solid ${C.border}`, borderRadius: 10,
+                        padding: '0 14px', fontSize: 13, color: C.text,
+                        outline: 'none', boxSizing: 'border-box',
+                      }}
+                    />
+                    {forgotErr && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 6 }}>{forgotErr}</div>}
+                    <motion.button
+                      onClick={handleRequestReset}
+                      disabled={forgotLoading}
+                      whileHover={!forgotLoading ? { scale: 1.02 } : {}}
+                      whileTap={!forgotLoading ? { scale: 0.97 } : {}}
+                      style={{
+                        width: '100%', height: 42, marginTop: 14,
+                        background: forgotLoading ? C.border : 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+                        border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700,
+                        color: '#fff', cursor: forgotLoading ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {forgotLoading
+                        ? (isRTL ? 'جارٍ الإرسال…' : 'Sending…')
+                        : (isRTL ? 'إرسال رمز التحقق' : 'Send Reset Code')}
+                    </motion.button>
+                  </motion.div>
+                )}
+
+                {/* ── STEP 1: Enter code ── */}
+                {!forgotDone && forgotStep === 1 && (
+                  <motion.div key="s1"
+                    initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.18 }}
+                  >
+                    {forgotDemoCode && (
+                      <div style={{
+                        background: '#f59e0b18', border: '1px solid #f59e0b44',
+                        borderRadius: 10, padding: '10px 14px', marginBottom: 14,
+                        fontSize: 11, color: '#d97706',
+                      }}>
+                        <strong>{isRTL ? '🔑 وضع العرض التجريبي — رمزك:' : '🔑 Demo mode — your code:'}</strong>
+                        <span style={{ fontFamily: 'monospace', fontSize: 18, fontWeight: 800, display: 'block', textAlign: 'center', letterSpacing: 6, marginTop: 4, color: C.text }}>
+                          {forgotDemoCode}
+                        </span>
+                        <div style={{ marginTop: 4, fontSize: 10, color: C.text3 }}>
+                          {isRTL ? 'في الإنتاج سيُرسل هذا إلى بريدك الإلكتروني' : 'In production this would be emailed to you'}
+                        </div>
+                      </div>
+                    )}
+                    <label style={{ fontSize: 10, fontWeight: 700, color: C.text3, textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 5 }}>
+                      {isRTL ? 'رمز التحقق (6 أرقام)' : '6-digit reset code'}
+                    </label>
+                    <input
+                      value={forgotCode}
+                      onChange={e => { setForgotCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setForgotErr(''); }}
+                      onKeyDown={e => e.key === 'Enter' && handleVerifyCode()}
+                      placeholder="000000"
+                      maxLength={6}
+                      autoFocus
+                      style={{
+                        width: '100%', height: 48, background: C.bg3,
+                        border: `1.5px solid ${C.border}`, borderRadius: 10,
+                        padding: '0 14px', fontSize: 22, fontWeight: 700,
+                        color: C.text, outline: 'none', boxSizing: 'border-box',
+                        letterSpacing: 8, textAlign: 'center', fontFamily: 'monospace',
+                      }}
+                    />
+                    {forgotErr && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 6 }}>{forgotErr}</div>}
+                    <motion.button
+                      onClick={handleVerifyCode}
+                      whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                      style={{
+                        width: '100%', height: 42, marginTop: 14,
+                        background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+                        border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700,
+                        color: '#fff', cursor: 'pointer',
+                      }}
+                    >{isRTL ? 'تحقق من الرمز' : 'Verify Code'}</motion.button>
+                    <button onClick={() => { setForgotStep(0); setForgotErr(''); }} style={{
+                      width: '100%', marginTop: 8, background: 'transparent', border: 'none',
+                      fontSize: 11, color: C.text3, cursor: 'pointer', padding: '6px 0',
+                    }}>{isRTL ? '← إرسال رمز جديد' : '← Resend / change username'}</button>
+                  </motion.div>
+                )}
+
+                {/* ── STEP 2: New password ── */}
+                {!forgotDone && forgotStep === 2 && (
+                  <motion.div key="s2"
+                    initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.18 }}
+                  >
+                    {['new', 'confirm'].map((field, i) => (
+                      <div key={field} style={{ marginBottom: 12 }}>
+                        <label style={{ fontSize: 10, fontWeight: 700, color: C.text3, textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 5 }}>
+                          {i === 0
+                            ? (isRTL ? 'كلمة المرور الجديدة' : 'New password')
+                            : (isRTL ? 'تأكيد كلمة المرور' : 'Confirm password')}
+                        </label>
+                        <input
+                          type="password"
+                          value={i === 0 ? forgotPass : forgotPass2}
+                          onChange={e => { i === 0 ? setForgotPass(e.target.value) : setForgotPass2(e.target.value); setForgotErr(''); }}
+                          onKeyDown={e => e.key === 'Enter' && i === 1 && handleResetPassword()}
+                          placeholder={i === 0 ? '••••••••' : '••••••••'}
+                          autoFocus={i === 0}
+                          style={{
+                            width: '100%', height: 42, background: C.bg3,
+                            border: `1.5px solid ${C.border}`, borderRadius: 10,
+                            padding: '0 14px', fontSize: 13, color: C.text,
+                            outline: 'none', boxSizing: 'border-box',
+                          }}
+                        />
+                      </div>
+                    ))}
+                    {forgotErr && <div style={{ fontSize: 11, color: '#ef4444', marginBottom: 4 }}>{forgotErr}</div>}
+                    <motion.button
+                      onClick={handleResetPassword}
+                      whileHover={{ scale: 1.02, boxShadow: '0 6px 20px rgba(99,102,241,0.4)' }}
+                      whileTap={{ scale: 0.97 }}
+                      style={{
+                        width: '100%', height: 42, marginTop: 4,
+                        background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+                        border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700,
+                        color: '#fff', cursor: 'pointer',
+                      }}
+                    >{isRTL ? 'تحديث كلمة المرور' : 'Update Password'}</motion.button>
+                  </motion.div>
+                )}
+
+                {/* ── DONE ── */}
+                {forgotDone && (
+                  <motion.div key="done"
+                    initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+                    style={{ textAlign: 'center', padding: '12px 0' }}
+                  >
+                    <div style={{ fontSize: 40, marginBottom: 10 }}>✅</div>
+                    <div style={{ fontSize: 13, color: C.text2 }}>
+                      {isRTL ? 'سيتم تسجيل دخولك الآن…' : 'Signing you in now…'}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           </motion.div>
         )}

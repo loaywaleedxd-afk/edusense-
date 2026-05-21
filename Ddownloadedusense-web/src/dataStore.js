@@ -107,6 +107,7 @@ class DataStore {
     this.gradeAppeals = [];
     this.officeSlots = [];
     this.officeBookings = [];
+    this.passwordOverrides = {};
   }
 
   _loadStudents(){
@@ -528,6 +529,7 @@ class DataStore {
       if(data.gradeAppeals) this.gradeAppeals = data.gradeAppeals;
       if(data.officeSlots) this.officeSlots = data.officeSlots;
       if(data.officeBookings) this.officeBookings = data.officeBookings;
+      if(data.passwordOverrides) this.passwordOverrides = data.passwordOverrides;
     } catch(e){ console.warn('DataStore load error',e); }
     // Remove old QR key from previous code versions so users never need to clear it manually
     try { localStorage.removeItem('edusense_qr'); } catch(e){}
@@ -566,6 +568,7 @@ class DataStore {
         gradeAppeals: this.gradeAppeals,
         officeSlots: this.officeSlots,
         officeBookings: this.officeBookings,
+        passwordOverrides: this.passwordOverrides,
       }));
       // NOTE: edusense_qr is intentionally NOT written here.
       // Only createQRSession() writes to it — so no other tab's _persist() call
@@ -601,10 +604,11 @@ class DataStore {
     } catch(apiErr){
       // Backend unreachable — fall back to local credential check
       console.warn('[dataStore] Backend login failed, using local auth:', apiErr.message);
-      const u = this.users.find(u=>
-        u.username.toLowerCase()===username.toLowerCase().trim() &&
-        u.password===password.trim()
-      );
+      const u = this.users.find(u => {
+        if (u.username.toLowerCase() !== username.toLowerCase().trim()) return false;
+        const override = this.passwordOverrides?.[u.username.toLowerCase()];
+        return (override !== undefined ? override : u.password) === password.trim();
+      });
       if(!u) return null;
       const nameParts = (u.name||u.username).split(' ');
       let photoUrl = null;
@@ -791,6 +795,38 @@ class DataStore {
   }
 
   getUser(username){ return this.users.find(u=>u.username===username)||null; }
+
+  // ── PASSWORD RESET ────────────────────────────────────────────────────────
+  requestPasswordReset(username){
+    const u = this.users.find(x => x.username.toLowerCase() === username.toLowerCase().trim());
+    if (!u) return { ok: false, error: 'No account found with that username.' };
+    const token = String(Math.floor(100000 + Math.random() * 900000));
+    const expiry = Date.now() + 15 * 60 * 1000;
+    sessionStorage.setItem('es_pwd_reset', JSON.stringify({ username: u.username, token, expiry }));
+    return { ok: true, email: u.email, name: u.name, token };
+  }
+
+  verifyResetToken(username, token){
+    try {
+      const d = JSON.parse(sessionStorage.getItem('es_pwd_reset') || 'null');
+      if (!d) return { ok: false, error: 'No reset request found. Please start again.' };
+      if (d.username.toLowerCase() !== username.toLowerCase()) return { ok: false, error: 'Invalid reset session.' };
+      if (Date.now() > d.expiry) return { ok: false, error: 'Code expired. Please request a new one.' };
+      if (d.token !== token.trim()) return { ok: false, error: 'Incorrect code. Check your email and try again.' };
+      return { ok: true };
+    } catch { return { ok: false, error: 'Reset session error. Please start again.' }; }
+  }
+
+  resetPassword(username, token, newPassword){
+    const verify = this.verifyResetToken(username, token);
+    if (!verify.ok) return verify;
+    if (!newPassword || newPassword.length < 6) return { ok: false, error: 'Password must be at least 6 characters.' };
+    if (!this.passwordOverrides) this.passwordOverrides = {};
+    this.passwordOverrides[username.toLowerCase()] = newPassword;
+    sessionStorage.removeItem('es_pwd_reset');
+    this._persist();
+    return { ok: true };
+  }
 
   // ── ABSENCE EXCUSES ──────────────────────────────────────────────────────
   submitExcuse(data){
