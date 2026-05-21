@@ -38,11 +38,28 @@ export default function LoginPage({ theme: C, onLogin }) {
   const [password, setPassword] = useState('');
   const [error, setError]       = useState('');
   const [busy,  setBusy]        = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [copied, setCopied]         = useState('');
 
   function selectRole(r) {
     setSelected(r);
     setUsername(r.user);
     setPassword(r.pass);
+    setError('');
+    setForgotOpen(false);
+  }
+
+  function copyText(text, key) {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(key);
+      setTimeout(() => setCopied(''), 2000);
+    });
+  }
+
+  function autoFillAndClose() {
+    setUsername(selected.user);
+    setPassword(selected.pass);
+    setForgotOpen(false);
     setError('');
   }
 
@@ -306,6 +323,20 @@ export default function LoginPage({ theme: C, onLogin }) {
                   />
                 </div>
 
+                {/* Forgot password link */}
+                <div style={{ textAlign: isRTL ? 'left' : 'right', marginTop: 6, marginBottom: 4 }}>
+                  <button
+                    onClick={() => setForgotOpen(true)}
+                    style={{
+                      background: 'none', border: 'none', padding: 0,
+                      fontSize: 11, color: selected.color, cursor: 'pointer',
+                      fontWeight: 600, textDecoration: 'underline',
+                    }}
+                  >
+                    {isRTL ? 'نسيت كلمة المرور؟' : 'Forgot password?'}
+                  </button>
+                </div>
+
                 <AnimatePresence>
                   {error && (
                     <motion.div
@@ -372,6 +403,124 @@ export default function LoginPage({ theme: C, onLogin }) {
           </div>
         )}
       </div>
+
+      {/* ── Forgot Password Modal ── */}
+      <AnimatePresence>
+        {forgotOpen && selected && (
+          <motion.div
+            key="forgot-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            onClick={() => setForgotOpen(false)}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 500,
+              background: 'rgba(0,0,0,0.55)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <motion.div
+              key="forgot-card"
+              initial={{ opacity: 0, scale: 0.88, y: 16 }}
+              animate={{ opacity: 1, scale: 1,    y: 0  }}
+              exit={{    opacity: 0, scale: 0.88, y: 16 }}
+              transition={{ duration: 0.22, ease: 'easeOut' }}
+              onClick={e => e.stopPropagation()}
+              style={{
+                background: C.card,
+                border: `1px solid ${selected.color}44`,
+                borderRadius: 18,
+                padding: '28px 28px 22px',
+                width: 340, maxWidth: '90vw',
+                boxShadow: `0 24px 64px rgba(0,0,0,0.45), 0 0 0 1px ${selected.color}22`,
+                direction: isRTL ? 'rtl' : 'ltr',
+              }}
+            >
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                  background: `${selected.color}20`,
+                  border: `1px solid ${selected.color}44`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18,
+                }}>
+                  {selected.emoji}
+                </div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: C.text }}>
+                    {isRTL ? 'بيانات الدخول' : 'Login Credentials'}
+                  </div>
+                  <div style={{ fontSize: 10, color: C.text3, marginTop: 1 }}>
+                    {selected.label}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setForgotOpen(false)}
+                  style={{
+                    marginLeft: isRTL ? 0 : 'auto', marginRight: isRTL ? 'auto' : 0,
+                    background: C.bg3, border: `1px solid ${C.border}`,
+                    borderRadius: 8, width: 28, height: 28, fontSize: 14,
+                    color: C.text2, cursor: 'pointer', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  }}
+                >✕</button>
+              </div>
+
+              {/* Credential rows */}
+              {[
+                { label: isRTL ? 'اسم المستخدم' : 'Username', value: selected.user, key: 'user' },
+                { label: isRTL ? 'كلمة المرور'  : 'Password',  value: selected.pass, key: 'pass' },
+              ].map(({ label, value, key }) => (
+                <div key={key} style={{
+                  background: C.bg3, borderRadius: 10,
+                  border: `1px solid ${C.border}`,
+                  padding: '10px 12px', marginBottom: 10,
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                }}>
+                  <div>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: C.text3, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
+                      {label}
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.text, fontFamily: 'monospace' }}>
+                      {key === 'pass' ? '•'.repeat(value.length) : value}
+                    </div>
+                  </div>
+                  <motion.button
+                    onClick={() => copyText(value, key)}
+                    whileHover={{ scale: 1.08 }}
+                    whileTap={{ scale: 0.93 }}
+                    style={{
+                      background: copied === key ? '#10b98120' : `${selected.color}18`,
+                      border: `1px solid ${copied === key ? '#10b981' : selected.color}44`,
+                      borderRadius: 8, padding: '5px 12px', fontSize: 11, fontWeight: 700,
+                      color: copied === key ? '#10b981' : selected.color,
+                      cursor: 'pointer', flexShrink: 0, transition: 'all 0.2s',
+                    }}
+                  >
+                    {copied === key ? (isRTL ? '✓ تم' : '✓ Copied') : (isRTL ? 'نسخ' : 'Copy')}
+                  </motion.button>
+                </div>
+              ))}
+
+              {/* Auto-fill button */}
+              <motion.button
+                onClick={autoFillAndClose}
+                whileHover={{ scale: 1.02, boxShadow: `0 6px 20px ${selected.color}44` }}
+                whileTap={{ scale: 0.97 }}
+                style={{
+                  width: '100%', height: 42, marginTop: 6,
+                  background: `linear-gradient(135deg, ${selected.color}, ${selected.color}cc)`,
+                  border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700,
+                  color: '#fff', cursor: 'pointer', letterSpacing: '0.02em',
+                }}
+              >
+                {isRTL ? '⚡ تعبئة تلقائية' : '⚡ Auto-fill & Sign In'}
+              </motion.button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
