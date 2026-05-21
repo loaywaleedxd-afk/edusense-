@@ -4,21 +4,38 @@ import { useLang } from '../context/LanguageContext';
 import useMobile from '../hooks/useMobile';
 import store from '../dataStore';
 
-const EJS_SERVICE  = import.meta.env.VITE_EMAILJS_SERVICE_ID;
-const EJS_TEMPLATE = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
-const EJS_KEY      = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
-const EMAIL_CONFIGURED = !!(EJS_SERVICE && EJS_TEMPLATE && EJS_KEY);
+const BREVO_KEY    = import.meta.env.VITE_BREVO_API_KEY;
+const BREVO_SENDER = import.meta.env.VITE_BREVO_SENDER;
+const EMAIL_CONFIGURED = !!(BREVO_KEY && BREVO_SENDER);
 
 async function sendResetEmail(toEmail, toName, code) {
   if (!EMAIL_CONFIGURED) return false;
   try {
-    const { default: emailjs } = await import('@emailjs/browser');
-    await emailjs.send(EJS_SERVICE, EJS_TEMPLATE, {
-      to_email: toEmail, to_name: toName,
-      reset_code: code, expiry_minutes: '15',
-    }, EJS_KEY);
-    return true;
-  } catch (e) { console.error('EmailJS:', e); return false; }
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': BREVO_KEY,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        sender: { name: 'EduSense', email: BREVO_SENDER },
+        to: [{ email: toEmail, name: toName }],
+        subject: 'Your EduSense password reset code',
+        htmlContent: `
+          <div style="font-family:sans-serif;max-width:480px;margin:auto">
+            <h2 style="color:#6366f1">⚡ EduSense</h2>
+            <p>Hi <strong>${toName}</strong>,</p>
+            <p>Use the code below to reset your password. It expires in <strong>15 minutes</strong>.</p>
+            <div style="font-size:36px;font-weight:800;letter-spacing:12px;font-family:monospace;
+                        background:#f3f4f6;padding:20px;text-align:center;border-radius:10px;
+                        color:#1e1b4b;margin:20px 0">${code}</div>
+            <p style="color:#6b7280;font-size:13px">If you didn't request this, you can safely ignore this email.</p>
+          </div>`,
+      }),
+    });
+    return res.ok;
+  } catch (e) { console.error('Brevo:', e); return false; }
 }
 
 function maskEmail(email) {
