@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import store from '../dataStore';
 import { get } from '../api.js';
 import { useLang } from '../context/LanguageContext';
+import { initiatePaymobPayment } from '../utils/paymob';
 
 /* ── Admin persistence helpers ── */
 function loadFeeOverrides(stuId) {
@@ -143,8 +144,9 @@ export default function FeeHistoryPage({ theme: C, stu, user, role }) {
   }, [selectedStuId, isAdmin, reloadAdminState]);
 
   const [data, setData] = useState(() => buildLocalFees(activeStu?.id || ''));
-  const [tab, setTab]   = useState('fees');
+  const [tab, setTab]       = useState('fees');
   const [fromAPI, setFromAPI] = useState(false);
+  const [payingId, setPayingId] = useState(null);
 
   useEffect(() => {
     const id = isAdmin ? selectedStuId : stu?.id;
@@ -447,6 +449,36 @@ export default function FeeHistoryPage({ theme: C, stu, user, role }) {
                   }}
                 >
                   ⬇️ Receipt
+                </button>
+              )}
+              {rec.status === 'pending' && !isAdmin && (
+                <button
+                  disabled={payingId === rec.id}
+                  onClick={async () => {
+                    setPayingId(rec.id);
+                    try {
+                      await initiatePaymobPayment(activeStu, rec.amount, rec.id);
+                    } catch (err) {
+                      alert('Payment failed to start. Please try again.');
+                      console.error(err);
+                    } finally {
+                      setPayingId(null);
+                    }
+                  }}
+                  style={{
+                    flexShrink: 0,
+                    background: payingId === rec.id
+                      ? '#94a3b8'
+                      : 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+                    border: 'none',
+                    borderRadius: 8, padding: '6px 14px', fontSize: 11,
+                    fontWeight: 700, color: '#fff',
+                    cursor: payingId === rec.id ? 'not-allowed' : 'pointer',
+                    whiteSpace: 'nowrap',
+                    boxShadow: '0 2px 8px rgba(99,102,241,0.3)',
+                  }}
+                >
+                  {payingId === rec.id ? '⏳ Loading...' : '💳 Pay Now'}
                 </button>
               )}
               {isAdmin && rec.status === 'pending' && (

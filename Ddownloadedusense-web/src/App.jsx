@@ -14,6 +14,7 @@ import AtRiskPage            from './pages/AtRiskPage';
 import NotificationToast     from './components/NotificationToast';
 import OnboardingTour        from './components/OnboardingTour';
 import store                 from './dataStore';
+import PaymentReturnPage     from './pages/PaymentReturnPage';
 
 // Rate-limit state: { count, lockedUntil } stored in sessionStorage
 const RATE_KEY = 'es_login_rate';
@@ -26,7 +27,14 @@ function getRateState() {
 }
 function setRateState(s) { sessionStorage.setItem(RATE_KEY, JSON.stringify(s)); }
 
+// Show payment return page if Paymob redirected back here
+const PAYMOB_RETURN = new URLSearchParams(window.location.search).has('success') &&
+  new URLSearchParams(window.location.search).has('id') &&
+  sessionStorage.getItem('es_pending_fee');
+
 export default function App() {
+  if (PAYMOB_RETURN) return <PaymentReturnPage />;
+
   const [isDark, setIsDark] = useState(true);
   const [user,   setUser]   = useState(null);
   const [loading, setLoading] = useState(false);
