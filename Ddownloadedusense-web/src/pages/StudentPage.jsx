@@ -18,6 +18,7 @@ import AcademicCalendarPage from './AcademicCalendarPage';
 import GraduationRoadmapPage from './GraduationRoadmapPage';
 import { StudentLivePoll } from './LivePollPage';
 import DigitalIDPage from './DigitalIDPage';
+import { exportGradesPDF, exportTranscriptPDF, exportPortfolioPDF } from '../utils/pdfExport';
 import FeeHistoryPage from './FeeHistoryPage';
 import { StudentOfficeHours } from './OfficeHoursPage';
 import { useLang } from '../context/LanguageContext';
@@ -857,9 +858,13 @@ function StudentGrades({ theme: C, stu }) {
     <div style={{ padding:'8px 20px 20px' }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
         <div style={{ fontSize:22, fontWeight:700, color:C.text }}>📝 {t('page_grades')}</div>
-        <button onClick={() => window.print()}
+        <button onClick={() => exportGradesPDF({
+            studentName: stu.name, studentId: stu.id,
+            dept: stu.dept, year: stu.year, email: stu.email,
+            results, courses: store.courses,
+          })}
           style={{ background:C.blue3, border:'none', borderRadius:8, padding:'8px 16px', fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer' }}>
-          🖨️ {t('export_pdf')}
+          📄 {t('export_pdf')}
         </button>
       </div>
 
@@ -959,19 +964,20 @@ function StudentPortfolio({ theme: C, user, stu }) {
 
       {/* PDF button */}
       <button
-        onClick={() => {
-          const style = document.createElement('style');
-          style.textContent = '@media print { .no-print { display: none !important; } }';
-          document.head.appendChild(style);
-          window.print();
-          setTimeout(() => document.head.removeChild(style), 1000);
-        }}
+        onClick={() => exportPortfolioPDF({
+          stu,
+          courses: store.getStudentCourses(stu.id),
+          results: store.getStudentResults(stu.id),
+          attendanceRate: stu.attendanceRate,
+          gpa: store.calculateSemesterGPA(stu.id) ?? stu.gpa,
+          standing: store.getAcademicStanding(stu.id),
+        })}
         style={{
           width:'100%', height:50, background:C.blue3, border:'none', borderRadius:12,
           fontSize:14, fontWeight:700, color:'#fff', cursor:'pointer', marginBottom:8,
         }}
-      >📄  Export Portfolio as PDF</button>
-      <div style={{ textAlign:'center', fontSize:11, color:C.text3, marginBottom:16 }}>Opens print dialog — save as PDF</div>
+      >📄 Export Portfolio as PDF</button>
+      <div style={{ textAlign:'center', fontSize:11, color:C.text3, marginBottom:16 }}>Downloads a formatted PDF directly</div>
 
       {/* Face capture for profile photo */}
       <Card theme={C} title="📸 Update Profile Photo">
@@ -1223,9 +1229,9 @@ function StudentTranscript({ theme: C, stu }) {
     <div style={{padding:'8px 20px 20px'}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
         <div style={{fontSize:22,fontWeight:700,color:C.text}}>{t('page_transcript')}</div>
-        <button onClick={()=>window.print()}
+        <button onClick={() => exportTranscriptPDF({ stu, rows, semGPA, standing, semester: reg.semester, fee })}
           style={{background:C.blue3,border:'none',borderRadius:8,padding:'8px 16px',fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer'}}>
-          🖨️ {t('export_pdf')}
+          📄 {t('export_pdf')}
         </button>
       </div>
 
