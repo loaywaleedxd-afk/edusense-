@@ -1,108 +1,143 @@
 /**
- * Paymob Payment Utility — Unified Checkout (Intention API)
- * ──────────────────────────────────────────────────────────
- * No iframe ID needed. Flow:
- *   1. POST /v1/intention/ with secret key → get client_secret
- *   2. Redirect to Paymob Unified Checkout with public key + client_secret
- *   3. Paymob redirects back with ?success=true/false
+ * Paymob Payment Utility — Hosted Checkout Redirect
+ * ───────────────────────────────────────────────────
+ * Flow:
+ *   1. Auth token
+ *   2. Create order
+ *   3. Get payment key
+ *   4. Auto-create iframe via API (no dashboard needed)
+ *   5. Redirect to Paymob hosted checkout
  */
 
-const SECRET_KEY     = import.meta.env.VITE_PAYMOB_SECRET_KEY;
-const PUBLIC_KEY     = import.meta.env.VITE_PAYMOB_PUBLIC_KEY;
+const API_KEY        = import.meta.env.VITE_PAYMOB_API_KEY;
 const INTEGRATION_ID = import.meta.env.VITE_PAYMOB_INTEGRATION_ID || '4087695';
+const BASE           = 'https://accept.paymob.com/api';
 
-// Where Paymob sends the student after payment
-const RETURN_URL = import.meta.env.DEV
-  ? 'http://localhost:5173'
-  : (import.meta.env.VITE_APP_URL || 'https://edusense.cloud');
-
-/**
- * Main function — call this when student clicks "Pay Now"
- *
- * @param {object} student  — { id, name, email, phone }
- * @param {number} amount   — amount in EGP (e.g. 800.50)
- * @param {string} feeId    — fee record ID, stored in sessionStorage for return handler
- */
-export async function initiatePaymobPayment(student, amount, feeId) {
-  if (!SECRET_KEY || !PUBLIC_KEY) {
-    alert('Payment gateway is not configured. Please contact the administrator.');
-    return;
-  }
-
-  // Store pending fee so we can mark it paid on return
-  sessionStorage.setItem('es_pending_fee', JSON.stringify({
-    feeId,
-    studentId: student.id,
-    amount,
-    timestamp: Date.now(),
-  }));
-
-  const amountCents = Math.round(amount * 100);
-  const nameParts   = (student.name || 'Student User').split(' ');
-  const firstName   = nameParts[0] || 'Student';
-  const lastName    = nameParts.slice(1).join(' ') || 'User';
-
-  // Step 1: Create payment intention
-  const res = await fetch('https://accept.paymob.com/v1/intention/', {
+/* ── Step 1: Auth ── */
+async function getAuthToken() {
+  const res = await fetch(`${BASE}/auth/tokens`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Token ${SECRET_KEY}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ api_key: API_KEY }),
+  });
+  if (!res.ok) throw new Error('Paymob auth failed');
+  return (await res.json()).token;
+}
+
+/* ── Step 2: Create order ── */
+async function createOrder(authToken, amountCents) {
+  const res = await fetch(`${BASE}/ecommerce/orders`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      amount:          amountCents,
+      auth_token:      authToken,
+      delivery_needed: false,
+      amount_cents:    amountCents,
       currency:        'EGP',
-      payment_methods: [Number(INTEGRATION_ID)],
-      items: [{
-        name:     'University Fee',
-        amount:   amountCents,
-        description: 'EduSense University Fee Payment',
-        quantity: 1,
-      }],
+      items:           [],
+    }),
+  });
+  if (!res.ok) throw new Error('Paymob order creation failed');
+  return (await res.json()).id;
+}
+
+/* ── Step 3: Get payment key ── */
+async function getPaymentKey(authToken, orderId, amountCents, student) {
+  const nameParts = (student.name || 'Student User').split(' ');
+  const res = await fetch(`${BASE}/acceptance/payment_keys`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      auth_token:     authToken,
+      amount_cents:   amountCents,
+      expiration:     3600,
+      order_id:       orderId,
+      currency:       'EGP',
+      integration_id: Number(INTEGRATION_ID),
       billing_data: {
-        first_name:   firstName,
-        last_name:    lastName,
-        email:        student.email || 'student@edusense.cloud',
-        phone_number: student.phone || '+201000000000',
-        apartment:    'NA',
-        floor:        'NA',
-        street:       'NA',
-        building:     'NA',
-        postal_code:  'NA',
-        city:         'Cairo',
-        country:      'EG',
-        state:        'Cairo',
+        first_name:      nameParts[0] || 'Student',
+        last_name:       nameParts.slice(1).join(' ') || 'User',
+        email:           student.email || 'student@edusense.cloud',
+        phone_number:    student.phone || '+201000000000',
+        apartment:       'NA', floor:    'NA',
+        street:          'NA', building: 'NA',
+        postal_code:     'NA', city:     'Cairo',
+        country:         'EG', state:    'Cairo',
+        shipping_method: 'NA',
       },
-      customer: {
-        first_name: firstName,
-        last_name:  lastName,
-        email:      student.email || 'student@edusense.cloud',
-      },
-      redirection_url:  RETURN_URL,
-      notification_url: `${RETURN_URL}/payment-notify`,
-      extras: { student_id: student.id, fee_id: feeId },
+    }),
+  });
+  if (!res.ok) throw new Error('Paymob payment key failed');
+  return (await res.json()).token;
+}
+
+/* ── Step 4: Get or auto-create iframe ID ── */
+async function getIframeId(authToken) {
+  // Use cached iframe ID if available
+  const cached = localStorage.getItem('es_paymob_iframe_id');
+  if (cached) return cached;
+
+  // Try to create one via Paymob API (no dashboard needed)
+  const res = await fetch(`${BASE}/acceptance/iframes/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      auth_token:    authToken,
+      name:          'EduSense Payment',
+      integration_id: Number(INTEGRATION_ID),
     }),
   });
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    console.error('Paymob intention error:', err);
-    throw new Error(err?.message || 'Failed to create payment intention');
+  if (res.ok) {
+    const data     = await res.json();
+    const iframeId = String(data.id);
+    localStorage.setItem('es_paymob_iframe_id', iframeId);
+    return iframeId;
   }
 
-  const data         = await res.json();
-  const clientSecret = data.client_secret;
+  // Try fetching existing iframes
+  const listRes = await fetch(`${BASE}/acceptance/iframes/?page_size=5`, {
+    headers: { 'Authorization': `Bearer ${authToken}` },
+  });
+  if (listRes.ok) {
+    const list = await listRes.json();
+    const first = list?.results?.[0]?.id || list?.[0]?.id;
+    if (first) {
+      localStorage.setItem('es_paymob_iframe_id', String(first));
+      return String(first);
+    }
+  }
 
-  if (!clientSecret) throw new Error('No client_secret returned from Paymob');
-
-  // Step 2: Redirect to Paymob Unified Checkout
-  window.location.href =
-    `https://accept.paymob.com/unifiedcheckout/?publicKey=${PUBLIC_KEY}&clientSecret=${clientSecret}`;
+  throw new Error('Could not obtain iframe ID from Paymob. Please contact Paymob support (MID: 874404).');
 }
 
 /**
- * Call this on the payment return page.
- * Reads Paymob's redirect params + sessionStorage → marks fee as paid if success.
+ * Main — call when student clicks "Pay Now"
+ */
+export async function initiatePaymobPayment(student, amount, feeId) {
+  if (!API_KEY) {
+    alert('Payment gateway is not configured.');
+    return;
+  }
+
+  // Save pending fee for return handler
+  sessionStorage.setItem('es_pending_fee', JSON.stringify({
+    feeId, studentId: student.id, amount, timestamp: Date.now(),
+  }));
+
+  const amountCents  = Math.round(amount * 100);
+  const authToken    = await getAuthToken();
+  const orderId      = await createOrder(authToken, amountCents);
+  const paymentKey   = await getPaymentKey(authToken, orderId, amountCents, student);
+  const iframeId     = await getIframeId(authToken);
+
+  // Redirect to Paymob hosted checkout
+  window.location.href =
+    `https://accept.paymob.com/api/acceptance/iframes/${iframeId}?payment_token=${paymentKey}`;
+}
+
+/**
+ * Call on return from Paymob — marks fee as paid if success=true
  */
 export function handlePaymobReturn() {
   const params  = new URLSearchParams(window.location.search);
@@ -118,12 +153,10 @@ export function handlePaymobReturn() {
     const today  = new Date();
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     const paidDate = `${months[today.getMonth()]} ${today.getDate()}, ${today.getFullYear()}`;
-
     const key       = `es_fees_${studentId}`;
     const overrides = JSON.parse(localStorage.getItem(key) || '{}');
     overrides[feeId] = { status: 'paid', paidDate, method: 'Paymob Online', amount };
     localStorage.setItem(key, JSON.stringify(overrides));
-
     return { success: true, feeId, studentId, amount };
   }
 
