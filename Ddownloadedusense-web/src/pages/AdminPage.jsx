@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react';
+import { exportStudentReportPDF } from '../utils/pdfExport';
 import { useLang } from '../context/LanguageContext';
 import useMobile from '../hooks/useMobile';
 import AcademicCalendarPage from './AcademicCalendarPage';
@@ -1632,68 +1633,9 @@ function StudentPortfolioModal({ theme: C, student, onClose }) {
     setEnrolledCourses(store.getStudentCourses(student.id));
   }
 
-  function printPortfolio() {
-    const courseRows = courses.map((c,i) => {
-      const rec = store.getCourseResults(c.id)[student.id];
-      const g   = rec?.grade;
-      const att = ((idHash + i*17) % 30) + 70;
-      return `<tr>
-        <td>${c.name}</td><td>${c.code}</td>
-        <td style="font-weight:700">${g!=null?g+'%':'—'}</td>
-        <td style="font-weight:700">${g!=null?letterGrade(g):'—'}</td>
-        <td>${att}%</td>
-      </tr>`;
-    }).join('');
-
-    const rawPhoto = student.capturedPhoto || store.getPhotoUrl(student);
-    const photoSrc = rawPhoto
-      ? (rawPhoto.startsWith('data:') ? rawPhoto : `${window.location.origin}${rawPhoto}`)
-      : null;
-    const photoHtml = photoSrc
-      ? `<img src="${photoSrc}" alt="${student.name}" style="width:90px;height:90px;border-radius:50%;object-fit:cover;border:3px solid #1e40af;margin-right:20px;flex-shrink:0"/>`
-      : `<div style="width:90px;height:90px;border-radius:50%;background:${student.color||'#1e40af'};display:flex;align-items:center;justify-content:center;font-size:40px;margin-right:20px;flex-shrink:0">${student.emoji||'🎓'}</div>`;
-
-    const win = window.open('','_blank');
-    win.document.write(`<!DOCTYPE html><html><head><title>Portfolio — ${student.name}</title>
-<style>
-  body{font-family:Arial,sans-serif;margin:40px;color:#1e293b}
-  .header{display:flex;align-items:center;margin-bottom:16px}
-  h1{color:#1e40af;margin:0 0 4px;font-size:22px}
-  .sub{color:#64748b;font-size:13px}
-  .stats{display:flex;gap:16px;margin:16px 0}
-  .stat{background:#f1f5f9;border-radius:8px;padding:12px 20px;text-align:center}
-  .sv{font-size:22px;font-weight:700;color:#1e40af}
-  .sl{font-size:11px;color:#64748b;margin-top:4px}
-  table{width:100%;border-collapse:collapse;margin-top:16px}
-  th{background:#1e40af;color:#fff;padding:10px 12px;text-align:left;font-size:12px}
-  td{padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:12px}
-  tr:nth-child(even){background:#f8fafc}
-  .footer{color:#94a3b8;font-size:11px;margin-top:24px;text-align:right}
-  @media print{button{display:none}}
-</style></head><body>
-<div class="header">
-  ${photoHtml}
-  <div>
-    <h1>${student.name} — Academic Portfolio</h1>
-    <div class="sub">${student.id} · ${student.dept} · Year ${student.year}</div>
-    <p style="margin:6px 0 0;font-size:13px;color:#475569">📧 ${student.email||'—'} &nbsp; 📞 ${student.phone||'—'}</p>
-  </div>
-</div>
-<div class="stats">
-  <div class="stat"><div class="sv">${student.gpa}</div><div class="sl">GPA</div></div>
-  <div class="stat"><div class="sv">${student.attendanceRate}%</div><div class="sl">Attendance</div></div>
-  <div class="stat"><div class="sv">${student.engagement}%</div><div class="sl">Engagement</div></div>
-  <div class="stat"><div class="sv">${student.attentionScore}%</div><div class="sl">Attention</div></div>
-</div>
-<h3>Course Grades</h3>
-<table>
-  <thead><tr><th>Course</th><th>Code</th><th>Grade</th><th>Letter</th><th>Attendance</th></tr></thead>
-  <tbody>${courseRows||'<tr><td colspan="5" style="text-align:center;color:#94a3b8">No courses enrolled</td></tr>'}</tbody>
-</table>
-<div class="footer">Generated ${new Date().toLocaleDateString()} · UsenseLab Academic System</div>
-<script>window.onload=()=>window.print();</script>
-</body></html>`);
-    win.document.close();
+  async function printPortfolio() {
+    const results = store.getStudentResults(student.id);
+    await exportStudentReportPDF({ student, courses, results });
   }
 
   return (

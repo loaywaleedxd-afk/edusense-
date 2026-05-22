@@ -858,7 +858,7 @@ function StudentGrades({ theme: C, stu }) {
     <div style={{ padding:'8px 20px 20px' }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
         <div style={{ fontSize:22, fontWeight:700, color:C.text }}>📝 {t('page_grades')}</div>
-        <button onClick={() => exportGradesPDF({
+        <button onClick={async () => exportGradesPDF({
             studentName: stu.name, studentId: stu.id,
             dept: stu.dept, year: stu.year, email: stu.email,
             results, courses: store.courses,
@@ -964,7 +964,7 @@ function StudentPortfolio({ theme: C, user, stu }) {
 
       {/* PDF button */}
       <button
-        onClick={() => exportPortfolioPDF({
+        onClick={async () => exportPortfolioPDF({
           stu,
           courses: store.getStudentCourses(stu.id),
           results: store.getStudentResults(stu.id),
@@ -1229,7 +1229,7 @@ function StudentTranscript({ theme: C, stu }) {
     <div style={{padding:'8px 20px 20px'}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
         <div style={{fontSize:22,fontWeight:700,color:C.text}}>{t('page_transcript')}</div>
-        <button onClick={() => exportTranscriptPDF({ stu, rows, semGPA, standing, semester: reg.semester, fee })}
+        <button onClick={async () => exportTranscriptPDF({ stu, rows, semGPA, standing, semester: reg.semester, fee })}
           style={{background:C.blue3,border:'none',borderRadius:8,padding:'8px 16px',fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer'}}>
           📄 {t('export_pdf')}
         </button>
