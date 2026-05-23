@@ -27,15 +27,29 @@ async def init_tenant_schema(pool, schema: str):
         # Create tenants table in public schema
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS public.tenants (
-                id            SERIAL PRIMARY KEY,
-                schema_name   TEXT UNIQUE NOT NULL,
-                name          TEXT NOT NULL,
-                domain        TEXT UNIQUE,
-                contact_email TEXT,
-                active        BOOLEAN DEFAULT TRUE,
-                created_at    TIMESTAMPTZ DEFAULT NOW()
+                id                       SERIAL PRIMARY KEY,
+                schema_name              TEXT UNIQUE NOT NULL,
+                name                     TEXT NOT NULL,
+                domain                   TEXT UNIQUE,
+                contact_email            TEXT,
+                active                   BOOLEAN DEFAULT TRUE,
+                plan                     TEXT DEFAULT 'trial',
+                billing_status           TEXT DEFAULT 'trial',
+                expires_at               TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '30 days'),
+                face_recognition_enabled BOOLEAN DEFAULT TRUE,
+                max_students             INTEGER DEFAULT 500,
+                created_at               TIMESTAMPTZ DEFAULT NOW()
             )
         """)
+        # Add new columns to existing installs (safe — ignored if already present)
+        for _col in [
+            "ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS plan TEXT DEFAULT 'trial'",
+            "ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS billing_status TEXT DEFAULT 'trial'",
+            "ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '30 days')",
+            "ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS face_recognition_enabled BOOLEAN DEFAULT TRUE",
+            "ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS max_students INTEGER DEFAULT 500",
+        ]:
+            await conn.execute(_col)
 
         await conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
         await conn.execute(f'SET search_path TO "{schema}"')

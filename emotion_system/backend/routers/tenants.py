@@ -13,8 +13,10 @@ Endpoints:
 """
 
 from fastapi import APIRouter, HTTPException, Depends, Request, File, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime, timezone
 import csv, io, zipfile, json, os
 from database import get_db, init_tenant_schema
 from auth_utils import require_role, hash_password
@@ -65,6 +67,19 @@ class TenantUpdate(BaseModel):
     contact_email: Optional[str] = None
     active: Optional[bool] = None
 
+class AdminCreate(BaseModel):
+    username:  str
+    full_name: str
+    email:     str
+    password:  str
+
+class SubscriptionUpdate(BaseModel):
+    plan:                    Optional[str]  = None   # trial/basic/pro/enterprise
+    billing_status:          Optional[str]  = None   # trial/active/overdue/suspended
+    expires_at:              Optional[str]  = None   # ISO date string
+    face_recognition_enabled: Optional[bool] = None
+    max_students:            Optional[int]  = None
+
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -86,9 +101,19 @@ async def list_tenants(
     _: dict = Depends(_require_superadmin),
     db=Depends(get_db),
 ):
-    """List all registered universities."""
+    """List all registered universities. Auto-suspends expired subscriptions."""
+    # Auto-suspend any tenant whose subscription has expired
+    await db.execute("""
+        UPDATE public.tenants
+        SET active = FALSE, billing_status = 'suspended'
+        WHERE billing_status = 'active'
+          AND expires_at IS NOT NULL
+          AND expires_at < NOW()
+    """)
     rows = await db.fetch("""
-        SELECT id, schema_name, name, domain, contact_email, active, created_at
+        SELECT id, schema_name, name, domain, contact_email, active,
+               plan, billing_status, expires_at, face_recognition_enabled,
+               max_students, created_at
         FROM public.tenants
         ORDER BY created_at DESC
     """)
@@ -389,4 +414,246 @@ async def import_student_photos(
             if failed == 0
             else f'{failed} photos failed to save.'
         ),
+    }
+
+
+# ── Create admin account for a tenant ──────────────────────────────────────────
+
+@router.post("/{schema}/create-admin", status_code=201)
+async def create_admin_user(
+    schema: str,
+    body: AdminCreate,
+    _: dict = Depends(_require_superadmin),
+    db=Depends(get_db),
+):
+    """Create an admin user inside the tenant's schema."""
+    _validate_schema(schema)
+
+    if len(body.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+
+    hashed = hash_password(body.password)
+    try:
+        uid = await db.fetchval(f"""
+            INSERT INTO "{schema}".users (username, password, role, full_name, email)
+            VALUES ($1, $2, 'admin', $3, $4)
+            RETURNING id
+        """, body.username, hashed, body.full_name, body.email)
+    except Exception as e:
+        if 'unique' in str(e).lower():
+            raise HTTPException(status_code=409, detail="Username or email already exists in this university")
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return {"ok": True, "user_id": uid, "username": body.username, "schema": schema}
+
+
+# ── Subscription / billing management ──────────────────────────────────────────
+
+@router.patch("/{schema}/subscription")
+async def update_subscription(
+    schema: str,
+    body: SubscriptionUpdate,
+    _: dict = Depends(_require_superadmin),
+    db=Depends(get_db),
+):
+    """Update plan, billing status, expiry, feature flags."""
+    existing = await db.fetchrow(
+        "SELECT id FROM public.tenants WHERE schema_name=$1", schema
+    )
+    if not existing:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    updates, vals = [], []
+    idx = 1
+
+    if body.plan is not None:
+        updates.append(f"plan=${idx}"); vals.append(body.plan); idx += 1
+
+    if body.billing_status is not None:
+        updates.append(f"billing_status=${idx}"); vals.append(body.billing_status); idx += 1
+        # Automatically sync active flag with billing status
+        if body.billing_status == 'suspended':
+            updates.append(f"active=${idx}"); vals.append(False); idx += 1
+        elif body.billing_status in ('active', 'trial'):
+            updates.append(f"active=${idx}"); vals.append(True); idx += 1
+
+    if body.expires_at is not None:
+        try:
+            exp = datetime.fromisoformat(body.expires_at.replace('Z', '+00:00'))
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid expires_at date format (use ISO 8601)")
+        updates.append(f"expires_at=${idx}"); vals.append(exp); idx += 1
+
+    if body.face_recognition_enabled is not None:
+        updates.append(f"face_recognition_enabled=${idx}")
+        vals.append(body.face_recognition_enabled); idx += 1
+
+    if body.max_students is not None:
+        updates.append(f"max_students=${idx}"); vals.append(body.max_students); idx += 1
+
+    if not updates:
+        return {"ok": True, "message": "Nothing to update"}
+
+    vals.append(schema)
+    await db.execute(
+        f"UPDATE public.tenants SET {', '.join(updates)} WHERE schema_name=${idx}",
+        *vals,
+    )
+    return {"ok": True, "schema": schema}
+
+
+# ── Export tenant data as ZIP of CSVs ──────────────────────────────────────────
+
+@router.get("/{schema}/export")
+async def export_tenant_data(
+    schema: str,
+    _: dict = Depends(_require_superadmin),
+    db=Depends(get_db),
+):
+    """Download all university data as a ZIP of CSV files."""
+    _validate_schema(schema)
+
+    EXPORTS = {
+        "students": f"""
+            SELECT s.student_id, u.full_name, u.email, s.department, s.year
+            FROM "{schema}".students s JOIN "{schema}".users u ON u.id = s.user_id
+        """,
+        "doctors": f"""
+            SELECT d.doctor_id, u.full_name, u.email, d.department, d.title
+            FROM "{schema}".doctors d JOIN "{schema}".users u ON u.id = d.user_id
+        """,
+        "lectures": f"""
+            SELECT lecture_id, course_name, course_code, doctor_id, room,
+                   scheduled_at, semester, capacity, status
+            FROM "{schema}".lectures
+        """,
+        "attendance": f"""
+            SELECT student_id, lecture_id, date, status, method, week
+            FROM "{schema}".attendance
+        """,
+        "grades": f"""
+            SELECT student_id, course_code, course_name, grade, doctor_id
+            FROM "{schema}".grades
+        """,
+        "emotion_records": f"""
+            SELECT student_id, lecture_id, timestamp, emotion, confidence,
+                   attention_score, engagement_score
+            FROM "{schema}".emotion_records
+        """,
+    }
+
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for table, query in EXPORTS.items():
+            try:
+                rows = await db.fetch(query)
+                if rows:
+                    buf = io.StringIO()
+                    w   = csv.DictWriter(buf, fieldnames=list(rows[0].keys()))
+                    w.writeheader()
+                    w.writerows([dict(r) for r in rows])
+                    zf.writestr(f"{schema}_{table}.csv", buf.getvalue())
+            except Exception:
+                pass  # skip tables that error (e.g. don't exist yet)
+
+    zip_buf.seek(0)
+    filename = f"{schema}_export_{datetime.now().strftime('%Y%m%d')}.zip"
+    return StreamingResponse(
+        iter([zip_buf.read()]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ── Storage usage ───────────────────────────────────────────────────────────────
+
+@router.get("/{schema}/storage")
+async def tenant_storage(
+    schema: str,
+    _: dict = Depends(_require_superadmin),
+    db=Depends(get_db),
+):
+    """Return DB row counts and photo disk usage for a tenant."""
+    _validate_schema(schema)
+
+    tables = [
+        "users", "students", "emotion_records", "attendance",
+        "course_resources", "assignments", "submissions",
+    ]
+    row_counts: dict = {}
+    for table in tables:
+        try:
+            row_counts[table] = await db.fetchval(
+                f'SELECT COUNT(*) FROM "{schema}"."{table}"'
+            ) or 0
+        except Exception:
+            row_counts[table] = 0
+
+    # Photos on disk
+    photo_dir   = os.path.join(PHOTOS_BASE, schema)
+    photo_count = 0
+    photo_bytes = 0
+    if os.path.isdir(photo_dir):
+        for fname in os.listdir(photo_dir):
+            fp = os.path.join(photo_dir, fname)
+            if os.path.isfile(fp):
+                photo_count += 1
+                photo_bytes += os.path.getsize(fp)
+
+    photo_mb = round(photo_bytes / 1_048_576, 1)
+    total_rows = sum(row_counts.values())
+
+    return {
+        "schema":       schema,
+        "row_counts":   row_counts,
+        "total_rows":   total_rows,
+        "photos":       {"count": photo_count, "size_mb": photo_mb},
+        "total_size_mb": round(total_rows * 0.001 + photo_mb, 1),  # rough estimate
+    }
+
+
+# ── Onboarding checklist ────────────────────────────────────────────────────────
+
+@router.get("/{schema}/onboarding")
+async def tenant_onboarding(
+    schema: str,
+    _: dict = Depends(_require_superadmin),
+    db=Depends(get_db),
+):
+    """Return onboarding progress for a tenant."""
+    _validate_schema(schema)
+
+    try:
+        admin_count    = await db.fetchval(
+            f"SELECT COUNT(*) FROM \"{schema}\".users WHERE role='admin'"
+        ) or 0
+        student_count  = await db.fetchval(
+            f'SELECT COUNT(*) FROM "{schema}".students'
+        ) or 0
+        photos_count   = await db.fetchval(
+            f"SELECT COUNT(*) FROM \"{schema}\".students WHERE photo_path IS NOT NULL"
+        ) or 0
+        login_count    = await db.fetchval(
+            f"SELECT COUNT(*) FROM \"{schema}\".users WHERE role != 'superadmin'"
+        ) or 0
+        dns_ok         = True  # we assume DNS is configured if tenant exists
+    except Exception:
+        admin_count = student_count = photos_count = login_count = 0
+        dns_ok = False
+
+    steps = [
+        {"key": "university_created", "label": "University created",        "done": True},
+        {"key": "admin_created",      "label": "Admin account set up",      "done": admin_count > 0},
+        {"key": "students_imported",  "label": "Students imported",         "done": student_count > 0},
+        {"key": "photos_uploaded",    "label": "Photos uploaded",           "done": photos_count > 0},
+        {"key": "first_login",        "label": "First user login happened", "done": login_count > 0},
+    ]
+
+    completed = sum(1 for s in steps if s["done"])
+    return {
+        "schema":    schema,
+        "steps":     steps,
+        "completed": completed,
+        "total":     len(steps),
+        "percent":   round(100 * completed / len(steps)),
     }
