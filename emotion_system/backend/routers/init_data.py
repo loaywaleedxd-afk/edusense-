@@ -42,7 +42,7 @@ async def init_data(payload: dict = Depends(require_auth), db=Depends(get_db)):
     # ── All students (for doctor/admin) ───────────────────────────────────
     all_students = await _q(db,
         """SELECT s.student_id as id, u.full_name as name, u.email,
-                  s.department as dept, s.year
+                  s.department as dept, s.year, s.photo_path
            FROM students s JOIN users u ON u.id = s.user_id"""
     )
 
