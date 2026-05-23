@@ -107,6 +107,39 @@ async def get_student(
     return dict(row)
 
 
+@router.delete("/{student_id}")
+async def delete_student(
+    student_id: str,
+    payload: dict = Depends(require_role("admin")),
+    db=Depends(get_db),
+):
+    """Delete a student and their user account — admin only."""
+    row = await db.fetchrow(
+        "SELECT user_id FROM students WHERE student_id=$1", student_id
+    )
+    if not row:
+        raise HTTPException(404, "Student not found")
+    user_id = row["user_id"]
+
+    async with db.transaction():
+        # Remove dependent rows first to avoid FK violations
+        await db.execute("DELETE FROM attendance        WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM emotion_records   WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM course_enrollments WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM grades            WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM excuses           WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM submissions       WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM complaints        WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM system_alerts     WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM student_fees      WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM face_encodings    WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM students          WHERE student_id=$1", student_id)
+        if user_id:
+            await db.execute("DELETE FROM users WHERE id=$1", user_id)
+
+    return {"ok": True, "deleted": student_id}
+
+
 @router.get("/{student_id}/engagement-summary")
 async def student_engagement(
     student_id: str,

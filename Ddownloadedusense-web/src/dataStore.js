@@ -650,7 +650,8 @@ class DataStore {
   }
 
   addStudent(data){
-    const sid = this.nextStudentId();
+    // Allow caller to supply an id (when DB was already written first)
+    const sid = data.id || this.nextStudentId();
     const colors=['#3b82f6','#10b981','#8b5cf6','#f59e0b','#ef4444','#06b6d4'];
     const s={id:sid,name:data.name||'New Student',emoji:['👦','👩'][Math.floor(Math.random()*2)],
       color:colors[Math.floor(Math.random()*colors.length)],dept:data.dept||DEPARTMENTS[0],

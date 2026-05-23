@@ -17,6 +17,7 @@ import EmotionBarsWidget from '../components/EmotionBars';
 import AlertItem from '../components/AlertItem';
 import WebcamFeed from '../components/WebcamFeed';
 import store from '../dataStore';
+import { api } from '../api';
 import { DEPARTMENTS, TITLES } from '../theme';
 import AuditLogPage from './AuditLogPage';
 
@@ -447,16 +448,28 @@ function BulkImportModal({ theme: C, onClose, onImported }) {
     setLoading(false);
   }
 
-  function importAll() {
+  async function importAll() {
     const accounts = [];
-    rows.forEach(r => {
-      const s = store.addStudent(r);
+    const errors = [];
+    for (const r of rows) {
+      const sid       = store.nextStudentId();
       const firstName = r.name.trim().split(' ')[0].toLowerCase().replace(/[^a-z]/g,'') || 'student';
-      const username = `stu.${firstName}.${s.id.toLowerCase()}`;
-      const password = generatePassword();
-      store.addUser({ name: r.name, username, password, email: r.email, role: 'student', studentId: s.id });
-      accounts.push({ name: r.name, username, password, id: s.id });
-    });
+      const username  = `stu.${firstName}.${sid.toLowerCase()}`;
+      const password  = generatePassword();
+      const email     = r.email || `${sid.toLowerCase()}@university.edu`;
+      try {
+        await api.createStudent({
+          student_id: sid, name: r.name.trim(), email,
+          department: r.dept || DEPARTMENTS[0], year: parseInt(r.year) || 1, password,
+        });
+        const s = store.addStudent({ ...r, id: sid, email });
+        store.addUser({ name: r.name, username, password, email, role: 'student', studentId: s.id });
+        accounts.push({ name: r.name, username, password, id: s.id });
+      } catch(err) {
+        errors.push(`${r.name}: ${err.message}`);
+      }
+    }
+    if (errors.length) alert('Some students failed:\n' + errors.join('\n'));
     setDone(accounts);
     onImported();
   }
@@ -577,21 +590,48 @@ function AdminStudents({ theme: C }) {
     s.name.toLowerCase().includes(search.toLowerCase())||s.id.toLowerCase().includes(search.toLowerCase())
   );
 
-  function addStudent() {
+  async function addStudent() {
     if(!form.name.trim()) { alert('Name is required'); return; }
-    const s = store.addStudent(form);
+    const sid      = store.nextStudentId();
     const firstName = form.name.trim().split(' ')[0].toLowerCase().replace(/[^a-z]/g,'') || 'student';
-    const username = `stu.${firstName}.${s.id.toLowerCase()}`;
-    const password = generatePassword();
-    store.addUser({ name: form.name, username, password, email: form.email, role: 'student', studentId: s.id });
-    setCreatedAccount({ name: form.name, role: 'Student', username, password, email: form.email, id: s.id });
+    const username  = `stu.${firstName}.${sid.toLowerCase()}`;
+    const password  = generatePassword();
+    const email     = form.email || `${sid.toLowerCase()}@university.edu`;
+
+    try {
+      // Persist to PostgreSQL first
+      await api.createStudent({
+        student_id: sid,
+        name:       form.name.trim(),
+        email,
+        department: form.dept || DEPARTMENTS[0],
+        year:       parseInt(form.year) || 1,
+        password,
+      });
+    } catch(err) {
+      alert('Failed to save student: ' + err.message);
+      return;
+    }
+
+    // Only update local store after DB succeeds
+    const s = store.addStudent({ ...form, id: sid, email });
+    store.addUser({ name: form.name, username, password, email, role: 'student', studentId: s.id });
+    setCreatedAccount({ name: form.name, role: 'Student', username, password, email, id: s.id });
     setStudents([...store.students]);
     setShowAdd(false); setForm({name:'',dept:DEPARTMENTS[0],year:1,email:'',phone:''});
   }
 
-  function deleteSelected() {
+  async function deleteSelected() {
     if(!selected) { alert('Select a student first'); return; }
     if(!confirm(`Delete ${selected.name}?`)) return;
+
+    try {
+      await api.deleteStudent(selected.id);
+    } catch(err) {
+      alert('Failed to delete student: ' + err.message);
+      return;
+    }
+
     store.deleteStudent(selected.id);
     setStudents([...store.students]); setSelected(null);
   }
