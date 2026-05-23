@@ -74,23 +74,20 @@ export default function App() {
       const secs = Math.ceil((rate.lockedUntil - Date.now()) / 1000);
       throw new Error(`Too many failed attempts. Try again in ${secs}s.`);
     }
-    setLoading(true);
-    try {
-      const u = await store.authenticate(username, password);
-      if (u) {
-        setRateState({ count: 0, lockedUntil: 0 });
-        setUser(u);
-      } else {
-        const next = rate.count + 1;
-        setRateState({
-          count: next,
-          lockedUntil: next >= MAX_ATTEMPTS ? Date.now() + LOCKOUT_MS : 0,
-        });
-      }
-      return u;
-    } finally {
-      setLoading(false);
+    // Do NOT setLoading(true) here — it unmounts LoginPage and loses the
+    // selected-role state. LoginPage has its own busy spinner on the button.
+    const u = await store.authenticate(username, password);
+    if (u) {
+      setRateState({ count: 0, lockedUntil: 0 });
+      setUser(u);          // triggers re-render → dashboard shown immediately
+    } else {
+      const next = rate.count + 1;
+      setRateState({
+        count: next,
+        lockedUntil: next >= MAX_ATTEMPTS ? Date.now() + LOCKOUT_MS : 0,
+      });
     }
+    return u;
   }
 
   const [overlay, setOverlay] = useState(null); // 'proctoring' | 'advising' | 'atrisk'
