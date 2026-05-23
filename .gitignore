@@ -11,6 +11,13 @@ node_modules/
 dist/
 .vite/
 
+# Environment files — never commit secrets
+.env
+.env.production
+.env.local
+.env.*.local
+emotion_system/backend/.env
+
 # Sensitive credentials
 emotion_system/student_credentials.csv
 emotion_system/student_credentials.xlsx

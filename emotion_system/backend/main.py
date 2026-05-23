@@ -19,7 +19,7 @@ from routers import (
     announcements, exam_schedule, resources, assignments,
     notifications, complaints, fees, registration, waitlist,
     qr_sessions, enrollments, init_data,
-    proctoring, advising, at_risk, office_hours,
+    proctoring, advising, at_risk, office_hours, payment,
 )
 from database import init_db
 import aiosqlite
@@ -92,6 +92,7 @@ app.include_router(proctoring.router,    prefix="/api/proctor",        tags=["Pr
 app.include_router(advising.router,      prefix="/api/advising",       tags=["Advising"])
 app.include_router(at_risk.router,       prefix="/api/at-risk",        tags=["AtRisk"])
 app.include_router(office_hours.router,  prefix="/api/office-hours",   tags=["OfficeHours"])
+app.include_router(payment.router,       prefix="/api/payment",         tags=["Payment"])
 app.include_router(r_router)
 
 

@@ -734,7 +734,10 @@ class DataStore {
     if(!this.attendance[key]) this.attendance[key]={};
     if(!this.attendance[key][studentId]){
       this.attendance[key][studentId]={studentId,courseId,week:w,time:new Date().toTimeString().slice(0,8),date:new Date().toISOString().slice(0,10),method,confidence:+confidence.toFixed(3),status:'present'};
-      this._persist(); return true;
+      this._persist();
+      // Sync to backend (fire-and-forget)
+      this._callAPI(()=>api.markAttendance({student_id:studentId,lecture_id:courseId,week:w,method,confidence:+confidence.toFixed(3)}));
+      return true;
     }
     return false;
   }
@@ -920,10 +923,22 @@ class DataStore {
     const sessions = this._qrRead();
     sessions[token] = { courseId, week, createdAt: Date.now(), usedBy: [] };
     this._qrWrite(sessions);
+    // Persist to backend (fire-and-forget)
+    api.createQR({ token, courseId, week }).catch(() => {});
     return token;
   }
 
-  useQRToken(token, studentId){
+  async useQRToken(token, studentId){
+    // Try backend first
+    try {
+      const res = await api.useQR({ token, studentId });
+      if (res?.ok) {
+        this.markAttendance(res.courseId, studentId, 1.0, 'qr', res.week);
+        this._persist();
+        return { ok: true, courseId: res.courseId, week: res.week };
+      }
+    } catch {}
+    // Fallback to localStorage
     const sessions = this._qrRead();
     const s = sessions[token];
     if(!s) return {ok:false, error:'Invalid code'};

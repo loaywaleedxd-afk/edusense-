@@ -52,11 +52,24 @@ export function StudentOfficeHours({ theme: C, stu }) {
 
   const doctors = store.doctors;
 
+  // Load bookings from backend, fall back to localStorage
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await get(`/api/office-hours/bookings/student/${stu.id}`);
+        if (res?.bookings?.length > 0) {
+          setBookings(res.bookings);
+          saveLS(LS_BOOKINGS, res.bookings);
+        }
+      } catch {}
+    })();
+  }, [stu.id]);
+
   const loadSlots = useCallback(async () => {
     // Try API first
     try {
       const res = await get(`/api/office-hours/slots/${selDoc}`);
-      if (res?.slots) { setSlots(res.slots); return; }
+      if (res?.slots?.length > 0) { setSlots(res.slots); return; }
     } catch {}
     // Fallback: local generation + filter out booked ones
     const local = loadLS(`${LS_SLOTS}_${selDoc}`, null) || buildDefaultSlots(selDoc);
@@ -294,10 +307,28 @@ export function DoctorOfficeHours({ theme: C, doctor }) {
   });
   const [tab, setTab] = useState('schedule');
 
-  function toggleSlot(slotId) {
-    const updated = slots.map(s => s.id === slotId ? { ...s, available: !s.available } : s);
+  // Load bookings from backend on mount
+  useEffect(() => {
+    if (!doctor?.id) return;
+    (async () => {
+      try {
+        const res = await get(`/api/office-hours/bookings/doctor/${doctor.id}`);
+        if (res?.bookings?.length > 0) {
+          setBookings(res.bookings);
+          saveLS(LS_BOOKINGS, res.bookings);
+        }
+      } catch {}
+    })();
+  }, [doctor?.id]);
+
+  async function toggleSlot(slotId) {
+    const slot    = slots.find(s => s.id === slotId);
+    const newVal  = !slot?.available;
+    const updated = slots.map(s => s.id === slotId ? { ...s, available: newVal } : s);
     setSlots(updated);
     saveLS(`${LS_SLOTS}_${doctor?.id}`, updated);
+    // Persist to backend
+    try { await post(`/api/office-hours/slots`, { ...slot, available: newVal }); } catch {}
   }
 
   const byDay = {};

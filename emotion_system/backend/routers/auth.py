@@ -1,7 +1,8 @@
 """Authentication router — bcrypt passwords + real JWT tokens."""
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
-import aiosqlite, os
+import aiosqlite, os, time
+from collections import defaultdict
 
 from auth_utils import (
     verify_password, hash_password,
@@ -11,6 +12,19 @@ from auth_utils import (
 router = APIRouter()
 DB = os.getenv("DB_PATH", "emotion_system.db")
 
+# Simple in-memory rate limiter: max 10 attempts per IP per 5 minutes
+_login_attempts: dict = defaultdict(list)
+_MAX_ATTEMPTS = 10
+_WINDOW_SEC   = 300
+
+def _check_rate_limit(ip: str):
+    now  = time.time()
+    hits = [t for t in _login_attempts[ip] if now - t < _WINDOW_SEC]
+    _login_attempts[ip] = hits
+    if len(hits) >= _MAX_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="Too many login attempts. Try again in 5 minutes.")
+    _login_attempts[ip].append(now)
+
 
 class LoginRequest(BaseModel):
     username: str
@@ -18,7 +32,8 @@ class LoginRequest(BaseModel):
 
 
 @router.post("/login")
-async def login(req: LoginRequest):
+async def login(req: LoginRequest, request: Request):
+    _check_rate_limit(request.client.host if request.client else "unknown")
     uname = req.username.strip().lower()
     pwd   = req.password.strip()
 
