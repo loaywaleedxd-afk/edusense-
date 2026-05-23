@@ -38,11 +38,16 @@ logger = logging.getLogger(__name__)
 manager = ConnectionManager()
 
 
+_DEFAULT_TENANT = os.getenv("DEFAULT_TENANT", "public")
+
 class TenantMiddleware(BaseHTTPMiddleware):
     """
     Extract subdomain from the Host header and store it as request.state.tenant.
-    e.g.  schoola.edusense.com  →  schoola
-          localhost              →  public  (dev default)
+    e.g.  aast.edusense.com  →  aast
+          localhost           →  value of DEFAULT_TENANT env var (default: public)
+
+    In production, subdomains are detected automatically.
+    In local dev, set DEFAULT_TENANT=aast in your .env to point at a specific schema.
     """
     async def dispatch(self, request: Request, call_next):
         host = request.headers.get("host", "localhost").split(":")[0]
@@ -51,7 +56,8 @@ class TenantMiddleware(BaseHTTPMiddleware):
         if len(parts) >= 3:
             request.state.tenant = parts[0]
         else:
-            request.state.tenant = "public"
+            # Localhost / no subdomain — use the dev default from .env
+            request.state.tenant = _DEFAULT_TENANT
         return await call_next(request)
 
 
