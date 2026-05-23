@@ -59,6 +59,11 @@ export default function SuperAdminPage({ user, onLogout }) {
   });
   const [formErr, setFormErr] = useState('');
 
+  // ── Import panel state ──────────────────────────────────────────────────────
+  const [importOpen,   setImportOpen]   = useState('');   // schema name that has panel open
+  const [importBusy,   setImportBusy]   = useState('');   // 'csv:schema' | 'photo:schema'
+  const [importResult, setImportResult] = useState({});   // { schema: { csv, photo } }
+
   // ── Fetch tenant list ───────────────────────────────────────────────────────
   const load = useCallback(async () => {
     setLoading(true);
@@ -116,6 +121,67 @@ export default function SuperAdminPage({ user, onLogout }) {
       setFormErr(e.message);
     } finally {
       setBusy('');
+    }
+  }
+
+  // ── CSV template download (client-side, no server needed) ──────────────────
+  function downloadCsvTemplate() {
+    const csv = [
+      'student_id,full_name,email,department,year,password',
+      '231014001,Ahmed Mohamed,ahmed@uni.edu,Computer Science,2,Ahmed@2025',
+      '231014002,Sara Ali,sara@uni.edu,Engineering,1,Sara@2025',
+    ].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a    = document.createElement('a');
+    a.href     = URL.createObjectURL(blob);
+    a.download = 'students_template.csv';
+    a.click();
+  }
+
+  // ── Upload CSV ──────────────────────────────────────────────────────────────
+  async function handleCsvUpload(schema, file) {
+    if (!file) return;
+    setImportBusy(`csv:${schema}`);
+    setImportResult(p => ({ ...p, [schema]: { ...p[schema], csv: null } }));
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const r = await fetch(`${API}/api/super/tenants/${schema}/import-students`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || `Error ${r.status}`);
+      setImportResult(p => ({ ...p, [schema]: { ...p[schema], csv: d } }));
+      await load();
+    } catch (e) {
+      setImportResult(p => ({ ...p, [schema]: { ...p[schema], csv: { error: e.message } } }));
+    } finally {
+      setImportBusy('');
+    }
+  }
+
+  // ── Upload Photos ZIP ───────────────────────────────────────────────────────
+  async function handlePhotoUpload(schema, file) {
+    if (!file) return;
+    setImportBusy(`photo:${schema}`);
+    setImportResult(p => ({ ...p, [schema]: { ...p[schema], photo: null } }));
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const r = await fetch(`${API}/api/super/tenants/${schema}/import-photos`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || `Error ${r.status}`);
+      setImportResult(p => ({ ...p, [schema]: { ...p[schema], photo: d } }));
+    } catch (e) {
+      setImportResult(p => ({ ...p, [schema]: { ...p[schema], photo: { error: e.message } } }));
+    } finally {
+      setImportBusy('');
     }
   }
 
@@ -370,8 +436,124 @@ export default function SuperAdminPage({ user, onLogout }) {
                       >
                         {isbusy ? '…' : t.active ? '⏸ Deactivate' : '▶ Reactivate'}
                       </button>
+                      <button
+                        onClick={() => setImportOpen(v => v === t.schema_name ? '' : t.schema_name)}
+                        style={{
+                          padding: '7px 14px', borderRadius: 8, fontSize: 11, fontWeight: 700,
+                          background: 'rgba(168,85,247,0.1)',
+                          border: `1px solid ${C.purple}44`,
+                          color: C.purple, cursor: 'pointer',
+                        }}
+                      >
+                        {importOpen === t.schema_name ? '✕ Close Import' : '⬆ Import Data'}
+                      </button>
                     </div>
                   </div>
+
+                  {/* ── Import Panel ── */}
+                  {importOpen === t.schema_name && (
+                    <div style={{
+                      marginTop: 20, paddingTop: 20,
+                      borderTop: `1px solid ${C.border}`,
+                      display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16,
+                    }}>
+
+                      {/* CSV Column */}
+                      <div style={{ background: C.bg, borderRadius: 10, padding: 16, border: `1px solid ${C.border}` }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>📋 Import Students (CSV)</div>
+                        <div style={{ fontSize: 11, color: C.text3, marginBottom: 12, lineHeight: 1.6 }}>
+                          Upload a CSV file with columns:<br />
+                          <code style={{ color: C.yellow, fontSize: 10 }}>student_id, full_name, email, department, year, password</code>
+                        </div>
+                        <button
+                          onClick={downloadCsvTemplate}
+                          style={{
+                            padding: '5px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                            background: 'rgba(245,158,11,0.1)', border: `1px solid ${C.yellow}44`,
+                            color: C.yellow, cursor: 'pointer', marginBottom: 10, display: 'block',
+                          }}
+                        >
+                          ⬇ Download Template
+                        </button>
+                        <label style={{
+                          display: 'block', padding: '10px 14px', borderRadius: 8,
+                          border: `2px dashed ${C.purple}55`, textAlign: 'center',
+                          cursor: 'pointer', fontSize: 12, color: C.text2,
+                          background: 'rgba(168,85,247,0.05)',
+                        }}>
+                          {importBusy === `csv:${t.schema_name}` ? '⏳ Uploading…' : '📂 Click to choose CSV file'}
+                          <input
+                            type="file" accept=".csv" style={{ display: 'none' }}
+                            disabled={!!importBusy}
+                            onChange={e => handleCsvUpload(t.schema_name, e.target.files[0])}
+                          />
+                        </label>
+                        {/* CSV result */}
+                        {importResult[t.schema_name]?.csv && (() => {
+                          const r = importResult[t.schema_name].csv;
+                          if (r.error) return (
+                            <div style={{ marginTop: 10, fontSize: 11, color: C.red, padding: '8px 12px', background: 'rgba(239,68,68,0.1)', borderRadius: 7 }}>
+                              ⚠ {r.error}
+                            </div>
+                          );
+                          return (
+                            <div style={{ marginTop: 10, fontSize: 11, borderRadius: 7, padding: '10px 12px', background: 'rgba(16,185,129,0.08)', border: `1px solid ${C.green}33` }}>
+                              <div style={{ color: C.green, fontWeight: 700, marginBottom: 4 }}>✓ Import complete</div>
+                              <div style={{ color: C.text2 }}>Created: <strong style={{ color: C.green }}>{r.created}</strong></div>
+                              <div style={{ color: C.text2 }}>Skipped (already exist): <strong style={{ color: C.yellow }}>{r.skipped}</strong></div>
+                              {r.errors?.length > 0 && (
+                                <div style={{ marginTop: 6, color: C.red }}>
+                                  Errors: {r.errors.slice(0, 3).map((e, i) => <div key={i} style={{ fontSize: 10 }}>{e}</div>)}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                      {/* Photos ZIP Column */}
+                      <div style={{ background: C.bg, borderRadius: 10, padding: 16, border: `1px solid ${C.border}` }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>🖼 Import Photos + Face Recognition (ZIP)</div>
+                        <div style={{ fontSize: 11, color: C.text3, marginBottom: 12, lineHeight: 1.6 }}>
+                          Upload a ZIP where each photo is named:<br />
+                          <code style={{ color: C.yellow, fontSize: 10 }}>student_id.jpg</code> — e.g. <code style={{ color: C.yellow, fontSize: 10 }}>231014184.jpg</code><br />
+                          Photos are saved and face encodings generated automatically.
+                        </div>
+                        <label style={{
+                          display: 'block', padding: '10px 14px', borderRadius: 8,
+                          border: `2px dashed ${C.blue}55`, textAlign: 'center',
+                          cursor: 'pointer', fontSize: 12, color: C.text2,
+                          background: 'rgba(59,130,246,0.05)', marginTop: 34,
+                        }}>
+                          {importBusy === `photo:${t.schema_name}` ? '⏳ Processing photos…' : '📂 Click to choose ZIP file'}
+                          <input
+                            type="file" accept=".zip" style={{ display: 'none' }}
+                            disabled={!!importBusy}
+                            onChange={e => handlePhotoUpload(t.schema_name, e.target.files[0])}
+                          />
+                        </label>
+                        {/* Photo result */}
+                        {importResult[t.schema_name]?.photo && (() => {
+                          const r = importResult[t.schema_name].photo;
+                          if (r.error) return (
+                            <div style={{ marginTop: 10, fontSize: 11, color: C.red, padding: '8px 12px', background: 'rgba(239,68,68,0.1)', borderRadius: 7 }}>
+                              ⚠ {r.error}
+                            </div>
+                          );
+                          return (
+                            <div style={{ marginTop: 10, fontSize: 11, borderRadius: 7, padding: '10px 12px', background: 'rgba(16,185,129,0.08)', border: `1px solid ${C.green}33` }}>
+                              <div style={{ color: C.green, fontWeight: 700, marginBottom: 4 }}>✓ Photos imported</div>
+                              <div style={{ color: C.text2 }}>Face encoded: <strong style={{ color: C.green }}>{r.encoded}</strong></div>
+                              <div style={{ color: C.text2 }}>Saved only: <strong style={{ color: C.yellow }}>{r.saved_only}</strong></div>
+                              <div style={{ color: C.text2 }}>Failed: <strong style={{ color: C.red }}>{r.failed}</strong></div>
+                              {r.note && <div style={{ marginTop: 6, color: C.text3, fontSize: 10 }}>{r.note}</div>}
+                            </div>
+                          );
+                        })()}
+                      </div>
+
+                    </div>
+                  )}
                 </div>
               );
             })}
