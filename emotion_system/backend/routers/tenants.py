@@ -117,7 +117,19 @@ async def list_tenants(
         FROM public.tenants
         ORDER BY created_at DESC
     """)
-    return [dict(r) for r in rows]
+    # Attach live student count for each tenant
+    result = []
+    for row in rows:
+        d = dict(row)
+        sc = row["schema_name"]
+        try:
+            d["student_count"] = await db.fetchval(
+                f'SELECT COUNT(*) FROM "{sc}".students'
+            )
+        except Exception:
+            d["student_count"] = 0
+        result.append(d)
+    return result
 
 
 @router.post("", status_code=201)

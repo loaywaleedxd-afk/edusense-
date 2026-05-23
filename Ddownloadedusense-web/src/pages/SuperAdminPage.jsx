@@ -297,8 +297,8 @@ export default function SuperAdminPage({ user, onLogout }) {
     setTimeout(() => setCopied(''), 2000);
   }
 
-  // ── Summary stats ───────────────────────────────────────────────────────────
-  const totalStudents  = Object.values(stats).reduce((s, v) => s + (v.students || 0), 0);
+  // ── Summary stats (student_count now comes directly from list_tenants) ──────
+  const totalStudents  = tenants.reduce((s, t) => s + (t.student_count ?? (stats[t.schema_name]?.students ?? 0)), 0);
   const totalUnis      = tenants.length;
   const activeUnis     = tenants.filter(t => t.active).length;
 
@@ -320,6 +320,14 @@ export default function SuperAdminPage({ user, onLogout }) {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <span style={{ fontSize: 12, color: C.text3 }}>{user?.name || 'superadmin'}</span>
+          <button
+            onClick={load}
+            disabled={loading}
+            title="Refresh all data"
+            style={{ padding: '6px 12px', borderRadius: 8, background: 'transparent', border: `1px solid ${C.border}`, color: C.text2, fontSize: 14, cursor: 'pointer' }}
+          >
+            {loading ? '⏳' : '🔄'}
+          </button>
           <button
             onClick={onLogout}
             style={{ padding: '6px 14px', borderRadius: 8, background: 'transparent', border: `1px solid ${C.border}`, color: C.text2, fontSize: 12, cursor: 'pointer' }}
@@ -496,7 +504,7 @@ export default function SuperAdminPage({ user, onLogout }) {
                       <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
                         {[
                           { label: 'Users',    value: s.users    ?? '–' },
-                          { label: 'Students', value: s.students ?? '–' },
+                          { label: 'Students', value: t.student_count ?? s.students ?? '–' },
                           { label: 'Courses',  value: s.lectures ?? '–' },
                           { label: 'Emotions', value: (s.emotion_records ?? '–').toLocaleString?.() ?? s.emotion_records ?? '–' },
                           { label: 'Present',  value: s.attendance_present ?? '–' },
