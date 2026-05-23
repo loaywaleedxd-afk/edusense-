@@ -709,7 +709,9 @@ class DataStore {
     if(!this.courseEnrollments[courseId].includes(studentId)){
       this.courseEnrollments[courseId].push(studentId);
       const c=this.getCourse(courseId); if(c) c.enrolledCount=this.courseEnrollments[courseId].length;
-      this._persist(); return true;
+      this._persist();
+      this._callAPI(()=>api.enroll(courseId,studentId));
+      return true;
     }
     return false;
   }
@@ -718,7 +720,9 @@ class DataStore {
     if(this.courseEnrollments[courseId]?.includes(studentId)){
       this.courseEnrollments[courseId]=this.courseEnrollments[courseId].filter(x=>x!==studentId);
       const c=this.getCourse(courseId); if(c) c.enrolledCount=this.courseEnrollments[courseId].length;
-      this._persist(); return true;
+      this._persist();
+      this._callAPI(()=>api.unenroll(courseId,studentId));
+      return true;
     }
     return false;
   }
