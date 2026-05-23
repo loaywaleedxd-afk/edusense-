@@ -202,6 +202,28 @@ async def analytics_summary(
     }
 
 
+@app.get("/api/branding")
+async def get_branding(request: Request):
+    """
+    Public endpoint (no auth) — returns the current tenant's logo and primary color.
+    Called by the frontend before login to apply university branding.
+    """
+    tenant = getattr(request.state, "tenant", "public")
+    pool = request.app.state.pool
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT name, primary_color, logo_data FROM public.tenants WHERE schema_name=$1",
+            tenant,
+        )
+    if not row:
+        return {"name": "EduSense", "primary_color": "#3b82f6", "logo_data": None}
+    return {
+        "name":          row["name"],
+        "primary_color": row["primary_color"] or "#3b82f6",
+        "logo_data":     row["logo_data"],
+    }
+
+
 @app.get("/api/health")
 async def health_check():
     return {

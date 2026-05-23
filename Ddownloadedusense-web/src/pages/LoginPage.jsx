@@ -72,7 +72,7 @@ const ORBS = [
   { w: 180, h: 180, top: '-5%',  left: '70%',  color: 'rgba(245,158,11,0.07)',  dur: 10 },
 ];
 
-export default function LoginPage({ theme: C, onLogin }) {
+export default function LoginPage({ theme: C, onLogin, branding }) {
   const { t, toggleLang, lang, isRTL } = useLang();
   const isMobile = useMobile();
   const [selected, setSelected] = useState(null);
@@ -197,18 +197,30 @@ export default function LoginPage({ theme: C, onLogin }) {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
             >
-              <div style={{
-                fontSize: 38, fontWeight: 800, color: '#ffffff',
-                letterSpacing: '-0.5px', marginBottom: 10,
-              }}>
-                ⚡ EduSense
-              </div>
-              <div style={{
-                fontSize: 14, color: 'rgba(255,255,255,0.55)',
-                fontWeight: 500, marginBottom: 52, maxWidth: 380,
-              }}>
-                AI-Powered University Management System
-              </div>
+              {branding?.logo ? (
+                <div style={{ marginBottom: 28 }}>
+                  <img src={branding.logo} alt={branding.name || 'University'}
+                    style={{ maxHeight: 72, maxWidth: 260, objectFit: 'contain' }} />
+                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', marginTop: 10 }}>
+                    Powered by EduSense
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div style={{
+                    fontSize: 38, fontWeight: 800, color: '#ffffff',
+                    letterSpacing: '-0.5px', marginBottom: 10,
+                  }}>
+                    ⚡ {branding?.name || 'EduSense'}
+                  </div>
+                  <div style={{
+                    fontSize: 14, color: 'rgba(255,255,255,0.55)',
+                    fontWeight: 500, marginBottom: 52, maxWidth: 380,
+                  }}>
+                    AI-Powered University Management System
+                  </div>
+                </>
+              )}
             </motion.div>
 
             {/* Feature list */}

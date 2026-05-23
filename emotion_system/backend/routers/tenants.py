@@ -80,6 +80,10 @@ class SubscriptionUpdate(BaseModel):
     face_recognition_enabled: Optional[bool] = None
     max_students:            Optional[int]  = None
 
+class BrandingUpdate(BaseModel):
+    primary_color: Optional[str] = None   # hex e.g. "#1a5276"
+    logo_data:     Optional[str] = None   # base64 data URL e.g. "data:image/png;base64,..."
+
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -669,3 +673,49 @@ async def tenant_onboarding(
         "total":     len(steps),
         "percent":   round(100 * completed / len(steps)),
     }
+
+
+# ── Branding ────────────────────────────────────────────────────────────────────
+
+@router.get("/{schema}/branding")
+async def get_tenant_branding(
+    schema: str,
+    _: dict = Depends(_require_superadmin),
+    db=Depends(get_db),
+):
+    """Return branding settings for a tenant."""
+    _validate_schema(schema)
+    row = await db.fetchrow(
+        "SELECT primary_color, logo_data FROM public.tenants WHERE schema_name=$1", schema
+    )
+    if not row:
+        raise HTTPException(404, "Tenant not found")
+    return {"primary_color": row["primary_color"] or "#3b82f6", "logo_data": row["logo_data"]}
+
+
+@router.patch("/{schema}/branding")
+async def update_tenant_branding(
+    schema: str,
+    body: BrandingUpdate,
+    _: dict = Depends(_require_superadmin),
+    db=Depends(get_db),
+):
+    """Update logo and/or primary color for a tenant."""
+    _validate_schema(schema)
+
+    updates, vals = [], []
+    idx = 1
+    if body.primary_color is not None:
+        updates.append(f"primary_color=${idx}"); vals.append(body.primary_color); idx += 1
+    if body.logo_data is not None:
+        updates.append(f"logo_data=${idx}"); vals.append(body.logo_data); idx += 1
+
+    if not updates:
+        return {"ok": True, "message": "Nothing to update"}
+
+    vals.append(schema)
+    await db.execute(
+        f"UPDATE public.tenants SET {', '.join(updates)} WHERE schema_name=${idx}",
+        *vals,
+    )
+    return {"ok": True, "schema": schema}

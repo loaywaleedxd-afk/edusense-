@@ -48,7 +48,7 @@ const itemVariants = {
   visible: { opacity: 1, x: 0, transition: { duration: 0.22, ease: 'easeOut' } },
 };
 
-export default function Sidebar({ theme: C, navItems, activeId, onNav, mobileOpen, onMobileClose }) {
+export default function Sidebar({ theme: C, navItems, activeId, onNav, mobileOpen, onMobileClose, branding }) {
   const { t, isRTL } = useLang();
   const isMobile = useMobile();
 
@@ -73,10 +73,20 @@ export default function Sidebar({ theme: C, navItems, activeId, onNav, mobileOpe
           textAlign: isRTL ? 'right' : 'left',
         }}
       >
-        <div style={{ fontSize: 19, fontWeight: 700, color: C.blue2 }}>⚡ EduSense</div>
-        <div style={{ fontSize: 9, color: C.text3, marginTop: 4 }}>
-          {isRTL ? 'نظام تتبع المشاعر والحضور' : 'Emotion & Attendance AI'}
-        </div>
+        {branding?.logo ? (
+          <img
+            src={branding.logo}
+            alt={branding.name || 'University Logo'}
+            style={{ maxHeight: 48, maxWidth: 180, objectFit: 'contain' }}
+          />
+        ) : (
+          <>
+            <div style={{ fontSize: 19, fontWeight: 700, color: C.blue2 }}>⚡ EduSense</div>
+            <div style={{ fontSize: 9, color: C.text3, marginTop: 4 }}>
+              {isRTL ? 'نظام تتبع المشاعر والحضور' : 'Emotion & Attendance AI'}
+            </div>
+          </>
+        )}
       </motion.div>
 
       {/* Accent line */}

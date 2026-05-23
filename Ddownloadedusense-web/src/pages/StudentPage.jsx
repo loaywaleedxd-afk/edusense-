@@ -262,7 +262,7 @@ function AttendanceAlertBanner({ theme: C, studentId, onGoToAttendance }) {
 }
 
 export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLogout,
-  onOpenProctoring, onOpenAdvising, onOpenAtRisk, pendingQR, onClearPendingQR }) {
+  onOpenProctoring, onOpenAdvising, onOpenAtRisk, pendingQR, onClearPendingQR, branding }) {
   const [page, setPage] = useState('dashboard');
   const [menuOpen, setMenuOpen] = useState(false);
   const { t, isRTL } = useLang();
@@ -291,7 +291,7 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
 
   return (
     <div style={{ display:'flex', height:'100%', background:C.bg, overflow:'hidden', flexDirection: isRTL ? 'row-reverse' : 'row' }}>
-      <Sidebar theme={C} navItems={nav} activeId={page} onNav={navigate} mobileOpen={menuOpen} onMobileClose={() => setMenuOpen(false)}/>
+      <Sidebar theme={C} navItems={nav} activeId={page} onNav={navigate} mobileOpen={menuOpen} onMobileClose={() => setMenuOpen(false)} branding={branding}/>
       <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', minWidth:0 }}>
         <Topbar theme={C} user={user} pageTitle={getPageTitle(page, t)} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout} onMenuOpen={() => setMenuOpen(true)}/>
         <div className="content-scroll" style={{ flex:1, background:C.bg, overflowY:'auto' }}>

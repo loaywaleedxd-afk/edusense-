@@ -36,7 +36,7 @@ const PAGE_TITLES = {
 function letterGrade(g){if(g>=90)return'A+';if(g>=85)return'A';if(g>=80)return'B+';if(g>=75)return'B';if(g>=70)return'C+';if(g>=65)return'C';if(g>=60)return'D+';if(g>=50)return'D';return'F';}
 function gradeColor(g,C){return g>=75?C.green:g>=50?C.amber:C.red;}
 
-export default function ParentPage({ theme: C, user, isDark, onToggleMode, onLogout }) {
+export default function ParentPage({ theme: C, user, isDark, onToggleMode, onLogout, branding }) {
   const [page, setPage] = useState('overview');
   const [menuOpen, setMenuOpen] = useState(false);
   const { isRTL, t } = useLang();
@@ -52,7 +52,7 @@ export default function ParentPage({ theme: C, user, isDark, onToggleMode, onLog
 
   return (
     <div style={{display:'flex',height:'100%',background:C.bg,overflow:'hidden', flexDirection: isRTL ? 'row-reverse' : 'row'}}>
-      <Sidebar theme={C} navItems={NAV} activeId={page} onNav={setPage} mobileOpen={menuOpen} onMobileClose={() => setMenuOpen(false)}/>
+      <Sidebar theme={C} navItems={NAV} activeId={page} onNav={setPage} mobileOpen={menuOpen} onMobileClose={() => setMenuOpen(false)} branding={branding}/>
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
         <Topbar theme={C} user={user} pageTitle={parentPageTitle} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout} onMenuOpen={() => setMenuOpen(true)}/>
         {/* Read-only banner */}

@@ -80,6 +80,12 @@ export default function SuperAdminPage({ user, onLogout }) {
   const [onboarding, setOnboarding] = useState({});   // { schema: steps[] }
   const [storage,    setStorage]    = useState({});   // { schema: storage info }
 
+  // ── Branding panel ────────────────────────────────────────────────────────────
+  const [brandingOpen,   setBrandingOpen]   = useState('');  // schema
+  const [brandingForm,   setBrandingForm]   = useState({ primary_color: '#3b82f6', logo_data: null, logo_preview: null });
+  const [brandingBusy,   setBrandingBusy]   = useState(false);
+  const [brandingResult, setBrandingResult] = useState(null);
+
   // ── Fetch tenant list ───────────────────────────────────────────────────────
   const load = useCallback(async () => {
     setLoading(true);
@@ -197,6 +203,36 @@ export default function SuperAdminPage({ user, onLogout }) {
         a.click();
         setTimeout(() => URL.revokeObjectURL(burl), 5000);
       });
+  }
+
+  // ── Branding update ──────────────────────────────────────────────────────────
+  async function handleBrandingUpdate(schema) {
+    setBrandingBusy(true); setBrandingResult(null);
+    try {
+      const r = await fetch(`${API}/api/super/tenants/${schema}/branding`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          primary_color: brandingForm.primary_color || null,
+          logo_data: brandingForm.logo_data || null,
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || `Error ${r.status}`);
+      setBrandingResult({ ok: true, msg: 'Branding saved! Users will see changes on next page load.' });
+    } catch(e) {
+      setBrandingResult({ ok: false, msg: e.message });
+    } finally {
+      setBrandingBusy(false);
+    }
+  }
+
+  function handleLogoFile(file) {
+    if (!file) return;
+    if (file.size > 300 * 1024) { alert('Logo must be under 300 KB'); return; }
+    const reader = new FileReader();
+    reader.onload = e => setBrandingForm(p => ({ ...p, logo_data: e.target.result, logo_preview: e.target.result }));
+    reader.readAsDataURL(file);
   }
 
   // ── CSV template download (client-side, no server needed) ──────────────────
@@ -531,6 +567,9 @@ export default function SuperAdminPage({ user, onLogout }) {
                         { label: '💳 Subscription',
                           bg: 'rgba(245,158,11,0.12)', border: C.yellow, color: C.yellow,
                           onClick: () => { setBillingOpen(v => v === t.schema_name ? '' : t.schema_name); setBillingResult(null); setBillingForm({ plan: t.plan, billing_status: t.billing_status, expires_at: t.expires_at ? t.expires_at.slice(0,10) : '', face_recognition_enabled: t.face_recognition_enabled, max_students: t.max_students }); } },
+                        { label: '🎨 Branding',
+                          bg: 'rgba(236,72,153,0.1)', border: C.pink, color: C.pink,
+                          onClick: () => { setBrandingOpen(v => v === t.schema_name ? '' : t.schema_name); setBrandingResult(null); setBrandingForm({ primary_color: t.primary_color || '#3b82f6', logo_data: null, logo_preview: null }); } },
                         { label: '⬆ Import Data',
                           bg: 'rgba(168,85,247,0.1)', border: C.purple, color: C.purple,
                           onClick: () => setImportOpen(v => v === t.schema_name ? '' : t.schema_name) },
@@ -653,6 +692,74 @@ export default function SuperAdminPage({ user, onLogout }) {
                       <button onClick={() => handleBillingUpdate(t.schema_name)} disabled={billingBusy}
                         style={{ padding: '8px 20px', borderRadius: 8, background: C.yellow, border: 'none', color: '#000', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                         {billingBusy ? 'Saving…' : '💾 Save Subscription'}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* ── Branding Panel ── */}
+                  {brandingOpen === t.schema_name && (
+                    <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 14, color: C.pink }}>🎨 University Branding</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+
+                        {/* Logo upload */}
+                        <div>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: C.text3, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>University Logo</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                            {brandingForm.logo_preview ? (
+                              <img src={brandingForm.logo_preview} alt="logo preview"
+                                style={{ height: 48, maxWidth: 140, objectFit: 'contain', borderRadius: 6, background: '#fff', padding: 4 }} />
+                            ) : (
+                              <div style={{ height: 48, width: 48, borderRadius: 6, background: C.bg3, border: `1px dashed ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🏛️</div>
+                            )}
+                            <label style={{ cursor: 'pointer' }}>
+                              <input type="file" accept="image/*" style={{ display: 'none' }}
+                                onChange={e => handleLogoFile(e.target.files?.[0])} />
+                              <span style={{ padding: '6px 14px', borderRadius: 8, background: C.bg3, border: `1px solid ${C.border}`, fontSize: 11, color: C.text2, cursor: 'pointer' }}>
+                                📁 Choose Logo
+                              </span>
+                            </label>
+                            {brandingForm.logo_data && (
+                              <button onClick={() => setBrandingForm(p => ({ ...p, logo_data: null, logo_preview: null }))}
+                                style={{ background: 'none', border: 'none', color: C.red, fontSize: 12, cursor: 'pointer' }}>✕ Remove</button>
+                            )}
+                          </div>
+                          <div style={{ fontSize: 10, color: C.text3 }}>PNG, JPG, SVG — max 300 KB. Shows on login page & sidebar.</div>
+                        </div>
+
+                        {/* Color picker */}
+                        <div>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: C.text3, marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Primary Color</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <input type="color" value={brandingForm.primary_color || '#3b82f6'}
+                              onChange={e => setBrandingForm(p => ({ ...p, primary_color: e.target.value }))}
+                              style={{ width: 48, height: 48, borderRadius: 8, border: `1px solid ${C.border}`, cursor: 'pointer', padding: 3, background: 'none' }} />
+                            <div>
+                              <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{brandingForm.primary_color || '#3b82f6'}</div>
+                              <div style={{ fontSize: 10, color: C.text3 }}>Buttons, links & highlights</div>
+                            </div>
+                          </div>
+                          {/* Color presets */}
+                          <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                            {['#3b82f6','#10b981','#8b5cf6','#ef4444','#f59e0b','#06b6d4','#ec4899','#1a5276','#1e8449','#922b21'].map(c => (
+                              <button key={c} onClick={() => setBrandingForm(p => ({ ...p, primary_color: c }))}
+                                title={c}
+                                style={{ width: 22, height: 22, borderRadius: '50%', background: c, border: brandingForm.primary_color === c ? '3px solid #fff' : '2px solid transparent', cursor: 'pointer', outline: 'none' }} />
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {brandingResult && (
+                        <div style={{ marginTop: 12, fontSize: 12, padding: '8px 12px', borderRadius: 8,
+                          color: brandingResult.ok ? C.green : C.red,
+                          background: brandingResult.ok ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)' }}>
+                          {brandingResult.ok ? '✓' : '⚠'} {brandingResult.msg}
+                        </div>
+                      )}
+                      <button onClick={() => handleBrandingUpdate(t.schema_name)} disabled={brandingBusy}
+                        style={{ marginTop: 14, padding: '8px 20px', borderRadius: 8, background: C.pink, border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                        {brandingBusy ? 'Saving…' : '🎨 Save Branding'}
                       </button>
                     </div>
                   )}

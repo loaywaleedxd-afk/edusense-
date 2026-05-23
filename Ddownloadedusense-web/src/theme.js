@@ -45,3 +45,31 @@ export const EMOTION_COLORS_DARK = {
 
 export const DEPARTMENTS = ['Computer Science', 'Engineering', 'Mathematics', 'Physics', 'Data Science'];
 export const TITLES = ['Professor', 'Associate Professor', 'Lecturer', 'Assistant Professor'];
+
+// ── Per-tenant branding ───────────────────────────────────────────────────────
+function _lighten(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.min(255, (n >> 16) + amt);
+  const g = Math.min(255, ((n >> 8) & 0xff) + amt);
+  const b = Math.min(255, (n & 0xff) + amt);
+  return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
+}
+function _darken(hex, amt) { return _lighten(hex, -amt); }
+
+/**
+ * buildTheme(isDark, primaryColor?)
+ * Returns a full theme object where the "blue" accent is replaced with
+ * the university's chosen primary color. Falls back to default if none set.
+ */
+export function buildTheme(isDark, primaryColor) {
+  const base = isDark ? { ...DARK } : { ...LIGHT };
+  if (!primaryColor || primaryColor === '#3b82f6') return base;
+  return {
+    ...base,
+    blue:     primaryColor,
+    blue2:    _lighten(primaryColor, isDark ? 40 : -30),
+    blue3:    _darken(primaryColor, 30),
+    blue_dim: primaryColor + (isDark ? '28' : '22'),
+    accent:   primaryColor,
+  };
+}

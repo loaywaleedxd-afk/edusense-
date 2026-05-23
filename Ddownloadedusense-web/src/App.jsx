@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { DARK, LIGHT } from './theme';
+import { DARK, LIGHT, buildTheme } from './theme';
 import { useLang } from './context/LanguageContext';
 import LoginPage             from './pages/LoginPage';
 import StudentPage           from './pages/StudentPage';
@@ -39,7 +39,19 @@ export default function App() {
   const [isDark, setIsDark] = useState(true);
   const [user,   setUser]   = useState(null);
   const [loading, setLoading] = useState(false);
+  const [branding, setBranding] = useState({ name: 'EduSense', primaryColor: '', logo: null });
   const { isRTL } = useLang();
+
+  // Fetch tenant branding once on mount (public endpoint, no auth needed)
+  useEffect(() => {
+    const BASE = import.meta.env.VITE_API_URL || '';
+    fetch(`${BASE}/api/branding`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d) setBranding({ name: d.name || 'EduSense', primaryColor: d.primary_color || '', logo: d.logo_data || null });
+      })
+      .catch(() => {});
+  }, []);
 
   // Read QR check-in payload from URL (mobile scan) and persist through login
   const [pendingQR, setPendingQR] = useState(() => {
@@ -58,7 +70,7 @@ export default function App() {
   });
   function clearPendingQR() { sessionStorage.removeItem('es_pending_qr'); setPendingQR(null); }
 
-  const C = isDark ? DARK : LIGHT;
+  const C = buildTheme(isDark, branding.primaryColor);
 
   function toggleMode() { setIsDark(d => !d); }
 
@@ -94,6 +106,7 @@ export default function App() {
 
   const commonProps = {
     theme: C, user, isDark, onToggleMode: toggleMode, onLogout,
+    branding,
     onOpenProctoring: () => setOverlay('proctoring'),
     onOpenAdvising:   () => setOverlay('advising'),
     onOpenAtRisk:     () => setOverlay('atrisk'),
@@ -137,7 +150,7 @@ export default function App() {
   return (
     <div style={{ height: '100vh', overflow: 'hidden', background: C.bg, fontFamily: "'Segoe UI', system-ui, sans-serif", direction: isRTL ? 'rtl' : 'ltr' }}>
       {!user ? (
-        <LoginPage theme={C} onLogin={onLogin} />
+        <LoginPage theme={C} onLogin={onLogin} branding={branding} />
       ) : user.role === 'student' ? (
         <StudentPage {...commonProps} pendingQR={pendingQR} onClearPendingQR={clearPendingQR} />
       ) : user.role === 'doctor' ? (

@@ -66,7 +66,7 @@ const PAGE_TITLES = {
 };
 
 export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogout,
-  onOpenProctoring, onOpenAdvising, onOpenAtRisk }) {
+  onOpenProctoring, onOpenAdvising, onOpenAtRisk, branding }) {
   const [page, setPage] = useState('dashboard');
   const [menuOpen, setMenuOpen] = useState(false);
   const { isRTL, t } = useLang();
@@ -92,7 +92,7 @@ export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogo
 
   return (
     <div style={{display:'flex',height:'100%',background:C.bg,overflow:'hidden', flexDirection: isRTL ? 'row-reverse' : 'row'}}>
-      <Sidebar theme={C} navItems={NAV} activeId={page} onNav={handleNav} mobileOpen={menuOpen} onMobileClose={() => setMenuOpen(false)}/>
+      <Sidebar theme={C} navItems={NAV} activeId={page} onNav={handleNav} mobileOpen={menuOpen} onMobileClose={() => setMenuOpen(false)} branding={branding}/>
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
         <Topbar theme={C} user={user} pageTitle={adminPageTitle} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout} onMenuOpen={() => setMenuOpen(true)}/>
         <div className="content-scroll" style={{flex:1,overflowY:'auto',background:C.bg}}>

@@ -48,6 +48,8 @@ async def init_tenant_schema(pool, schema: str):
             "ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '30 days')",
             "ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS face_recognition_enabled BOOLEAN DEFAULT TRUE",
             "ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS max_students INTEGER DEFAULT 500",
+            "ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS primary_color TEXT DEFAULT '#3b82f6'",
+            "ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS logo_data TEXT",
         ]:
             await conn.execute(_col)
 
