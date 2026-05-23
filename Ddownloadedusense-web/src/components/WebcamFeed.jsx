@@ -236,7 +236,7 @@ export default function WebcamFeed({
           const emoji = EMOTION_EMOJI[f.emotion]  || '😐';
           const conf  = Math.round(f.confidence * 100);
           const eng   = Math.round((f.engagement_score || 0) * 100);
-          const label = f.student_id || 'Unknown';
+          const label = f.student_name || f.student_id || 'Unknown';
           return (
             <div key={i} style={{
               position: 'absolute',
@@ -258,6 +258,9 @@ export default function WebcamFeed({
               {/* Top: student ID */}
               <div style={{ position: 'absolute', top: -22, left: 0, fontSize: 9, color: '#fff', background: label !== 'Unknown' ? `${col}ee` : 'rgba(0,0,0,0.8)', padding: '2px 8px', borderRadius: 4, whiteSpace: 'nowrap', fontWeight: 700 }}>
                 {label !== 'Unknown' ? `✓ ${label}` : '? Unknown'}
+                {f.student_id && f.student_name && (
+                  <span style={{ opacity: 0.75, fontWeight: 400, marginLeft: 4 }}>({f.student_id})</span>
+                )}
               </div>
               {/* Bottom: emotion + confidence */}
               <div style={{ position: 'absolute', bottom: -22, left: 0, fontSize: 9, color: '#fff', background: `${col}dd`, padding: '2px 8px', borderRadius: 4, whiteSpace: 'nowrap', fontWeight: 700 }}>
