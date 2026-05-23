@@ -452,7 +452,7 @@ async def init_tenant_schema(pool, schema: str):
                 grade_factor        REAL DEFAULT 0,
                 emotion_factor      REAL DEFAULT 0,
                 assignment_factor   REAL DEFAULT 0,
-                details             TEXT DEFAULT '{}',
+                details             TEXT DEFAULT '{{}}',
                 advisor_notified    BOOLEAN DEFAULT FALSE,
                 parent_notified     BOOLEAN DEFAULT FALSE,
                 assessed_at         TIMESTAMPTZ DEFAULT NOW()
