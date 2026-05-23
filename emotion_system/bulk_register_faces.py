@@ -124,6 +124,25 @@ def crop_face(img_bgr: np.ndarray) -> np.ndarray | None:
     return img_bgr[margin_y: h-margin_y, margin_x: w-margin_x]
 
 
+# ── Save all encodings to DB face_encodings table ────────────────────────────
+def _save_encodings_db(enc_dict: dict):
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS face_encodings (
+            student_id TEXT PRIMARY KEY,
+            embedding  TEXT NOT NULL,
+            updated_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+    conn.executemany(
+        """INSERT OR REPLACE INTO face_encodings (student_id, embedding, updated_at)
+           VALUES (?, ?, datetime('now'))""",
+        [(sid, json.dumps(emb)) for sid, emb in enc_dict.items()],
+    )
+    conn.commit()
+    conn.close()
+
+
 # ── Update students table face_encoding column ───────────────────────────────
 def update_db_encoding(student_id: str, photo_path: str):
     try:
@@ -191,14 +210,23 @@ def main():
 
     print(f"      {len(tasks)} photos to encode")
 
-    # 3. Load existing encodings (don't wipe previously registered faces)
+    # 3. Load existing encodings from DB (don't wipe previously registered faces)
     existing = {}
-    if os.path.exists(ENC_FILE):
-        try:
-            existing = json.load(open(ENC_FILE, encoding="utf-8"))
-        except Exception:
-            pass
-    print(f"      {len(existing)} already in encodings file")
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS face_encodings (
+                student_id TEXT PRIMARY KEY,
+                embedding  TEXT NOT NULL,
+                updated_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        rows = conn.execute("SELECT student_id, embedding FROM face_encodings").fetchall()
+        conn.close()
+        existing = {r[0]: json.loads(r[1]) for r in rows}
+    except Exception as e:
+        print(f"      [WARN] DB load error: {e}")
+    print(f"      {len(existing)} already in DB")
 
     # 4. Encode each photo
     print("\n[3/4] Encoding faces with Facenet512 …")
@@ -235,15 +263,13 @@ def main():
         print(f"  [{idx:3}/{len(tasks)}] ✓ {sid:6}  — ETA {eta}s")
         ok += 1
 
-        # Save every 10 students (crash recovery)
+        # Save every 10 students to DB (crash recovery)
         if idx % 10 == 0:
-            with open(ENC_FILE, "w", encoding="utf-8") as f:
-                json.dump(encodings, f)
+            _save_encodings_db(encodings)
 
     # Final save
-    print("\n[4/4] Saving face_encodings.json …")
-    with open(ENC_FILE, "w", encoding="utf-8") as f:
-        json.dump(encodings, f)
+    print("\n[4/4] Saving encodings to DB …")
+    _save_encodings_db(encodings)
 
     total_time = int(time.time() - t0)
     print()
@@ -251,7 +277,7 @@ def main():
     print(f"  Done in {total_time}s")
     print(f"  ✓ Registered : {ok}")
     print(f"  ✗ Failed     : {failed}")
-    print(f"  Total in DB  : {len(encodings)}")
+    print(f"  Total in DB  : {len(encodings)} (face_encodings table)")
     print("=" * 65)
     print()
     print("  Restart face_server.py to load the new encodings.")

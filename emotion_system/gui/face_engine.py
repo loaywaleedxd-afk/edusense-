@@ -32,7 +32,8 @@ from datetime import datetime
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 _DIR      = os.path.dirname(__file__)
-ENC_FILE  = os.path.join(_DIR, "face_encodings.json")
+ENC_FILE  = os.path.join(_DIR, "face_encodings.json")   # legacy — kept for migration
+DB_PATH   = os.path.join(_DIR, "..", "backend", "emotion_system.db")
 CASCADE   = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 
 # ── Emotion → engagement weight ──────────────────────────────────────────────
@@ -180,11 +181,36 @@ def compare_encodings(enc1: list, enc2: list) -> float:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  ENCODING STORE
+#  ENCODING STORE  —  SQLite  (biometric data stays off git)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+import sqlite3 as _sqlite3
+
+def _ensure_enc_table(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS face_encodings (
+            student_id TEXT PRIMARY KEY,
+            embedding  TEXT NOT NULL,
+            updated_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
+
 def load_encodings() -> dict:
-    """Load {student_id: embedding_list} from JSON file."""
+    """Load {student_id: embedding_list} from face_encodings table in DB."""
+    try:
+        conn = _sqlite3.connect(DB_PATH)
+        _ensure_enc_table(conn)
+        rows = conn.execute(
+            "SELECT student_id, embedding FROM face_encodings"
+        ).fetchall()
+        conn.close()
+        if rows:
+            return {r[0]: json.loads(r[1]) for r in rows}
+    except Exception as e:
+        print(f"[face_engine] DB load error ({e}), trying JSON fallback")
+
+    # ── Fallback: legacy JSON file (only used if DB is empty / unavailable) ──
     if os.path.exists(ENC_FILE):
         try:
             with open(ENC_FILE, encoding="utf-8") as f:
@@ -194,9 +220,22 @@ def load_encodings() -> dict:
     return {}
 
 
-def save_encodings(db: dict):
-    with open(ENC_FILE, "w", encoding="utf-8") as f:
-        json.dump(db, f)
+def save_encodings(enc_dict: dict):
+    """Persist {student_id: embedding_list} to face_encodings table in DB."""
+    try:
+        conn = _sqlite3.connect(DB_PATH)
+        _ensure_enc_table(conn)
+        conn.executemany(
+            """INSERT OR REPLACE INTO face_encodings (student_id, embedding, updated_at)
+               VALUES (?, ?, datetime('now'))""",
+            [(sid, json.dumps(emb)) for sid, emb in enc_dict.items()],
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[face_engine] DB save error ({e}), falling back to JSON")
+        with open(ENC_FILE, "w", encoding="utf-8") as f:
+            json.dump(enc_dict, f)
 
 
 def register_face(student_id: str, frame: np.ndarray, box: tuple) -> bool:

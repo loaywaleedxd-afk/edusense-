@@ -24,8 +24,13 @@ emotion_system/student_credentials.xlsx
 emotion_system/doctors_credentials.csv
 emotion_system/credentials_template.csv
 
-# Database (contains live data)
+# Database (contains live data + biometric face embeddings)
 emotion_system/backend/emotion_system.db
+
+# Biometric / personal data — stored in DB, not git
+emotion_system/gui/face_encodings.json
+emotion_system/gui/face_encodings.json.histogram_backup
+emotion_system/student_emotions/
 
 # Claude internal
 .claude/
