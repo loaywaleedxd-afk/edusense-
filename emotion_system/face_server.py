@@ -74,6 +74,14 @@ def student_name(sid: str):
 
 
 # ── DB helpers ─────────────────────────────────────────────────────────────────
+def _f(v) -> float:
+    """Force any numeric value (including numpy scalars) to a plain Python float."""
+    try:
+        return float(v)
+    except Exception:
+        return 0.0
+
+
 def db_save_emotion(student_id, course_id, emotion, confidence,
                     attention, engagement, timestamp):
     try:
@@ -84,9 +92,11 @@ def db_save_emotion(student_id, course_id, emotion, confidence,
                    (student_id, lecture_id, timestamp, emotion, confidence,
                     attention_score, engagement_score)
                    VALUES (?,?,?,?,?,?,?)""",
-                (student_id, course_id or None, timestamp,
-                 emotion, round(confidence, 3),
-                 round(attention, 3), round(engagement, 3)),
+                (str(student_id), course_id or None, str(timestamp),
+                 str(emotion),
+                 round(_f(confidence), 3),    # explicit float — prevents BLOB storage
+                 round(_f(attention),  3),
+                 round(_f(engagement), 3)),
             )
             conn.commit()
             conn.close()
@@ -97,23 +107,35 @@ def db_save_emotion(student_id, course_id, emotion, confidence,
 _attendance_today: set = set()
 
 def db_mark_attendance(student_id, course_id, confidence):
-    key = (student_id, course_id or "", str(date.today()))
+    today = str(date.today())
+    key   = (student_id, course_id or "", today)
     if key in _attendance_today:
         return
     try:
         with _db_lock:
             conn = sqlite3.connect(DB_PATH)
+            # Check DB too — protects against server restarts losing in-memory set
+            existing = conn.execute(
+                """SELECT id FROM attendance
+                   WHERE student_id=? AND lecture_id IS ? AND method='face'
+                   AND date(check_in_time)=?""",
+                (student_id, course_id or None, today),
+            ).fetchone()
+            if existing:
+                _attendance_today.add(key)   # sync in-memory cache
+                conn.close()
+                return
             conn.execute(
-                """INSERT OR IGNORE INTO attendance
+                """INSERT INTO attendance
                    (student_id, lecture_id, check_in_time, method, status, confidence)
                    VALUES (?,?,?,'face','present',?)""",
-                (student_id, course_id or None,
-                 datetime.utcnow().isoformat(), round(confidence, 3)),
+                (str(student_id), course_id or None,
+                 datetime.utcnow().isoformat(), round(_f(confidence), 3)),
             )
             conn.commit()
             conn.close()
         _attendance_today.add(key)
-        print(f"  [Attendance] {student_id} -> {course_id or 'no-course'}  conf={confidence:.2f}")
+        print(f"  [Attendance] {student_id} -> {course_id or 'no-course'}  conf={_f(confidence):.2f}")
     except Exception as e:
         print(f"  [DB attendance] {e}")
 
