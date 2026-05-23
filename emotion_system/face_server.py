@@ -120,7 +120,7 @@ class FaceHandler(BaseHTTPRequestHandler):
             registered = len(load_encodings())
             self._send_json({
                 "status": "ok",
-                "engine": "OpenCV Haar + histogram encoding",
+                "engine": "MTCNN detection + DeepFace Facenet512 recognition",
                 "registered_students": registered,
             })
         else:
