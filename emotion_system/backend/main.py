@@ -2,10 +2,11 @@
 Classroom Emotion Detection & Attendance System
 FastAPI Backend — main entry point
 """
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 import asyncio
 import json
 import logging
@@ -21,8 +22,7 @@ from routers import (
     qr_sessions, enrollments, init_data,
     proctoring, advising, at_risk, office_hours, payment,
 )
-from database import init_db
-import aiosqlite
+from database import init_pool, init_tenant_schema, get_db
 from websocket_manager import ConnectionManager
 from r_runner import r_router
 from auth_utils import require_auth, require_role
@@ -33,11 +33,30 @@ logger = logging.getLogger(__name__)
 manager = ConnectionManager()
 
 
+class TenantMiddleware(BaseHTTPMiddleware):
+    """
+    Extract subdomain from the Host header and store it as request.state.tenant.
+    e.g.  schoola.edusense.com  →  schoola
+          localhost              →  public  (dev default)
+    """
+    async def dispatch(self, request: Request, call_next):
+        host = request.headers.get("host", "localhost").split(":")[0]
+        parts = host.split(".")
+        # If there are 3+ parts (sub.domain.tld), the first is the tenant
+        if len(parts) >= 3:
+            request.state.tenant = parts[0]
+        else:
+            request.state.tenant = "public"
+        return await call_next(request)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting Emotion Detection System...")
-    await init_db()
+    await init_pool(app)
+    await init_tenant_schema(app.state.pool, "public")
     yield
+    await app.state.pool.close()
     logger.info("Shutting down...")
 
 
@@ -48,8 +67,10 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# ── Tenant middleware (before CORS) ───────────────────────────────────────────
+app.add_middleware(TenantMiddleware)
+
 # ── CORS ──────────────────────────────────────────────────────────────────────
-# List the exact origins that should be allowed. Override via env var in prod.
 _RAW_ORIGINS = os.getenv(
     "ALLOWED_ORIGINS",
     "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173"
@@ -102,18 +123,15 @@ async def ws_notifications(websocket: WebSocket, user_id: str):
     """Real-time notification channel per user."""
     await manager.connect_user(websocket, user_id)
     try:
-        # Send a welcome ping so the client knows it's connected
         await websocket.send_text(json.dumps({
             "type": "connected",
             "title": "Connected",
             "message": "Real-time notifications active",
-            "icon": "🟢",
+            "icon": "connected",
             "color": "#10b981",
         }))
         while True:
-            # Keep connection alive; actual pushes come from notify_user()
             data = await websocket.receive_text()
-            # Handle ping/pong
             if data == "ping":
                 await websocket.send_text("pong")
     except WebSocketDisconnect:
@@ -134,38 +152,38 @@ async def root():
 
 
 @app.get("/api/analytics")
-async def analytics_summary(payload: dict = Depends(require_role("doctor", "admin"))):
+async def analytics_summary(
+    request: Request,
+    payload: dict = Depends(require_role("doctor", "admin")),
+    db=Depends(get_db),
+):
     """Mobile-friendly analytics summary."""
-    DB_PATH = os.getenv("DB_PATH", "emotion_system.db")
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        overview = dict(await (await db.execute(
-            """SELECT
-                 COUNT(DISTINCT s.student_id) as total_students,
-                 COUNT(DISTINCT l.lecture_id) as total_lectures,
-                 AVG(er.engagement_score)*100 as avg_engagement_rate
-               FROM students s
-               LEFT JOIN emotion_records er ON s.student_id=er.student_id
-               LEFT JOIN lectures l ON er.lecture_id=l.lecture_id"""
-        )).fetchone())
+    overview = await db.fetchrow(
+        """SELECT
+             COUNT(DISTINCT s.student_id) as total_students,
+             COUNT(DISTINCT l.lecture_id) as total_lectures,
+             AVG(er.engagement_score)*100 as avg_engagement_rate
+           FROM students s
+           LEFT JOIN emotion_records er ON s.student_id=er.student_id
+           LEFT JOIN lectures l ON er.lecture_id=l.lecture_id"""
+    )
 
-        att_row = dict(await (await db.execute(
-            """SELECT
-                 ROUND(100.0*SUM(CASE WHEN status='present' THEN 1 ELSE 0 END)/MAX(1,COUNT(*)),1) as avg_attendance_rate
-               FROM attendance"""
-        )).fetchone())
+    att_row = await db.fetchrow(
+        """SELECT
+             ROUND(CAST(100.0*SUM(CASE WHEN status='present' THEN 1 ELSE 0 END) AS numeric)/GREATEST(1,COUNT(*)),1) as avg_attendance_rate
+           FROM attendance"""
+    )
 
-        emotions_rows = await (await db.execute(
-            """SELECT emotion, COUNT(*) as count
-               FROM emotion_records GROUP BY emotion ORDER BY count DESC"""
-        )).fetchall()
-        emotion_dist = {r['emotion']: r['count'] for r in emotions_rows}
+    emotions_rows = await db.fetch(
+        "SELECT emotion, COUNT(*) as count FROM emotion_records GROUP BY emotion ORDER BY count DESC"
+    )
+    emotion_dist = {r['emotion']: r['count'] for r in emotions_rows}
 
     return {
-        "total_students":    overview.get("total_students") or 0,
-        "total_lectures":    overview.get("total_lectures") or 0,
-        "avg_attendance_rate": att_row.get("avg_attendance_rate") or 0,
-        "avg_engagement_rate": overview.get("avg_engagement_rate") or 0,
+        "total_students":      (overview['total_students'] or 0) if overview else 0,
+        "total_lectures":      (overview['total_lectures'] or 0) if overview else 0,
+        "avg_attendance_rate": (att_row['avg_attendance_rate'] or 0) if att_row else 0,
+        "avg_engagement_rate": (overview['avg_engagement_rate'] or 0) if overview else 0,
         "emotion_distribution": emotion_dist,
     }
 

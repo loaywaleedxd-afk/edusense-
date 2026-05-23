@@ -4,12 +4,12 @@ Integrates with R via subprocess or rpy2
 """
 from fastapi import APIRouter, Depends
 from typing import List, Dict, Any
-import aiosqlite, os, json, subprocess, tempfile
+import os, json, subprocess, tempfile
 
+from database import get_db
 from auth_utils import require_role
 
 router = APIRouter()
-DB_PATH = os.getenv("DB_PATH", "emotion_system.db")
 R_SCRIPTS = os.path.join(os.path.dirname(__file__), "../../r_analysis")
 
 EMOTION_SCORE = {
@@ -19,72 +19,56 @@ EMOTION_SCORE = {
 
 
 @router.get("/engagement-overview")
-async def engagement_overview(payload: dict = Depends(require_role("doctor", "admin"))):
+async def engagement_overview(payload: dict = Depends(require_role("doctor", "admin")), db=Depends(get_db)):
     """Overall platform engagement metrics."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            """SELECT
-                 COUNT(DISTINCT student_id) as total_students,
-                 COUNT(DISTINCT lecture_id) as total_lectures,
-                 AVG(engagement_score)*100 as avg_engagement,
-                 AVG(attention_score)*100 as avg_attention,
-                 COUNT(*) as total_records
-               FROM emotion_records"""
-        )
-        overview = dict(await cursor.fetchone())
-        # per-emotion breakdown
-        emo_cursor = await db.execute(
-            """SELECT emotion, COUNT(*) as count, AVG(confidence) as avg_conf
-               FROM emotion_records GROUP BY emotion ORDER BY count DESC"""
-        )
-        emotions = [dict(r) for r in await emo_cursor.fetchall()]
-    return {**overview, "emotions": emotions}
+    overview = await db.fetchrow(
+        """SELECT
+             COUNT(DISTINCT student_id) as total_students,
+             COUNT(DISTINCT lecture_id) as total_lectures,
+             AVG(engagement_score)*100 as avg_engagement,
+             AVG(attention_score)*100 as avg_attention,
+             COUNT(*) as total_records
+           FROM emotion_records"""
+    )
+    emotions = await db.fetch(
+        "SELECT emotion, COUNT(*) as count, AVG(confidence) as avg_conf FROM emotion_records GROUP BY emotion ORDER BY count DESC"
+    )
+    return {**dict(overview), "emotions": [dict(r) for r in emotions]}
 
 
 @router.get("/lecture-comparison")
-async def lecture_comparison(payload: dict = Depends(require_role("doctor", "admin"))):
+async def lecture_comparison(payload: dict = Depends(require_role("doctor", "admin")), db=Depends(get_db)):
     """Compare engagement across all lectures."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            """SELECT
-                 er.lecture_id,
-                 l.course_name,
-                 l.course_code,
-                 AVG(er.engagement_score)*100 as avg_engagement,
-                 AVG(er.attention_score)*100 as avg_attention,
-                 COUNT(DISTINCT er.student_id) as students_tracked,
-                 COUNT(*) as records
-               FROM emotion_records er
-               JOIN lectures l ON er.lecture_id=l.lecture_id
-               GROUP BY er.lecture_id
-               ORDER BY avg_engagement DESC"""
-        )
-        rows = await cursor.fetchall()
+    rows = await db.fetch(
+        """SELECT
+             er.lecture_id,
+             l.course_name,
+             l.course_code,
+             AVG(er.engagement_score)*100 as avg_engagement,
+             AVG(er.attention_score)*100 as avg_attention,
+             COUNT(DISTINCT er.student_id) as students_tracked,
+             COUNT(*) as records
+           FROM emotion_records er
+           JOIN lectures l ON er.lecture_id=l.lecture_id
+           GROUP BY er.lecture_id, l.course_name, l.course_code
+           ORDER BY avg_engagement DESC"""
+    )
     return [dict(r) for r in rows]
 
 
 @router.get("/student-clusters")
-async def student_clusters(payload: dict = Depends(require_role("doctor", "admin"))):
-    """
-    Cluster students by engagement/attention behavior.
-    Simplified k-means style bucketing (3 clusters).
-    For full clustering: calls R script.
-    """
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            """SELECT
-                 student_id,
-                 AVG(engagement_score) as avg_eng,
-                 AVG(attention_score) as avg_att,
-                 COUNT(*) as records
-               FROM emotion_records
-               GROUP BY student_id"""
-        )
-        rows = [dict(r) for r in await cursor.fetchall()]
-    # Simple cluster assignment
+async def student_clusters(payload: dict = Depends(require_role("doctor", "admin")), db=Depends(get_db)):
+    """Cluster students by engagement/attention behavior."""
+    rows = await db.fetch(
+        """SELECT
+             student_id,
+             AVG(engagement_score) as avg_eng,
+             AVG(attention_score) as avg_att,
+             COUNT(*) as records
+           FROM emotion_records
+           GROUP BY student_id"""
+    )
+    rows = [dict(r) for r in rows]
     clusters = {"high_engagement":[],"moderate_engagement":[],"low_engagement":[]}
     for r in rows:
         eng = (r["avg_eng"] or 0) * 100
@@ -101,47 +85,41 @@ async def student_clusters(payload: dict = Depends(require_role("doctor", "admin
 
 
 @router.get("/time-trends")
-async def time_trends(payload: dict = Depends(require_role("doctor", "admin"))):
+async def time_trends(payload: dict = Depends(require_role("doctor", "admin")), db=Depends(get_db)):
     """Engagement trends over time across all lectures."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            """SELECT
-                 strftime('%Y-%m-%d', timestamp) as date,
-                 AVG(engagement_score)*100 as avg_engagement,
-                 AVG(attention_score)*100 as avg_attention,
-                 COUNT(DISTINCT student_id) as students,
-                 COUNT(*) as records
-               FROM emotion_records
-               GROUP BY date ORDER BY date DESC LIMIT 30"""
-        )
-        rows = await cursor.fetchall()
+    rows = await db.fetch(
+        """SELECT
+             timestamp::date as date,
+             AVG(engagement_score)*100 as avg_engagement,
+             AVG(attention_score)*100 as avg_attention,
+             COUNT(DISTINCT student_id) as students,
+             COUNT(*) as records
+           FROM emotion_records
+           GROUP BY timestamp::date ORDER BY date DESC LIMIT 30"""
+    )
     return [dict(r) for r in rows]
 
 
 @router.get("/alerts/low-engagement/{lecture_id}")
-async def low_engagement_alerts(lecture_id: str, threshold: float = 0.35, payload: dict = Depends(require_role("doctor", "admin"))):
+async def low_engagement_alerts(lecture_id: str, threshold: float = 0.35, payload: dict = Depends(require_role("doctor", "admin")), db=Depends(get_db)):
     """Identify students with low engagement in recent window."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            """SELECT
-                 er.student_id,
-                 u.full_name,
-                 AVG(er.engagement_score) as avg_eng,
-                 AVG(er.attention_score) as avg_att,
-                 COUNT(*) as samples
-               FROM emotion_records er
-               LEFT JOIN students s ON er.student_id=s.student_id
-               LEFT JOIN users u ON s.user_id=u.id
-               WHERE er.lecture_id=?
-                 AND er.timestamp > datetime('now','-10 minutes')
-               GROUP BY er.student_id
-               HAVING avg_eng < ?
-               ORDER BY avg_eng ASC""",
-            (lecture_id, threshold)
-        )
-        rows = await cursor.fetchall()
+    rows = await db.fetch(
+        """SELECT
+             er.student_id,
+             u.full_name,
+             AVG(er.engagement_score) as avg_eng,
+             AVG(er.attention_score) as avg_att,
+             COUNT(*) as samples
+           FROM emotion_records er
+           LEFT JOIN students s ON er.student_id=s.student_id
+           LEFT JOIN users u ON s.user_id=u.id
+           WHERE er.lecture_id=$1
+             AND er.timestamp > NOW() - INTERVAL '10 minutes'
+           GROUP BY er.student_id, u.full_name
+           HAVING AVG(er.engagement_score) < $2
+           ORDER BY avg_eng ASC""",
+        lecture_id, threshold
+    )
     return {
         "lecture_id": lecture_id,
         "threshold": threshold,
@@ -150,21 +128,13 @@ async def low_engagement_alerts(lecture_id: str, threshold: float = 0.35, payloa
 
 
 @router.post("/run-r-analysis")
-async def run_r_analysis(lecture_id: str = None, payload: dict = Depends(require_role("doctor", "admin"))):
-    """
-    Trigger R analysis script and return results.
-    The R script reads from CSV exported from DB.
-    """
-    # Export data to CSV for R
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        q = """SELECT * FROM emotion_records"""
-        params = ()
-        if lecture_id:
-            q += " WHERE lecture_id=?"
-            params = (lecture_id,)
-        cursor = await db.execute(q, params)
-        rows = [dict(r) for r in await cursor.fetchall()]
+async def run_r_analysis(lecture_id: str = None, payload: dict = Depends(require_role("doctor", "admin")), db=Depends(get_db)):
+    """Trigger R analysis script and return results."""
+    if lecture_id:
+        rows = await db.fetch("SELECT * FROM emotion_records WHERE lecture_id=$1", lecture_id)
+    else:
+        rows = await db.fetch("SELECT * FROM emotion_records")
+    rows = [dict(r) for r in rows]
 
     if not rows:
         return {"message": "No data to analyze", "results": {}}
@@ -176,7 +146,6 @@ async def run_r_analysis(lecture_id: str = None, payload: dict = Depends(require
             for r in rows:
                 f.write(",".join(str(v) for v in r.values()) + "\n")
 
-    # Run R script
     r_script = os.path.join(R_SCRIPTS, "analysis.R")
     result_path = tempfile.mktemp(suffix=".json")
     try:

@@ -5,25 +5,26 @@ from pydantic import BaseModel
 import smtplib, ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import aiosqlite, os, json
+import os, json
 from datetime import datetime
 
+from database import get_db
+
 router = APIRouter()
-DB_PATH     = os.getenv("DB_PATH", "emotion_system.db")
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "..", "email_config.json")
 
 
 class EmailConfig(BaseModel):
-    smtp_host:      str = "smtp.gmail.com"
-    smtp_port:      int = 587
-    sender_email:   str
+    smtp_host:       str = "smtp.gmail.com"
+    smtp_port:       int = 587
+    sender_email:    str
     sender_password: str
-    sender_name:    str = "EduSense"
+    sender_name:     str = "EduSense"
 
 
 class AttendanceEmailRequest(BaseModel):
-    lecture_id:       str
-    recipient_email:  str
+    lecture_id:      str
+    recipient_email: str
 
 
 def _load_cfg():
@@ -55,36 +56,37 @@ async def get_config(payload: dict = Depends(require_role("admin"))):
 
 
 @router.post("/send-attendance")
-async def send_attendance_email(req: AttendanceEmailRequest, payload: dict = Depends(require_role("doctor", "admin"))):
+async def send_attendance_email(
+    req: AttendanceEmailRequest,
+    payload: dict = Depends(require_role("doctor", "admin")),
+    db=Depends(get_db)
+):
     cfg = _load_cfg()
     if not cfg:
-        raise HTTPException(400, "Email not configured. Go to Admin → Settings → Email Setup first.")
+        raise HTTPException(400, "Email not configured. Go to Admin -> Settings -> Email Setup first.")
 
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
+    lec = await db.fetchrow(
+        """SELECT l.*, u.full_name as doctor_name
+           FROM lectures l
+           LEFT JOIN doctors d ON l.doctor_id = d.doctor_id
+           LEFT JOIN users u   ON d.user_id   = u.id
+           WHERE l.lecture_id = $1""",
+        req.lecture_id
+    )
+    if not lec:
+        raise HTTPException(404, "Lecture not found")
+    lec = dict(lec)
 
-        lec = await (await db.execute(
-            """SELECT l.*, u.full_name as doctor_name
-               FROM lectures l
-               LEFT JOIN doctors d ON l.doctor_id = d.doctor_id
-               LEFT JOIN users u   ON d.user_id   = u.id
-               WHERE l.lecture_id = ?""",
-            (req.lecture_id,)
-        )).fetchone()
-        if not lec:
-            raise HTTPException(404, "Lecture not found")
-        lec = dict(lec)
-
-        records = await (await db.execute(
-            """SELECT a.student_id, u.full_name as name, a.status, a.check_in_time
-               FROM attendance a
-               JOIN students s ON a.student_id = s.student_id
-               JOIN users u    ON s.user_id    = u.id
-               WHERE a.lecture_id = ?
-               ORDER BY u.full_name""",
-            (req.lecture_id,)
-        )).fetchall()
-        records = [dict(r) for r in records]
+    records = await db.fetch(
+        """SELECT a.student_id, u.full_name as name, a.status, a.check_in_time
+           FROM attendance a
+           JOIN students s ON a.student_id = s.student_id
+           JOIN users u    ON s.user_id    = u.id
+           WHERE a.lecture_id = $1
+           ORDER BY u.full_name""",
+        req.lecture_id
+    )
+    records = [dict(r) for r in records]
 
     present = [r for r in records if r["status"] == "present"]
     absent  = [r for r in records if r["status"] != "present"]
@@ -96,7 +98,7 @@ async def send_attendance_email(req: AttendanceEmailRequest, payload: dict = Dep
         f"<td style='padding:8px'>{r['student_id']}</td>"
         f"<td style='padding:8px;color:{'#16a34a' if r['status']=='present' else '#dc2626'};font-weight:700'>"
         f"{'Present' if r['status']=='present' else 'Absent'}</td>"
-        f"<td style='padding:8px'>{(r['check_in_time'] or '—')[:19]}</td>"
+        f"<td style='padding:8px'>{(str(r['check_in_time']) or '-')[:19]}</td>"
         f"</tr>"
         for r in records
     )
@@ -108,7 +110,7 @@ async def send_attendance_email(req: AttendanceEmailRequest, payload: dict = Dep
   <p style="color:#94a3b8;margin:4px 0 0">{lec['course_name']} &mdash; {lec['course_code']}</p>
 </div>
 <div style="background:#f8fafc;padding:20px 24px;border-radius:0 0 12px 12px;border:1px solid #e2e8f0">
-  <p><b>Lecture:</b> {lec['lecture_id']} &nbsp;|&nbsp; <b>Room:</b> {lec.get('room','—')} &nbsp;|&nbsp; <b>Date:</b> {date_str}</p>
+  <p><b>Lecture:</b> {lec['lecture_id']} &nbsp;|&nbsp; <b>Room:</b> {lec.get('room','-')} &nbsp;|&nbsp; <b>Date:</b> {date_str}</p>
   <p><b>Instructor:</b> {lec.get('doctor_name') or 'N/A'}</p>
   <div style="display:flex;gap:12px;margin:16px 0">
     <div style="background:#dcfce7;padding:12px 20px;border-radius:8px;text-align:center;flex:1">
@@ -135,7 +137,7 @@ async def send_attendance_email(req: AttendanceEmailRequest, payload: dict = Dep
 </body></html>"""
 
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"[EduSense] Attendance: {lec['course_name']} ({date_str}) — {rate}% present"
+    msg["Subject"] = f"[EduSense] Attendance: {lec['course_name']} ({date_str}) - {rate}% present"
     msg["From"]    = f"{cfg['sender_name']} <{cfg['sender_email']}>"
     msg["To"]      = req.recipient_email
     msg.attach(MIMEText(html, "html"))

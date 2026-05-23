@@ -1,16 +1,17 @@
 """Authentication router — bcrypt passwords + real JWT tokens."""
 from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
-import aiosqlite, os, time
+import os
+import time
 from collections import defaultdict
 
+from database import get_db
 from auth_utils import (
     verify_password, hash_password,
     create_token, require_auth,
 )
 
 router = APIRouter()
-DB = os.getenv("DB_PATH", "emotion_system.db")
 
 # Simple in-memory rate limiter: max 10 attempts per IP per 5 minutes
 _login_attempts: dict = defaultdict(list)
@@ -32,67 +33,61 @@ class LoginRequest(BaseModel):
 
 
 @router.post("/login")
-async def login(req: LoginRequest, request: Request):
+async def login(req: LoginRequest, request: Request, db=Depends(get_db)):
     _check_rate_limit(request.client.host if request.client else "unknown")
     uname = req.username.strip().lower()
     pwd   = req.password.strip()
 
-    async with aiosqlite.connect(DB) as db:
-        db.row_factory = aiosqlite.Row
+    # 1. Match by username or email
+    user = await db.fetchrow(
+        "SELECT * FROM users WHERE LOWER(username)=$1 OR LOWER(email)=$2",
+        uname, uname,
+    )
 
-        # 1. Match by username or email
-        async with db.execute(
-            "SELECT * FROM users WHERE LOWER(username)=? OR LOWER(email)=?",
-            (uname, uname),
-        ) as cur:
-            user = await cur.fetchone()
+    # 2. Fallback: students may log in with their student_id
+    if not user:
+        user = await db.fetchrow(
+            """SELECT u.* FROM users u
+               JOIN students s ON s.user_id = u.id
+               WHERE LOWER(s.student_id) = $1""",
+            uname.upper(),
+        )
 
-        # 2. Fallback: students may log in with their student_id
-        if not user:
-            async with db.execute(
-                """SELECT u.* FROM users u
-                   JOIN students s ON s.user_id = u.id
-                   WHERE LOWER(s.student_id) = ?""",
-                (uname.upper(),),
-            ) as cur:
-                user = await cur.fetchone()
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
 
-        if not user:
-            raise HTTPException(status_code=401, detail="Invalid username or password")
+    user = dict(user)
+    stored_pw = user.get("password") or ""
 
-        user = dict(user)
-        stored_pw = user.get("password") or ""
+    if not verify_password(pwd, stored_pw):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
 
-        if not verify_password(pwd, stored_pw):
-            raise HTTPException(status_code=401, detail="Invalid username or password")
+    # ── Upgrade legacy plain-text password to bcrypt on first successful login ──
+    if not (stored_pw.startswith("$2b$") or stored_pw.startswith("$2a$")):
+        new_hash = hash_password(pwd)
+        await db.execute(
+            "UPDATE users SET password=$1 WHERE id=$2",
+            new_hash, user["id"],
+        )
 
-        # ── Upgrade legacy plain-text password to bcrypt on first successful login ──
-        if not (stored_pw.startswith("$2b$") or stored_pw.startswith("$2a$")):
-            new_hash = hash_password(pwd)
-            await db.execute(
-                "UPDATE users SET password=? WHERE id=?",
-                (new_hash, user["id"]),
-            )
-            await db.commit()
+    # ── Issue real JWT ─────────────────────────────────────────────────────
+    token = create_token({
+        "sub":  str(user["id"]),
+        "role": user.get("role", "student"),
+        "name": user.get("full_name", ""),
+    })
 
-        # ── Issue real JWT ─────────────────────────────────────────────────────
-        token = create_token({
-            "sub":  str(user["id"]),
-            "role": user.get("role", "student"),
-            "name": user.get("full_name", ""),
-        })
-
-        return {
-            "token": token,
-            "user": {
-                "id":       user["id"],
-                "username": user.get("username") or uname,
-                "name":     user.get("full_name") or uname,
-                "email":    user.get("email", ""),
-                "role":     user.get("role", "student"),
-            },
-            "message": "Login successful",
-        }
+    return {
+        "token": token,
+        "user": {
+            "id":       user["id"],
+            "username": user.get("username") or uname,
+            "name":     user.get("full_name") or uname,
+            "email":    user.get("email", ""),
+            "role":     user.get("role", "student"),
+        },
+        "message": "Login successful",
+    }
 
 
 @router.get("/me")
@@ -106,7 +101,7 @@ async def get_me(payload: dict = Depends(require_auth)):
 
 
 @router.post("/change-password")
-async def change_password(data: dict, payload: dict = Depends(require_auth)):
+async def change_password(data: dict, payload: dict = Depends(require_auth), db=Depends(get_db)):
     """Allow authenticated users to change their own password."""
     user_id  = int(payload["sub"])
     old_pwd  = (data.get("old_password") or "").strip()
@@ -115,17 +110,13 @@ async def change_password(data: dict, payload: dict = Depends(require_auth)):
     if len(new_pwd) < 8:
         raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
 
-    async with aiosqlite.connect(DB) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute("SELECT password FROM users WHERE id=?", (user_id,)) as cur:
-            row = await cur.fetchone()
-        if not row or not verify_password(old_pwd, row["password"]):
-            raise HTTPException(status_code=401, detail="Current password is incorrect")
+    row = await db.fetchrow("SELECT password FROM users WHERE id=$1", user_id)
+    if not row or not verify_password(old_pwd, row["password"]):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
 
-        await db.execute(
-            "UPDATE users SET password=? WHERE id=?",
-            (hash_password(new_pwd), user_id),
-        )
-        await db.commit()
+    await db.execute(
+        "UPDATE users SET password=$1 WHERE id=$2",
+        hash_password(new_pwd), user_id,
+    )
 
     return {"message": "Password changed successfully"}
