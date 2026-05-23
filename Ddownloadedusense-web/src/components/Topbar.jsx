@@ -12,6 +12,7 @@ export default function Topbar({ theme: C, user, pageTitle, isDark, onToggleMode
   const roleColor = ROLE_COLORS[user?.role] || '#3b82f6';
   const initials  = user?.initials || user?.name?.split(' ').slice(0,2).map(w=>w[0]?.toUpperCase()||'').join('') || '??';
   const [notifOpen, setNotifOpen] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
   const [, refresh] = useState(0);
 
   // Poll every 2 seconds so the badge updates when other components add notifications
@@ -121,6 +122,66 @@ export default function Topbar({ theme: C, user, pageTitle, isDark, onToggleMode
                     );
                   })
                 }
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Support button */}
+        <div style={{ position: 'relative' }}>
+          <button onClick={() => setSupportOpen(o => !o)} title="Help & Support" style={{
+            background: supportOpen ? '#7c3aed22' : C.bg3,
+            border: `1px solid ${supportOpen ? '#7c3aed' : C.border}`,
+            borderRadius: 20, width: 38, height: 38,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 17, cursor: 'pointer',
+          }}>🎧</button>
+
+          {supportOpen && <div style={{ position:'fixed', inset:0, zIndex:999 }} onClick={() => setSupportOpen(false)}/>}
+
+          {supportOpen && (
+            <div style={{
+              position: 'absolute', top: 46, right: 0, width: 280,
+              background: C.card, border: `1px solid ${C.border}`, borderRadius: 14,
+              boxShadow: '0 8px 32px rgba(0,0,0,0.25)', zIndex: 1000, overflow: 'hidden',
+            }}>
+              {/* Header */}
+              <div style={{ padding: '14px 16px 10px', borderBottom: `1px solid ${C.border}`, background: 'linear-gradient(135deg,#7c3aed18,#3b82f618)' }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: C.text }}>🎧 Help & Support</div>
+                <div style={{ fontSize: 11, color: C.text3, marginTop: 2 }}>We're here to help you</div>
+              </div>
+
+              {/* Options */}
+              <div style={{ padding: '8px 0' }}>
+                {[
+                  { icon: '📧', label: 'Email Support', sub: 'support@edusense.io', action: () => window.open('mailto:support@edusense.io') },
+                  { icon: '📖', label: 'User Guide', sub: 'How to use EduSense', action: () => window.open('https://edusense.io/guide', '_blank') },
+                  { icon: '🐛', label: 'Report a Bug', sub: 'Tell us what went wrong', action: () => window.open('mailto:support@edusense.io?subject=Bug Report') },
+                  { icon: '💬', label: 'Live Chat', sub: 'Chat with our team', action: () => window.open('mailto:support@edusense.io?subject=Live Chat Request') },
+                ].map((item, i) => (
+                  <button key={i} onClick={() => { item.action(); setSupportOpen(false); }} style={{
+                    display: 'flex', alignItems: 'center', gap: 12, width: '100%',
+                    padding: '10px 16px', background: 'none', border: 'none',
+                    cursor: 'pointer', textAlign: 'left',
+                    borderBottom: i < 3 ? `1px solid ${C.border}` : 'none',
+                  }}
+                    onMouseEnter={e => e.currentTarget.style.background = C.bg3}
+                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                  >
+                    <span style={{ fontSize: 20, flexShrink: 0 }}>{item.icon}</span>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{item.label}</div>
+                      <div style={{ fontSize: 10, color: C.text3, marginTop: 1 }}>{item.sub}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Footer */}
+              <div style={{ padding: '10px 16px', borderTop: `1px solid ${C.border}`, background: C.bg3 }}>
+                <div style={{ fontSize: 10, color: C.text3, textAlign: 'center' }}>
+                  EduSense v2.0 · <span style={{ color: '#7c3aed' }}>edusense.io</span>
+                </div>
               </div>
             </div>
           )}
