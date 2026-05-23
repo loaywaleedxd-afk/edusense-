@@ -1453,7 +1453,7 @@ class DataStore {
       }));
     }
 
-    // Students from API (merge with seed data)
+    // Students from API — replace local cache entirely so stale entries don't inflate count
     if (d.students?.length) {
       const apiStudents = d.students.map(s => ({
         id: s.student_id||s.id, name: s.full_name||s.name,
@@ -1463,10 +1463,10 @@ class DataStore {
         attentionScore:50, attendanceRate:0, gpa:0,
         present:false, confidence:0, hasFace:false, registeredAt:'',
       }));
-      const byId = {};
-      this.students.forEach(s => { byId[s.id] = s; });
-      apiStudents.forEach(s => { byId[s.id] = { ...(byId[s.id]||{}), ...s }; });
-      this.students = Object.values(byId);
+      // Preserve any extra local fields (emoji, color, etc.) but use API as source of truth for membership
+      const localById = {};
+      this.students.forEach(s => { localById[s.id] = s; });
+      this.students = apiStudents.map(s => ({ ...(localById[s.id] || {}), ...s }));
     }
 
     this._syncStats();
