@@ -44,7 +44,7 @@ function badge(active) {
 }
 
 export default function SuperAdminPage({ user, onLogout }) {
-  const token = sessionStorage.getItem('es_token') || localStorage.getItem('es_token') || '';
+  const token = localStorage.getItem('edusense_token') || '';
 
   const [tenants,   setTenants]   = useState([]);
   const [stats,     setStats]     = useState({});   // { schema: {...} }
