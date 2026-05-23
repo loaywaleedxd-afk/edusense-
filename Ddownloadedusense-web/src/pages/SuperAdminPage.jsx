@@ -119,22 +119,31 @@ export default function SuperAdminPage({ user, onLogout }) {
   // ── Toggle active ───────────────────────────────────────────────────────────
   async function toggleActive(t) {
     setBusy(t.schema_name);
+    setError('');
     try {
+      let res;
       if (t.active) {
-        await fetch(`${API}/api/super/tenants/${t.schema_name}`, {
+        res = await fetch(`${API}/api/super/tenants/${t.schema_name}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         });
       } else {
-        await fetch(`${API}/api/super/tenants/${t.schema_name}`, {
+        res = await fetch(`${API}/api/super/tenants/${t.schema_name}`, {
           method: 'PATCH',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ active: true }),
         });
       }
-      await load();
-    } catch {}
-    finally { setBusy(''); }
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setError(d.detail || `Request failed (${res.status})`);
+      }
+    } catch (e) {
+      setError(e.message || 'Network error');
+    } finally {
+      setBusy('');
+      await load();   // always reload, even on error
+    }
   }
 
   // ── Copy DNS instruction ────────────────────────────────────────────────────
