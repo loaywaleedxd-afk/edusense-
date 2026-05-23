@@ -61,7 +61,10 @@ export default function SuperAdminPage({ user, onLogout }) {
 
   // ── Fetch tenant list ───────────────────────────────────────────────────────
   const load = useCallback(async () => {
-    setLoading(true); setError('');
+    setLoading(true);
+    // Do NOT clear error here — action errors (toggleActive, handleCreate)
+    // must stay visible after load() refreshes the list.
+    // Each action clears the error itself at the start.
     try {
       const r = await fetch(`${API}/api/super/tenants`, {
         headers: { Authorization: `Bearer ${token}` },
