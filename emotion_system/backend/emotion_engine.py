@@ -2,8 +2,15 @@
 Face Recognition & Emotion Detection Engine
 Uses DeepFace for emotion analysis + face_recognition for attendance
 """
-import cv2
-import numpy as np
+from __future__ import annotations
+try:
+    import cv2
+    import numpy as np
+    CV2_AVAILABLE = True
+except ImportError:
+    CV2_AVAILABLE = False
+    cv2 = None
+    np = None
 import base64
 import asyncio
 import logging
@@ -42,6 +49,9 @@ class EmotionEngine:
 
     def _load_cascade(self):
         """Load OpenCV Haar cascade for face detection."""
+        if not CV2_AVAILABLE:
+            logger.warning("cv2 not available — face detection disabled")
+            return
         cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         if os.path.exists(cascade_path):
             self.face_cascade = cv2.CascadeClassifier(cascade_path)
