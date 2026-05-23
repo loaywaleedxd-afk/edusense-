@@ -27,11 +27,13 @@ async def init_tenant_schema(pool, schema: str):
         # Create tenants table in public schema
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS public.tenants (
-                id          SERIAL PRIMARY KEY,
-                schema_name TEXT UNIQUE NOT NULL,
-                name        TEXT NOT NULL,
-                domain      TEXT UNIQUE,
-                created_at  TIMESTAMPTZ DEFAULT NOW()
+                id            SERIAL PRIMARY KEY,
+                schema_name   TEXT UNIQUE NOT NULL,
+                name          TEXT NOT NULL,
+                domain        TEXT UNIQUE,
+                contact_email TEXT,
+                active        BOOLEAN DEFAULT TRUE,
+                created_at    TIMESTAMPTZ DEFAULT NOW()
             )
         """)
 
@@ -44,7 +46,7 @@ async def init_tenant_schema(pool, schema: str):
                 id          SERIAL PRIMARY KEY,
                 username    TEXT UNIQUE NOT NULL,
                 password    TEXT NOT NULL,
-                role        TEXT NOT NULL CHECK(role IN ('student','doctor','admin','parent')),
+                role        TEXT NOT NULL CHECK(role IN ('student','doctor','admin','parent','superadmin')),
                 full_name   TEXT NOT NULL,
                 email       TEXT UNIQUE NOT NULL,
                 created_at  TIMESTAMPTZ DEFAULT NOW()

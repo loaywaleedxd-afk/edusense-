@@ -73,3 +73,16 @@ def require_role(*roles: str):
             )
         return payload
     return _dep
+
+
+def require_superadmin(credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)):
+    """
+    Dependency: raises 401/403 unless the token carries role='superadmin'.
+    Deliberately returns a generic 403 — does not reveal the role name.
+    """
+    if not credentials:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    payload = decode_token(credentials.credentials)
+    if payload is None or payload.get("role") != "superadmin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    return payload

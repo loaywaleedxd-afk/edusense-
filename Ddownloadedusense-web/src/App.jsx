@@ -15,6 +15,7 @@ import NotificationToast     from './components/NotificationToast';
 import OnboardingTour        from './components/OnboardingTour';
 import store                 from './dataStore';
 import PaymentReturnPage     from './pages/PaymentReturnPage';
+import SuperAdminPage        from './pages/SuperAdminPage';
 
 // Rate-limit state: { count, lockedUntil } stored in sessionStorage
 const RATE_KEY = 'es_login_rate';
@@ -148,6 +149,8 @@ export default function App() {
         <AdminPage {...commonProps} />
       ) : user.role === 'parent' ? (
         <ParentPage {...commonProps} />
+      ) : user.role === 'superadmin' ? (
+        <SuperAdminPage user={user} onLogout={onLogout} />
       ) : (
         <AdminPage {...commonProps} />
       )}
