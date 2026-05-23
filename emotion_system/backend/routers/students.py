@@ -27,6 +27,7 @@ async def list_students(payload: dict = Depends(require_role("doctor", "admin"))
              u.email,
              s.department,
              s.year,
+             s.photo_path,
              ROUND(
                CAST(100.0 * SUM(CASE WHEN a.status='present' THEN 1 ELSE 0 END) AS numeric) /
                GREATEST(1, COUNT(a.id)), 1
@@ -36,7 +37,7 @@ async def list_students(payload: dict = Depends(require_role("doctor", "admin"))
            FROM students s
            JOIN users u ON s.user_id = u.id
            LEFT JOIN attendance a ON s.student_id = a.student_id
-           GROUP BY s.student_id, u.full_name, u.email, s.department, s.year
+           GROUP BY s.student_id, u.full_name, u.email, s.department, s.year, s.photo_path
            ORDER BY u.full_name"""
     )
     return [dict(r) for r in rows]

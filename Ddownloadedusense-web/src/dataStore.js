@@ -346,12 +346,14 @@ class DataStore {
     return alerts.slice(0,4);
   }
 
-  // Returns the URL to display a student's photo, or null if not available
+  // Returns the full URL to display a student's photo, or null if not available.
+  // Priority: photo_path from DB → student_id fallback
   getPhotoUrl(student){
-    if (!student?.email) return null;
-    const emailId = student.email.split('@')[0];
-    if (!emailId || emailId.includes('@') || emailId.length < 5) return null;
-    return `/student_photos/${emailId}.jpg`;
+    const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    if (student?.photo_path) return `${API}${student.photo_path}`;
+    const sid = student?.student_id || student?.id;
+    if (sid && String(sid).length >= 3) return `${API}/photos/${sid}.jpg`;
+    return null;
   }
 
   // ── AUDIT LOG ─────────────────────────────────────────────────────────────
@@ -596,8 +598,13 @@ class DataStore {
       } catch(e){ console.warn('[dataStore] init load failed:', e.message); }
       const u = result.user;
       const nameParts = (u.name||u.username).split(' ');
+      // Use photo_path returned directly by the login endpoint (fastest, no extra lookup)
       let photoUrl = null;
-      if (u.role === 'student') {
+      if (u.photo_path) {
+        const API = import.meta?.env?.VITE_API_URL || 'http://localhost:8000';
+        photoUrl = `${API}${u.photo_path}`;
+      } else if (u.role === 'student') {
+        // Fallback: look up from the loaded students list
         const s = this.getStudent(u.id) || this.students.find(x=>x.email?.startsWith(u.username));
         if (s) photoUrl = this.getPhotoUrl(s);
       }
