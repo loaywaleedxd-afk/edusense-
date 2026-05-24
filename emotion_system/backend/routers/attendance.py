@@ -15,6 +15,7 @@ class AttendanceRecord(BaseModel):
     status: str = "present"
     method: str = "face_recognition"
     confidence: Optional[float] = None
+    week: int = 1
 
 
 class CheckOutRequest(BaseModel):
@@ -28,16 +29,24 @@ async def mark_attendance(
     payload: dict = Depends(require_role("doctor", "admin")),
     db=Depends(get_db),
 ):
-    """Mark attendance — doctors and admins only."""
+    """Mark or update attendance for a specific student + lecture + week."""
     existing = await db.fetchrow(
-        "SELECT id FROM attendance WHERE student_id=$1 AND lecture_id=$2 AND status='present'",
-        rec.student_id, rec.lecture_id,
+        "SELECT id FROM attendance WHERE student_id=$1 AND lecture_id=$2 AND week=$3",
+        rec.student_id, rec.lecture_id, rec.week,
     )
     if existing:
-        return {"message": "Already marked present", "duplicate": True}
+        # Update existing record (handles toggling present ↔ absent)
+        await db.execute(
+            """UPDATE attendance SET status=$1, method=$2, confidence=$3
+               WHERE student_id=$4 AND lecture_id=$5 AND week=$6""",
+            rec.status, rec.method, rec.confidence,
+            rec.student_id, rec.lecture_id, rec.week,
+        )
+        return {"message": "Attendance updated", "student_id": rec.student_id, "status": rec.status}
     await db.execute(
-        "INSERT INTO attendance (student_id,lecture_id,status,method,confidence) VALUES ($1,$2,$3,$4,$5)",
-        rec.student_id, rec.lecture_id, rec.status, rec.method, rec.confidence,
+        """INSERT INTO attendance (student_id, lecture_id, week, status, method, confidence)
+           VALUES ($1, $2, $3, $4, $5, $6)""",
+        rec.student_id, rec.lecture_id, rec.week, rec.status, rec.method, rec.confidence,
     )
     return {"message": "Attendance marked", "student_id": rec.student_id, "status": rec.status}
 

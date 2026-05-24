@@ -1213,7 +1213,13 @@ class DataStore {
       date:new Date().toISOString().slice(0,10),
       method:'manual',confidence:1.0,
     };
-    this._persist(); return true;
+    this._persist();
+    // Sync to backend so student sees the same data after reload
+    this._callAPI(()=>api.markAttendance({
+      student_id:studentId, lecture_id:courseId,
+      week, status, method:'manual', confidence:1.0,
+    }));
+    return true;
   }
   getCourseWeekAttendance(courseId,week){ return this.attendance[this._attKey(courseId,week)]||{}; }
 
@@ -1442,7 +1448,15 @@ class DataStore {
     if (d.submissions)    this.submissions     = mapArr(d.submissions);
     if (d.complaints)     this.complaints      = mapArr(d.complaints);
     if (d.examResults)    Object.assign(this.examResults, d.examResults);
-    if (d.attendance)     Object.assign(this.attendance,  d.attendance);
+    // Deep-merge attendance per week-key → per student, so local doctor marks
+    // (not yet flushed to DB) are NOT wiped out by the DB reload on next login.
+    if (d.attendance) {
+      for (const [key, recs] of Object.entries(d.attendance)) {
+        if (!this.attendance[key]) this.attendance[key] = {};
+        // DB record wins for each student individually (it's the persisted truth)
+        Object.assign(this.attendance[key], recs);
+      }
+    }
     if (d.chatMessages)   Object.assign(this.chatMessages, d.chatMessages);
     if (d.registrationStatus) Object.assign(this.registrationStatus, d.registrationStatus);
     if (d.studentFees)    Object.assign(this.studentFees, d.studentFees);
