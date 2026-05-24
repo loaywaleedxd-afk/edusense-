@@ -404,29 +404,39 @@ function DocAttendance({ theme: C, myCourses }) {
 
   const course   = store.getCourse(selCourse);
   const enrolled = selCourse ? store.getEnrolledStudents(selCourse) : [];
+  // Current-week records
   const attRecs  = selCourse ? store.getAttendance(selCourse, week) : {};
+  // All-weeks records for this course (for the Total column)
+  const allWeekRecs = selCourse ? store.getAttendance(selCourse) : {};
   const excuses  = store.getExcuses(selCourse).filter(e=>e.week===week);
   const pendingExcuses = excuses.filter(e=>e.status==='pending').length;
 
-  // Use real records only when ≥20% of enrolled students have checked in
-  // (a real session). If just 1-2 test records exist, fall back to
-  // attendanceRate so the doctor view matches the student's summary.
-  const realCount = Object.keys(attRecs).filter(id => attRecs[id]?.status !== 'absent').length;
-  const hasRealSession = enrolled.length > 0 && realCount >= Math.max(2, Math.floor(enrolled.length * 0.2));
+  // Only use real records — no fake fallback based on attendanceRate.
+  // If a student has no record for this week they are simply "Unmarked" (absent by default).
   const isPresent = (s) => {
     const rec = attRecs[s.id];
-    if (rec) return rec.status !== 'absent';          // respect explicit absent mark
-    if (!hasRealSession) return week <= Math.round((s.attendanceRate || 75) / 100 * 16);
-    return false;
+    return rec ? rec.status !== 'absent' : false;
+  };
+
+  // Total weeks attended per student across all 16 weeks of this course
+  const totalWeeksAttended = (s) => {
+    let count = 0;
+    for (let w = 1; w <= 16; w++) {
+      const key = `${selCourse}_W${String(w).padStart(2,'0')}`;
+      const rec = store.attendance?.[key]?.[s.id];
+      if (rec && rec.status !== 'absent') count++;
+    }
+    return count;
   };
 
   const presentCount = enrolled.filter(s=>isPresent(s)).length;
   const absentCount  = enrolled.length - presentCount;
+  // How many students have been explicitly marked for this week (for context)
+  const markedCount  = Object.keys(attRecs).length;
 
   function toggleStudent(s) {
     const rec = attRecs[s.id];
-    const currentlyPresent = rec ? rec.status !== 'absent' : isPresent(s);
-    // Use markStudentStatus so absent records are properly stored (not silently dropped)
+    const currentlyPresent = rec ? rec.status !== 'absent' : false;
     store.markStudentStatus(selCourse, week, s.id, currentlyPresent ? 'absent' : 'present');
     refresh();
   }
@@ -473,6 +483,7 @@ function DocAttendance({ theme: C, myCourses }) {
         </select>
         <span style={{background:'rgba(16,185,129,0.15)',color:'#10b981',border:'1px solid #10b981',borderRadius:20,padding:'4px 12px',fontSize:11,fontWeight:700}}>✅ {presentCount} Present</span>
         <span style={{background:'rgba(239,68,68,0.12)',color:'#ef4444',border:'1px solid #ef4444',borderRadius:20,padding:'4px 12px',fontSize:11,fontWeight:700}}>❌ {absentCount} Absent</span>
+        <span style={{background:'rgba(148,163,184,0.12)',color:C.text3,border:`1px solid ${C.border}`,borderRadius:20,padding:'4px 12px',fontSize:11,fontWeight:600}}>📋 {markedCount} Marked</span>
         <div style={{flex:1}}/>
         <button onClick={()=>markAll(true)} style={{background:C.green,border:'none',borderRadius:8,padding:'8px 14px',fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer'}}>✅ All Present</button>
         <button onClick={()=>markAll(false)} style={{background:'rgba(239,68,68,0.15)',border:'1px solid #ef4444',borderRadius:8,padding:'8px 14px',fontSize:12,fontWeight:700,color:'#ef4444',cursor:'pointer'}}>❌ All Absent</button>
@@ -535,25 +546,27 @@ function DocAttendance({ theme: C, myCourses }) {
       {/* ── ROSTER TAB ── */}
       {activeTab==='roster' && (
         <div style={{background:C.card,borderRadius:14,border:`1px solid ${C.border}`,overflow:'hidden'}}>
-          <div style={{display:'grid',gridTemplateColumns:'56px 1fr 160px 120px 110px 110px',background:C.bg3,borderBottom:`1px solid ${C.border}`,padding:'8px 16px',fontSize:11,fontWeight:700,color:C.text2}}>
-            <div/><div>Name</div><div>Department</div><div>Status</div><div>Check-In</div><div>Method</div>
+          <div style={{display:'grid',gridTemplateColumns:'56px 1fr 140px 120px 90px 110px 90px',background:C.bg3,borderBottom:`1px solid ${C.border}`,padding:'8px 16px',fontSize:11,fontWeight:700,color:C.text2}}>
+            <div/><div>Name</div><div>Department</div><div>This Week</div><div>Total</div><div>Check-In</div><div>Method</div>
           </div>
           {enrolled.length===0 && <div style={{padding:40,textAlign:'center',color:C.text3,fontSize:13}}>No students enrolled.</div>}
           {enrolled.map((s,i)=>{
             const rec=attRecs[s.id]; const present=isPresent(s);
+            const total=totalWeeksAttended(s);
             const photoUrl=s.capturedPhoto||store.getPhotoUrl(s);
             const isExcused=rec?.status==='excused';
+            const unmarked=!rec; // no record yet for this week
+            const rowBg = present ? 'rgba(16,185,129,0.07)' : (i%2===0 ? 'transparent' : 'rgba(255,255,255,0.02)');
             return (
               <div key={s.id} onClick={()=>toggleStudent(s)} style={{
-                display:'grid',gridTemplateColumns:'56px 1fr 160px 120px 110px 110px',
+                display:'grid',gridTemplateColumns:'56px 1fr 140px 120px 90px 110px 90px',
                 alignItems:'center',padding:'10px 16px',
                 borderBottom:i<enrolled.length-1?`1px solid ${C.border}`:'none',
-                background:present?'rgba(16,185,129,0.07)':(i%2===0?'transparent':'rgba(255,255,255,0.02)'),
-                cursor:'pointer',transition:'background 0.15s',
+                background:rowBg, cursor:'pointer',transition:'background 0.15s',
               }}
               onMouseEnter={e=>e.currentTarget.style.background='rgba(59,130,246,0.1)'}
-              onMouseLeave={e=>e.currentTarget.style.background=present?'rgba(16,185,129,0.07)':(i%2===0?'transparent':'rgba(255,255,255,0.02)')}>
-                <div style={{width:40,height:40,borderRadius:'50%',background:s.color||C.blue,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,overflow:'hidden',border:`2px solid ${present?'#10b981':'#475569'}`}}>
+              onMouseLeave={e=>e.currentTarget.style.background=rowBg}>
+                <div style={{width:40,height:40,borderRadius:'50%',background:s.color||C.blue,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,overflow:'hidden',border:`2px solid ${present?'#10b981':unmarked?C.border:'#ef4444'}`}}>
                   {photoUrl?<img src={photoUrl} alt={s.name} style={{width:'100%',height:'100%',objectFit:'cover'}} onError={e=>{e.target.style.display='none';e.target.nextSibling.style.display='flex';}}/>:null}
                   <span style={{display:photoUrl?'none':'flex'}}>{s.emoji||'👤'}</span>
                 </div>
@@ -563,9 +576,19 @@ function DocAttendance({ theme: C, myCourses }) {
                 </div>
                 <div style={{fontSize:12,color:C.text2}}>{s.dept}</div>
                 <div>
-                  <span style={{display:'inline-flex',alignItems:'center',gap:5,background:present?'rgba(16,185,129,0.15)':'rgba(239,68,68,0.12)',color:present?'#10b981':'#ef4444',border:`1px solid ${present?'#10b981':'#ef4444'}`,borderRadius:20,padding:'3px 10px',fontSize:11,fontWeight:700}}>
-                    {isExcused?'📄 Excused':present?'✅ Present':'❌ Absent'}
-                  </span>
+                  {unmarked ? (
+                    <span style={{display:'inline-flex',alignItems:'center',gap:5,background:'rgba(148,163,184,0.1)',color:C.text3,border:`1px solid ${C.border}`,borderRadius:20,padding:'3px 10px',fontSize:11,fontWeight:700}}>
+                      — Unmarked
+                    </span>
+                  ) : (
+                    <span style={{display:'inline-flex',alignItems:'center',gap:5,background:present?'rgba(16,185,129,0.15)':'rgba(239,68,68,0.12)',color:present?'#10b981':'#ef4444',border:`1px solid ${present?'#10b981':'#ef4444'}`,borderRadius:20,padding:'3px 10px',fontSize:11,fontWeight:700}}>
+                      {isExcused?'📄 Excused':present?'✅ Present':'❌ Absent'}
+                    </span>
+                  )}
+                </div>
+                {/* Total weeks attended across all 16 weeks */}
+                <div style={{fontSize:12,fontWeight:700,color:total>=12?'#10b981':total>=8?'#f59e0b':'#ef4444'}}>
+                  {total} / 16
                 </div>
                 <div style={{fontSize:11,color:C.text2}}>{rec?.time||'—'}</div>
                 <div style={{fontSize:11,color:C.text3}}>{rec?.method||'—'}</div>
