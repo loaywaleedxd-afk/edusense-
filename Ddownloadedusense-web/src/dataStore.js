@@ -988,15 +988,36 @@ class DataStore {
   // Called when a student logs in. Checks every enrolled course and fires
   // a warning / danger alert if their attendance is below threshold.
   // Deduplicates: only one alert per student+course per calendar day.
+  // ── ATTENDANCE ALERT DISMISSAL (persisted per student+course+pct) ──────────
+  _attDismissKey(studentId){ return `es_att_dismiss_${studentId}`; }
+  _getAttDismissed(studentId){
+    try { return new Set(JSON.parse(localStorage.getItem(this._attDismissKey(studentId)) || '[]')); }
+    catch { return new Set(); }
+  }
+  _saveAttDismissed(studentId, set){
+    try { localStorage.setItem(this._attDismissKey(studentId), JSON.stringify([...set])); } catch {}
+  }
+  dismissAttendanceAlert(studentId, courseId, pct){
+    const set = this._getAttDismissed(studentId);
+    set.add(`${courseId}:${pct}`);
+    this._saveAttDismissed(studentId, set);
+  }
+  clearAttendanceDismissal(studentId, courseId){
+    // Call this when a course's attendance improves above the warning threshold
+    const set = this._getAttDismissed(studentId);
+    [...set].filter(k => k.startsWith(`${courseId}:`)).forEach(k => set.delete(k));
+    this._saveAttDismissed(studentId, set);
+  }
+
   checkAttendanceAlerts(studentId){
     const WARN_PCT  = 75;  // below this → warning
     const CRIT_PCT  = 60;  // below this → critical
-    const today     = new Date().toISOString().slice(0,10);
     const courses   = this.getStudentCourses(studentId);
     const stu       = this.getStudent(studentId);
     const newAlerts = [];
+    const dismissed = this._getAttDismissed(studentId);
 
-    const overallRate = stu?.attendanceRate ?? 0;
+    const overallRate = this.computeAttendanceRate(studentId);
 
     // Remove stale attendance alerts for this student so outdated ones don't linger
     if (this.systemAlerts) {
@@ -1005,7 +1026,7 @@ class DataStore {
       );
     }
 
-    courses.forEach((course, i) => {
+    courses.forEach((course) => {
       const recs       = this.getStudentCourseAttendance(studentId, course.id);
       const recorded   = Object.keys(recs).length;
       const totalWeeks = Math.max(1, course.weeks?.length || 16);
@@ -1015,28 +1036,35 @@ class DataStore {
         attended = Object.values(recs).filter(r => r.status === 'present' || r.status === 'excused').length;
         pct = Math.round((attended / totalWeeks) * 100);
       } else {
-        // No real records — use overall rate directly so alert logic matches the displayed stat
+        // No real records — use computed overall rate
         pct = Math.round(overallRate);
         attended = Math.round(pct / 100 * totalWeeks);
       }
 
-      if (pct >= WARN_PCT) return; // fine, skip
+      // If attendance is fine, clear any stale dismissal for this course
+      if (pct >= WARN_PCT) {
+        this.clearAttendanceDismissal(studentId, course.id);
+        return;
+      }
 
-      // Dedup: skip if we already fired this alert today
-      const existing = (this.systemAlerts || []).find(a =>
-        a.studentId === studentId &&
-        a.courseId  === course.id &&
-        a.alertKind === 'attendance' &&
-        a.createdAt?.slice(0,10) === today
-      );
-      if (existing) return;
+      // If the student already dismissed this alert at the same (or higher) pct, skip it
+      if (dismissed.has(`${course.id}:${pct}`)) return;
+      // Also skip if they dismissed at a lower pct (meaning it was worse before and they dismissed)
+      const courseKey = [...dismissed].find(k => k.startsWith(`${course.id}:`));
+      if (courseKey) {
+        const dismissedPct = parseInt(courseKey.split(':')[1], 10);
+        if (pct >= dismissedPct) return; // same or better than when dismissed → skip
+        // Attendance got worse → allow re-alert by clearing old dismissal
+        dismissed.delete(courseKey);
+        this._saveAttDismissed(studentId, dismissed);
+      }
 
       const isCritical = pct < CRIT_PCT;
       const alert = this.addAlert({
         type:      isCritical ? 'danger' : 'warning',
         title:     isCritical
-          ? `Critical Attendance — ${course.name}`
-          : `Low Attendance Warning — ${course.name}`,
+          ? `Critical Attendance — ${course.name || course.id}`
+          : `Low Attendance Warning — ${course.name || course.id}`,
         message:   `You have attended ${attended} of ${totalWeeks} weeks (${pct}%). ` +
                    (isCritical
                      ? 'You are at serious risk of failing due to absences. Immediate action required.'

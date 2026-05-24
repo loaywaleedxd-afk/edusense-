@@ -165,12 +165,18 @@ function AttendanceAlertBanner({ theme: C, studentId, onGoToAttendance }) {
   if (!visible.length) return null;
 
   function dismiss(id) {
+    const a = alerts.find(x => x.id === id);
     store.markAlertRead(id);
+    // Persist dismissal so this alert never reappears on next login at the same pct
+    if (a) store.dismissAttendanceAlert(studentId, a.courseId, a.pct);
     setDismiss(prev => new Set([...prev, id]));
   }
 
   function dismissAll() {
-    visible.forEach(a => store.markAlertRead(a.id));
+    visible.forEach(a => {
+      store.markAlertRead(a.id);
+      store.dismissAttendanceAlert(studentId, a.courseId, a.pct);
+    });
     setDismiss(prev => new Set([...prev, ...visible.map(a => a.id)]));
   }
 
