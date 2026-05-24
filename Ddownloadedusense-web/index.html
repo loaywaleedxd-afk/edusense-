@@ -3,8 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>EduSense — Classroom Emotion & Attendance System</title>
+
+    <!-- PWA meta tags -->
+    <meta name="application-name" content="EduSense" />
+    <meta name="description" content="AI-Powered University Management System" />
+    <meta name="theme-color" content="#1a1a3e" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- iOS PWA support -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="EduSense" />
+    <link rel="apple-touch-icon" href="/pwa-icon.svg" />
+
+    <!-- Splash screen color while loading -->
+    <style>
+      html, body, #root { margin: 0; padding: 0; background: #1a1a3e; height: 100%; }
+    </style>
   </head>
   <body>
     <div id="root"></div>

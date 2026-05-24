@@ -13,6 +13,7 @@ import AdvisingPage          from './pages/AdvisingPage';
 import AtRiskPage            from './pages/AtRiskPage';
 import NotificationToast     from './components/NotificationToast';
 import OnboardingTour        from './components/OnboardingTour';
+import PWAInstallPrompt      from './components/PWAInstallPrompt';
 import store                 from './dataStore';
 import PaymentReturnPage     from './pages/PaymentReturnPage';
 import SuperAdminPage        from './pages/SuperAdminPage';
@@ -167,6 +168,7 @@ export default function App() {
       {user && <ChatWidget user={user} />}
       {user && <NotificationToast user={user} />}
       {user && <OnboardingTour user={user} theme={C} />}
+      <PWAInstallPrompt theme={C} />
 
       {/* ── Full-screen overlay pages ── */}
       <AnimatePresence>

@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { VitePWA } from 'vite-plugin-pwa'
 import fs from 'fs'
 import path from 'path'
 import nodemailer from 'nodemailer'
@@ -27,6 +28,80 @@ const transporter = nodemailer.createTransport({
 export default defineConfig({
   plugins: [
     react(),
+
+    // ── Progressive Web App ────────────────────────────────────────────────────
+    VitePWA({
+      registerType: 'autoUpdate',
+      // Only activate in production (not dev server)
+      devOptions: { enabled: false },
+
+      // Files to pre-cache (app shell)
+      includeAssets: ['favicon.svg', 'pwa-icon.svg'],
+
+      manifest: {
+        name: 'EduSense',
+        short_name: 'EduSense',
+        description: 'AI-Powered University Management System',
+        theme_color: '#1a1a3e',
+        background_color: '#1a1a3e',
+        display: 'standalone',
+        orientation: 'any',
+        scope: '/',
+        start_url: '/',
+        lang: 'en',
+        categories: ['education', 'productivity'],
+        icons: [
+          {
+            src: 'pwa-icon.svg',
+            sizes: 'any',
+            type: 'image/svg+xml',
+            purpose: 'any',
+          },
+          {
+            src: 'pwa-icon.svg',
+            sizes: 'any',
+            type: 'image/svg+xml',
+            purpose: 'maskable',
+          },
+        ],
+      },
+
+      workbox: {
+        // Pre-cache all JS/CSS/HTML/images built by Vite
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+        // Main bundle is ~2.7 MB — raise the limit (default is 2 MB)
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+
+        // Don't cache backend API calls — always need fresh data
+        navigateFallback: 'index.html',
+        navigateFallbackDenylist: [/^\/api\//, /^\/ws\//, /^\/photos\//],
+
+        runtimeCaching: [
+          {
+            // API: Network first, fall back to cache (24h max age)
+            urlPattern: /\/api\//i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'edusense-api',
+              networkTimeoutSeconds: 5,
+              expiration: { maxEntries: 60, maxAgeSeconds: 24 * 60 * 60 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
+            // Student photos: cache on first load, serve from cache next time
+            urlPattern: /\/photos\//i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'edusense-photos',
+              expiration: { maxEntries: 200, maxAgeSeconds: 7 * 24 * 60 * 60 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
+      },
+    }),
+
     {
       name: 'serve-student-photos',
       configureServer(server) {
