@@ -352,6 +352,8 @@ function StudentDashboard({ theme: C, user, stu }) {
   const myCoursesEnrolled = store.getStudentCourses(stu.id);
   const streak = calcStreak(stu.id);
   const streakMsg = streak >= 10 ? 'Incredible! Keep it up! 🏆' : streak >= 5 ? 'Great consistency!' : streak >= 2 ? 'Keep going!' : 'Start your streak today!';
+  // Use real attendance records instead of the static stu.attendanceRate (which defaults to 0)
+  const attendanceRate = store.computeAttendanceRate(stu.id);
 
   const { t: dashT, isRTL: dashRTL } = useLang();
   const isMobile = useMobile();
@@ -412,7 +414,7 @@ function StudentDashboard({ theme: C, user, stu }) {
 
       {/* Stat cards */}
       <div style={{ display:'flex', gap:12, marginBottom:12, flexWrap:'wrap' }}>
-        <StatCard theme={C} label="Attendance Rate"  value={`${stu.attendanceRate}%`} sub={`${Math.round(stu.attendanceRate/100*16)} of 16 lectures`} icon="✅" accent="green"/>
+        <StatCard theme={C} label="Attendance Rate"  value={`${attendanceRate}%`} sub={`${Math.round(attendanceRate/100*16)} of 16 lectures`} icon="✅" accent="green"/>
         <StatCard theme={C} label="Avg Engagement"   value={`${stu.engagement}%`}     sub="Above class average" icon="🧠" accent="blue"/>
         <StatCard theme={C} label="Avg Attention"    value={`${stu.attentionScore}%`}  sub="Good focus level"  icon="👁️" accent="purple"/>
         <StatCard theme={C} label="GPA"              value={stu.gpa}                  sub="Current semester"  icon="📈" accent="amber"/>
@@ -800,6 +802,7 @@ function StudentPerformance({ theme: C, stu }) {
   const myCourses = store.getStudentCourses(stu.id);
   const results   = store.getStudentResults(stu.id);
   const idHash    = stu.id.split('').reduce((a,c)=>a+c.charCodeAt(0),0);
+  const overallRate = store.computeAttendanceRate(stu.id);
 
   const gradeEntries = Object.entries(results);
   const passed = gradeEntries.filter(([,v])=>v.grade>=50).length;
@@ -807,7 +810,12 @@ function StudentPerformance({ theme: C, stu }) {
   const rows = myCourses.map((course, i) => {
     const rec = results[course.id];
     const seed = (idHash + i*17) % 100;
-    const att  = `${Math.min(100, Math.max(50, stu.attendanceRate + ((seed%20)-10)))}%`;
+    // Use real per-course records if available, else vary overallRate slightly per course
+    const courseRecs = Object.values(store.getStudentCourseAttendance(stu.id, course.id));
+    const courseRate = courseRecs.length > 0
+      ? Math.round(courseRecs.filter(r=>r.status==='present'||r.status==='excused').length / 16 * 100)
+      : Math.min(100, Math.max(0, overallRate + ((seed%20)-10)));
+    const att  = `${courseRate}%`;
     const eng  = `${Math.min(100, Math.max(30, stu.engagement     + ((seed*3+7)%30)-15))}%`;
     const atn  = `${Math.min(100, Math.max(30, stu.attentionScore + ((seed*7+3)%28)-14))}%`;
     const grade = rec ? `${rec.grade}% (${letterGrade(rec.grade)})` : '—';
@@ -931,6 +939,7 @@ function StudentPortfolio({ theme: C, user, stu }) {
   const entries = Object.entries(results);
   const grades = entries.map(([,v])=>v.grade);
   const avgG = grades.length ? +(grades.reduce((a,b)=>a+b,0)/grades.length).toFixed(1) : 0;
+  const portfolioAttRate = store.computeAttendanceRate(stu.id);
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
@@ -954,7 +963,7 @@ function StudentPortfolio({ theme: C, user, stu }) {
 
         {/* Stats */}
         <div style={{ display:'flex', gap:12, marginBottom:12, flexWrap:'wrap' }}>
-          {[['Attendance',`${stu.attendanceRate}%`,C.green],['Avg Grade',`${avgG}%`,C.blue],['Engagement',`${stu.engagement}%`,C.amber],['Courses Graded',grades.length,C.purple]].map(([lbl,val,col],i)=>(
+          {[['Attendance',`${portfolioAttRate}%`,C.green],['Avg Grade',`${avgG}%`,C.blue],['Engagement',`${stu.engagement}%`,C.amber],['Courses Graded',grades.length,C.purple]].map(([lbl,val,col],i)=>(
             <div key={i} style={{ flex:1, background:C.bg3, borderRadius:10, padding:'12px', textAlign:'center' }}>
               <div style={{ fontSize:22, fontWeight:700, color:col }}>{val}</div>
               <div style={{ fontSize:10, color:C.text2, marginTop:2 }}>{lbl}</div>
@@ -1230,10 +1239,15 @@ function StudentTranscript({ theme: C, stu }) {
   const fee       = store.getStudentFeeStatus(stu.id);
   const idHash    = stu.id.split('').reduce((a,c)=>a+c.charCodeAt(0),0);
 
+  const overallTranscriptRate = store.computeAttendanceRate(stu.id);
   const rows = myCourses.map((course, i) => {
     const rec = results[course.id];
     const seed = (idHash + i*17) % 100;
-    const att  = Math.min(100, Math.max(50, stu.attendanceRate + ((seed%20)-10)));
+    // Use real per-course records; fall back to computed overall rate ± small offset
+    const courseRecs = Object.values(store.getStudentCourseAttendance(stu.id, course.id));
+    const att = courseRecs.length > 0
+      ? Math.round(courseRecs.filter(r=>r.status==='present'||r.status==='excused').length / 16 * 100)
+      : Math.min(100, Math.max(0, overallTranscriptRate + ((seed%20)-10)));
     const grade = rec ? rec.grade : null;
     return { course, att, grade };
   });

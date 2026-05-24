@@ -764,6 +764,25 @@ class DataStore {
   getStudentAttendance(studentId){ return Object.values(this.attendance).flatMap(recs=>Object.entries(recs).filter(([sid])=>sid===studentId).map(([,rec])=>rec)); }
   getStudentCourseAttendance(studentId,courseId){ const result={}; for(let w=1;w<=16;w++){const key=this._attKey(courseId,w);if(this.attendance[key]?.[studentId]) result[w]=this.attendance[key][studentId];} return result; }
 
+  /**
+   * Compute real attendance rate from stored records.
+   * Falls back to stu.attendanceRate if no real records exist yet.
+   */
+  computeAttendanceRate(studentId){
+    const courses = this.getStudentCourses(studentId);
+    let totalWeeks = 0, presentWeeks = 0;
+    for (const course of courses){
+      const recs = Object.values(this.getStudentCourseAttendance(studentId, course.id));
+      if (recs.length > 0){
+        totalWeeks  += 16;
+        presentWeeks += recs.filter(r => r.status === 'present' || r.status === 'excused').length;
+      }
+    }
+    if (totalWeeks > 0) return Math.round(presentWeeks / totalWeeks * 100);
+    const stu = this.getStudent(studentId);
+    return stu?.attendanceRate || 0;
+  }
+
   addExamResult(studentId,courseId,grade,doctorId){
     if(!this.examResults[studentId]) this.examResults[studentId]={};
     this.examResults[studentId][courseId]={grade:+parseFloat(grade).toFixed(1),addedBy:doctorId,date:new Date().toISOString().slice(0,10)};
