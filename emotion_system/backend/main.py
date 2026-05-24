@@ -25,7 +25,7 @@ from routers import (
     notifications, complaints, fees, registration, waitlist,
     qr_sessions, enrollments, init_data,
     proctoring, advising, at_risk, office_hours, payment,
-    tenants,
+    tenants, calendar, polls,
 )
 from database import init_pool, init_tenant_schema, get_db
 from websocket_manager import ConnectionManager
@@ -126,6 +126,8 @@ app.include_router(at_risk.router,       prefix="/api/at-risk",        tags=["At
 app.include_router(office_hours.router,  prefix="/api/office-hours",   tags=["OfficeHours"])
 app.include_router(payment.router,       prefix="/api/payment",         tags=["Payment"])
 app.include_router(r_router)
+app.include_router(calendar.router, prefix="/api/calendar",  tags=["Calendar"])
+app.include_router(polls.router,    prefix="/api/polls",     tags=["Polls"])
 # ── Superadmin-only: tenant (university) management ───────────────────────────
 # Prefix is intentionally obscure. Not listed in public docs.
 app.include_router(tenants.router, prefix="/api/super/tenants", include_in_schema=False)

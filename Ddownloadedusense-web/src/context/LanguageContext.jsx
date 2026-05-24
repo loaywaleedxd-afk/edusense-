@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { api } from '../api';
 
 export const TRANSLATIONS = {
   en: {
@@ -341,12 +342,32 @@ const LanguageContext = createContext({ lang: 'en', t: k => k, toggleLang: () =>
 export function LanguageProvider({ children }) {
   const [lang, setLang] = useState(() => localStorage.getItem('es_lang') || 'en');
   const isRTL = lang === 'ar';
+  const isFirstRender = useRef(true);
 
+  // Sync DOM + localStorage; save to DB only when user explicitly changes language
   useEffect(() => {
     document.documentElement.dir = isRTL ? 'rtl' : 'ltr';
     document.documentElement.lang = lang;
     localStorage.setItem('es_lang', lang);
+    if (!isFirstRender.current) {
+      const token = localStorage.getItem('edusense_token');
+      if (token) api.updatePreferences({ language: lang }).catch(() => {});
+    }
+    isFirstRender.current = false;
   }, [lang, isRTL]);
+
+  // On mount, load language from DB (overrides localStorage if different)
+  useEffect(() => {
+    const token = localStorage.getItem('edusense_token');
+    if (!token) return;
+    api.getPreferences()
+      .then(prefs => {
+        if (prefs?.language && prefs.language !== lang) {
+          setLang(prefs.language);
+        }
+      })
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function toggleLang() { setLang(l => l === 'en' ? 'ar' : 'en'); }
   function t(key) { return TRANSLATIONS[lang]?.[key] ?? TRANSLATIONS.en[key] ?? key; }

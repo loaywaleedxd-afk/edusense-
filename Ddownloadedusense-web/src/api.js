@@ -158,6 +158,24 @@ export const api = {
   getAtRiskStudents: (minLevel)   => get(`/api/at-risk/students?min_level=${minLevel || 'medium'}`),
   getStudentRisk:    (studentId)  => get(`/api/at-risk/student/${studentId}`),
   notifyAtRisk:      (studentId)  => post(`/api/at-risk/notify/${studentId}?notify_advisor=true&notify_parent=true`, {}),
+
+  // ── User preferences ───────────────────────────────────────────────────────
+  getPreferences:    ()     => get('/api/users/preferences'),
+  updatePreferences: (data) => put('/api/users/preferences', data),
+
+  // ── Academic Calendar ──────────────────────────────────────────────────────
+  getCalendarEvents:  ()     => get('/api/calendar/'),
+  addCalendarEvent:   (data) => post('/api/calendar/', data),
+  deleteCalendarEvent:(id)   => del(`/api/calendar/${id}`),
+
+  // ── Live Polls ─────────────────────────────────────────────────────────────
+  getActivePoll:   ()          => get('/api/polls/active'),
+  listPolls:       ()          => get('/api/polls/'),
+  createPoll:      (data)      => post('/api/polls/', data),
+  endPoll:         (id)        => put(`/api/polls/${id}/end`),
+  deletePoll:      (id)        => del(`/api/polls/${id}`),
+  castVote:        (id, data)  => post(`/api/polls/${id}/vote`, data),
+  getMyVote:       (id)        => get(`/api/polls/${id}/my-vote`),
 };
 
 export default api;

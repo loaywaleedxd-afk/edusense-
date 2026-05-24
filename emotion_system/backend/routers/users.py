@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 
 from database import get_db
-from auth_utils import require_role, hash_password
+from auth_utils import require_role, require_auth, hash_password
 
 router = APIRouter()
 
@@ -49,3 +49,32 @@ async def create_user(
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"message": "User created"}
+
+
+# ── User preferences (any authenticated user) ─────────────────────────────────
+
+@router.get("/preferences")
+async def get_preferences(
+    payload: dict = Depends(require_auth),
+    db=Depends(get_db),
+):
+    """Return the calling user's preferences (language, etc.)."""
+    uid = int(payload.get("sub"))
+    row = await db.fetchrow("SELECT language FROM users WHERE id=$1", uid)
+    return {"language": (row["language"] if row else None) or "en"}
+
+
+@router.put("/preferences")
+async def update_preferences(
+    data: dict,
+    payload: dict = Depends(require_auth),
+    db=Depends(get_db),
+):
+    """Update the calling user's preferences (language, etc.)."""
+    uid = int(payload.get("sub"))
+    if "language" in data:
+        lang = data["language"]
+        if lang not in ("en", "ar"):
+            raise HTTPException(status_code=400, detail="Unsupported language")
+        await db.execute("UPDATE users SET language=$1 WHERE id=$2", lang, uid)
+    return {"ok": True}

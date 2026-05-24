@@ -65,9 +65,15 @@ async def init_tenant_schema(pool, schema: str):
                 role        TEXT NOT NULL CHECK(role IN ('student','doctor','admin','parent','superadmin')),
                 full_name   TEXT NOT NULL,
                 email       TEXT UNIQUE NOT NULL,
+                language    TEXT DEFAULT 'en',
                 created_at  TIMESTAMPTZ DEFAULT NOW()
             )
         """)
+        # Add new columns to users table for existing installs (safe — ignored if already present)
+        for _col in [
+            f"ALTER TABLE \"{schema}\".users ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'en'",
+        ]:
+            await conn.execute(_col)
 
         await conn.execute(f"""
             CREATE TABLE IF NOT EXISTS "{schema}".students (
@@ -472,6 +478,41 @@ async def init_tenant_schema(pool, schema: str):
                 advisor_notified    BOOLEAN DEFAULT FALSE,
                 parent_notified     BOOLEAN DEFAULT FALSE,
                 assessed_at         TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+
+        # ── Academic Calendar ────────────────────────────────────────────────────
+        await conn.execute(f"""
+            CREATE TABLE IF NOT EXISTS "{schema}".calendar_events (
+                id          TEXT PRIMARY KEY,
+                date        TEXT NOT NULL,
+                title       TEXT NOT NULL,
+                type        TEXT DEFAULT 'exam',
+                description TEXT,
+                created_by  INTEGER,
+                created_at  TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+
+        # ── Live Polls ───────────────────────────────────────────────────────────
+        await conn.execute(f"""
+            CREATE TABLE IF NOT EXISTS "{schema}".polls (
+                id          TEXT PRIMARY KEY,
+                question    TEXT NOT NULL,
+                choices     TEXT NOT NULL,
+                active      BOOLEAN DEFAULT TRUE,
+                created_by  TEXT,
+                created_at  TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+
+        await conn.execute(f"""
+            CREATE TABLE IF NOT EXISTS "{schema}".poll_votes (
+                poll_id     TEXT NOT NULL,
+                student_id  TEXT NOT NULL,
+                choice_idx  INTEGER NOT NULL,
+                voted_at    TIMESTAMPTZ DEFAULT NOW(),
+                PRIMARY KEY (poll_id, student_id)
             )
         """)
 

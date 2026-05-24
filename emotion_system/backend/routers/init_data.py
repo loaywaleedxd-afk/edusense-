@@ -97,6 +97,7 @@ async def init_data(payload: dict = Depends(require_auth), db=Depends(get_db)):
         })
 
     # ── Common collections ────────────────────────────────────────────────
+    calendar_events  = await _q(db, "SELECT * FROM calendar_events ORDER BY date, created_at")
     announcements    = await _q(db, "SELECT * FROM announcements ORDER BY created_at DESC")
     exam_schedule    = await _q(db, "SELECT * FROM exam_schedule ORDER BY date")
     course_resources = await _q(db, "SELECT * FROM course_resources ORDER BY created_at DESC")
@@ -154,6 +155,7 @@ async def init_data(payload: dict = Depends(require_auth), db=Depends(get_db)):
             "chatMessages": chat_messages,
             "registrationStatus": reg,
             "studentFees": {stu_id: my_fees},
+            "calendarEvents": calendar_events,
         }
 
     elif role == "doctor":
@@ -190,6 +192,7 @@ async def init_data(payload: dict = Depends(require_auth), db=Depends(get_db)):
             "chatMessages": chat_messages,
             "registrationStatus": reg,
             "studentFees": student_fees,
+            "calendarEvents": calendar_events,
         }
 
     else:  # admin
@@ -212,4 +215,5 @@ async def init_data(payload: dict = Depends(require_auth), db=Depends(get_db)):
             "registrationStatus": reg,
             "studentFees": student_fees,
             "excuses": excuse_rows,
+            "calendarEvents": calendar_events,
         }

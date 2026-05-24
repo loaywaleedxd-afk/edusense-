@@ -1,9 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLang } from '../context/LanguageContext';
 import useMobile from '../hooks/useMobile';
-
-const LS_KEY = 'es_academic_calendar';
+import { api } from '../api';
 
 const EVENT_TYPES = {
   exam:     { label: 'Exam',            ar: 'امتحان',       color: '#ef4444', bg: '#ef444420', icon: '📝' },
@@ -19,11 +18,6 @@ const MONTH_NAMES_AR = ['يناير','فبراير','مارس','أبريل','م�
 const DAY_NAMES_EN   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const DAY_NAMES_AR   = ['أحد','اثنين','ثلاثاء','أربعاء','خميس','جمعة','سبت'];
 
-function loadEvents() {
-  try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch { return []; }
-}
-function saveEvents(evts) { localStorage.setItem(LS_KEY, JSON.stringify(evts)); }
-
 function pad(n) { return String(n).padStart(2, '0'); }
 function dateKey(y, m, d) { return `${y}-${pad(m + 1)}-${pad(d)}`; }
 
@@ -35,11 +29,15 @@ export default function AcademicCalendarPage({ theme: C, role = 'student' }) {
   const today = new Date();
   const [year,     setYear]     = useState(today.getFullYear());
   const [month,    setMonth]    = useState(today.getMonth());
-  const [events,   setEvents]   = useState(loadEvents);
+  const [events,   setEvents]   = useState([]);
   const [selected, setSelected] = useState(null);       // { year, month, day }
   const [showForm, setShowForm] = useState(false);
   const [form,     setForm]     = useState({ title: '', type: 'exam', date: '', description: '' });
   const [detailEvt, setDetailEvt] = useState(null);
+
+  useEffect(() => {
+    api.getCalendarEvents().then(setEvents).catch(() => {});
+  }, []);
 
   const MONTHS = isRTL ? MONTH_NAMES_AR : MONTH_NAMES_EN;
   const DAYS   = isRTL ? DAY_NAMES_AR   : DAY_NAMES_EN;
@@ -59,21 +57,19 @@ export default function AcademicCalendarPage({ theme: C, role = 'student' }) {
 
   function addEvent() {
     if (!form.title.trim()) return;
-    // use form.date if set (from global form), else selected day
     const key = form.date || (selected ? dateKey(selected.year, selected.month, selected.day) : dateKey(year, month, today.getDate()));
-    const newEvt = { id: Date.now(), date: key, title: form.title.trim(), type: form.type, description: form.description };
-    const updated = [...events, newEvt];
-    setEvents(updated);
-    saveEvents(updated);
+    const newEvt = { date: key, title: form.title.trim(), type: form.type, description: form.description };
     setForm({ title: '', type: 'exam', date: '', description: '' });
     setShowForm(false);
+    api.addCalendarEvent(newEvt)
+      .then(res => setEvents(prev => [...prev, { ...newEvt, id: res.id }]))
+      .catch(() => {});
   }
 
   function deleteEvent(id) {
-    const updated = events.filter(e => e.id !== id);
-    setEvents(updated);
-    saveEvents(updated);
+    setEvents(prev => prev.filter(e => e.id !== id));
     setDetailEvt(null);
+    api.deleteCalendarEvent(id).catch(() => {});
   }
 
   function prevMonth() { if (month === 0) { setMonth(11); setYear(y => y - 1); } else setMonth(m => m - 1); setSelected(null); }

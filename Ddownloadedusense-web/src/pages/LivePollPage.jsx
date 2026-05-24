@@ -1,47 +1,29 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLang } from '../context/LanguageContext';
+import { api } from '../api';
 
-const POLL_KEY = 'es_live_poll';
+/* Shared hook — polls /api/polls/active every 2 seconds */
+function useActivePoll() {
+  const [poll, setPoll] = useState(null);
 
-function loadPoll() {
-  try { return JSON.parse(localStorage.getItem(POLL_KEY) || 'null'); }
-  catch { return null; }
-}
-function savePoll(p) {
-  localStorage.setItem(POLL_KEY, JSON.stringify(p));
-  // notify same-tab listeners
-  window.dispatchEvent(new Event('es_poll_update'));
-}
-function clearPoll() {
-  localStorage.removeItem(POLL_KEY);
-  window.dispatchEvent(new Event('es_poll_update'));
-}
-
-/* shared hook — works across tabs via storage event + same-tab custom event */
-function usePollSync() {
-  const [poll, setPoll] = useState(loadPoll);
-  const sync = useCallback(() => setPoll(loadPoll()), []);
+  const sync = useCallback(() => {
+    api.getActivePoll().then(setPoll).catch(() => {});
+  }, []);
 
   useEffect(() => {
-    const onStorage = (e) => { if (e.key === POLL_KEY) sync(); };
-    window.addEventListener('es_poll_update', sync);
-    window.addEventListener('storage', onStorage);
-    const iv = setInterval(sync, 1500); // fallback poll
-    return () => {
-      window.removeEventListener('es_poll_update', sync);
-      window.removeEventListener('storage', onStorage);
-      clearInterval(iv);
-    };
+    sync();
+    const iv = setInterval(sync, 2000);
+    return () => clearInterval(iv);
   }, [sync]);
 
-  return [poll, setPoll];
+  return [poll, sync];
 }
 
 /* ═══════════════════════════════════════════════════════════ DOCTOR SIDE ═══ */
 export function DoctorLivePoll({ theme: C }) {
   const { t, isRTL } = useLang();
-  const [poll] = usePollSync();
+  const [poll, refresh] = useActivePoll();
   const [question, setQ]      = useState('');
   const [choices, setChoices] = useState(['', '', '', '']);
   const [creating, setCreating] = useState(false);
@@ -49,20 +31,16 @@ export function DoctorLivePoll({ theme: C }) {
   function publish() {
     const valid = choices.filter(c => c.trim());
     if (!question.trim() || valid.length < 2) return;
-    savePoll({
-      id: Date.now(),
-      question: question.trim(),
-      choices: valid.map(text => ({ text, votes: 0 })),
-      active: true,
-      createdAt: new Date().toISOString(),
-    });
+    api.createPoll({ question: question.trim(), choices: valid })
+      .then(refresh)
+      .catch(() => {});
     setCreating(false); setQ(''); setChoices(['', '', '', '']);
   }
 
-  function endPoll()    { if (poll) savePoll({ ...poll, active: false }); }
-  function deletePoll() { clearPoll(); }
+  function endPoll()    { if (poll) api.endPoll(poll.id).then(refresh).catch(() => {}); }
+  function deletePoll() { if (poll) api.deletePoll(poll.id).then(refresh).catch(() => {}); }
 
-  const totalVotes = poll ? poll.choices.reduce((a, c) => a + c.votes, 0) : 0;
+  const totalVotes = poll ? poll.totalVotes ?? poll.choices.reduce((a, c) => a + (c.votes || 0), 0) : 0;
 
   return (
     <div style={{ padding: '8px 20px 40px' }}>
@@ -184,7 +162,7 @@ export function DoctorLivePoll({ theme: C }) {
           {/* Bars */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {poll.choices.map((ch, i) => {
-              const pct = totalVotes > 0 ? Math.round((ch.votes / totalVotes) * 100) : 0;
+              const pct = totalVotes > 0 ? Math.round(((ch.votes || 0) / totalVotes) * 100) : 0;
               const isWinner = !poll.active && totalVotes > 0 && ch.votes === Math.max(...poll.choices.map(x => x.votes));
               return (
                 <div key={i}>
@@ -193,7 +171,7 @@ export function DoctorLivePoll({ theme: C }) {
                       <span style={{ color: C.blue, fontWeight: 800, marginRight: 6 }}>{String.fromCharCode(65 + i)}.</span>
                       {ch.text} {isWinner ? '🏆' : ''}
                     </span>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: C.blue }}>{pct}% · {ch.votes}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: C.blue }}>{pct}% · {ch.votes || 0}</span>
                   </div>
                   <div style={{ height: 10, background: C.bg3, borderRadius: 6, overflow: 'hidden' }}>
                     <motion.div
@@ -225,23 +203,28 @@ export function DoctorLivePoll({ theme: C }) {
 /* ═══════════════════════════════════════════════════════════ STUDENT SIDE ═══ */
 export function StudentLivePoll({ theme: C }) {
   const { t, isRTL } = useLang();
-  const [poll] = usePollSync();
+  const [poll, refresh] = useActivePoll();
   const [voted, setVoted] = useState(null);
+  const [voting, setVoting] = useState(false);
 
-  // reset vote when a new poll appears
-  useEffect(() => { setVoted(null); }, [poll?.id]);
+  // Load existing vote when poll changes
+  useEffect(() => {
+    if (!poll) { setVoted(null); return; }
+    api.getMyVote(poll.id)
+      .then(res => setVoted(res?.choice_idx ?? null))
+      .catch(() => setVoted(null));
+  }, [poll?.id]);
 
   function vote(idx) {
-    if (!poll || voted !== null || !poll.active) return;
-    const updated = {
-      ...poll,
-      choices: poll.choices.map((c, i) => i === idx ? { ...c, votes: c.votes + 1 } : c),
-    };
-    savePoll(updated);
-    setVoted(idx);
+    if (!poll || voted !== null || !poll.active || voting) return;
+    setVoting(true);
+    api.castVote(poll.id, { choice_idx: idx })
+      .then(() => { setVoted(idx); refresh(); })
+      .catch(() => {})
+      .finally(() => setVoting(false));
   }
 
-  const totalVotes = poll ? poll.choices.reduce((a, c) => a + c.votes, 0) : 0;
+  const totalVotes = poll ? poll.totalVotes ?? poll.choices.reduce((a, c) => a + (c.votes || 0), 0) : 0;
 
   return (
     <div style={{ padding: '8px 20px 40px' }}>
@@ -290,11 +273,11 @@ export function StudentLivePoll({ theme: C }) {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {poll.choices.map((ch, i) => {
-                const pct = totalVotes > 0 ? Math.round((ch.votes / totalVotes) * 100) : 0;
+                const pct = totalVotes > 0 ? Math.round(((ch.votes || 0) / totalVotes) * 100) : 0;
                 const isMyVote    = voted === i;
                 const showResults = voted !== null || !poll.active;
                 const isWinner    = !poll.active && totalVotes > 0 && ch.votes === Math.max(...poll.choices.map(x => x.votes));
-                const canVote     = poll.active && voted === null;
+                const canVote     = poll.active && voted === null && !voting;
 
                 return (
                   <div
