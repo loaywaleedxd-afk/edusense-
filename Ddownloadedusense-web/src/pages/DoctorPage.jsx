@@ -411,10 +411,11 @@ function DocAttendance({ theme: C, myCourses }) {
   // Use real records only when ≥20% of enrolled students have checked in
   // (a real session). If just 1-2 test records exist, fall back to
   // attendanceRate so the doctor view matches the student's summary.
-  const realCount = Object.keys(attRecs).length;
+  const realCount = Object.keys(attRecs).filter(id => attRecs[id]?.status !== 'absent').length;
   const hasRealSession = enrolled.length > 0 && realCount >= Math.max(2, Math.floor(enrolled.length * 0.2));
   const isPresent = (s) => {
-    if (attRecs[s.id]) return true;
+    const rec = attRecs[s.id];
+    if (rec) return rec.status !== 'absent';          // respect explicit absent mark
     if (!hasRealSession) return week <= Math.round((s.attendanceRate || 75) / 100 * 16);
     return false;
   };
@@ -423,16 +424,15 @@ function DocAttendance({ theme: C, myCourses }) {
   const absentCount  = enrolled.length - presentCount;
 
   function toggleStudent(s) {
-    if (attRecs[s.id]) {
-      store.markAttendance(selCourse, s.id, 0, 'manual', week, true);
-    } else {
-      store.markAttendance(selCourse, s.id, 1.0, 'manual', week);
-    }
+    const rec = attRecs[s.id];
+    const currentlyPresent = rec ? rec.status !== 'absent' : isPresent(s);
+    // Use markStudentStatus so absent records are properly stored (not silently dropped)
+    store.markStudentStatus(selCourse, week, s.id, currentlyPresent ? 'absent' : 'present');
     refresh();
   }
 
   function markAll(present) {
-    enrolled.forEach(s => store.markAttendance(selCourse, s.id, present ? 1.0 : 0, 'manual', week, !present));
+    enrolled.forEach(s => store.markStudentStatus(selCourse, week, s.id, present ? 'present' : 'absent'));
     refresh();
   }
 

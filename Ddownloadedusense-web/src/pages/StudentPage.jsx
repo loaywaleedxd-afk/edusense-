@@ -469,13 +469,27 @@ function StudentAttendance({ theme: C, stu, pendingQR, onClearPendingQR }) {
   const { t, isRTL } = useLang();
   const myCourses  = store.getStudentCourses(stu.id);
   const attRecs    = store.getStudentAttendance(stu.id);
-  const rate       = stu.attendanceRate || 0;
   const [tab, setTab]           = useState('records');
   const [qrCode, setQrCode]     = useState('');
   const [qrMsg, setQrMsg]       = useState('');
   const [excuseForm, setExcuseForm] = useState({courseId:'', week:1, reason:''});
   const [excuseSent, setExcuseSent] = useState(false);
   const [, refresh] = useState(0);
+
+  // Compute attendance rate dynamically from real records if they exist,
+  // otherwise fall back to the static stu.attendanceRate field
+  const computedRate = (() => {
+    let totalWeeks = 0, presentWeeks = 0;
+    for (const course of myCourses) {
+      const recs = Object.values(store.getStudentCourseAttendance(stu.id, course.id));
+      if (recs.length > 0) {
+        totalWeeks += 16;
+        presentWeeks += recs.filter(r => r.status === 'present' || r.status === 'excused').length;
+      }
+    }
+    return totalWeeks > 0 ? Math.round(presentWeeks / totalWeeks * 100) : (stu.attendanceRate || 0);
+  })();
+  const rate = computedRate;
 
   // Auto-check-in from QR scan URL (cross-device)
   useEffect(() => {
@@ -512,11 +526,15 @@ function StudentAttendance({ theme: C, stu, pendingQR, onClearPendingQR }) {
     };
   });
 
-  const recRows = attRecs.map(rec => ({
-    course: store.getCourse(rec.courseId)?.name || rec.courseId,
-    date: rec.date, week: `Week ${rec.week}`, time: rec.time,
-    method: rec.method, status: rec.status==='excused'?'📄 Excused':'✅ Present',
-  }));
+  // Only show present/excused records — absent entries are internal marks, not visible to student
+  const recRows = attRecs
+    .filter(rec => rec.status !== 'absent')
+    .map(rec => ({
+      course: store.getCourse(rec.courseId)?.name || rec.courseId,
+      date: rec.date, week: `Week ${rec.week}`, time: rec.time,
+      method: rec.method,
+      status: rec.status === 'excused' ? '📄 Excused' : '✅ Present',
+    }));
 
   const useRecords = recRows.length > 0;
 
