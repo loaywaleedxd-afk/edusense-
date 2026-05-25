@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from datetime import datetime
 from contextlib import asynccontextmanager
 
@@ -38,25 +39,27 @@ logger = logging.getLogger(__name__)
 
 
 _DEFAULT_TENANT = os.getenv("DEFAULT_TENANT", "public")
+# Matches bare IPv4 addresses like 72.62.190.252
+_IP_RE = re.compile(r'^\d{1,3}(\.\d{1,3}){3}$')
 
 class TenantMiddleware(BaseHTTPMiddleware):
     """
     Extract subdomain from the Host header and store it as request.state.tenant.
     e.g.  aast.edusense.com  →  aast
           localhost           →  value of DEFAULT_TENANT env var (default: public)
+          72.62.190.252       →  DEFAULT_TENANT (IP addresses are never subdomains)
 
     In production, subdomains are detected automatically.
     In local dev, set DEFAULT_TENANT=aast in your .env to point at a specific schema.
     """
     async def dispatch(self, request: Request, call_next):
         host = request.headers.get("host", "localhost").split(":")[0]
-        parts = host.split(".")
-        # If there are 3+ parts (sub.domain.tld), the first is the tenant
-        if len(parts) >= 3:
-            request.state.tenant = parts[0]
-        else:
-            # Localhost / no subdomain — use the dev default from .env
+        # IP addresses and short hostnames use the default tenant
+        if _IP_RE.match(host) or len(host.split(".")) < 3:
             request.state.tenant = _DEFAULT_TENANT
+        else:
+            # 3+ parts (sub.domain.tld) → first part is the tenant/school
+            request.state.tenant = host.split(".")[0]
         return await call_next(request)
 
 
