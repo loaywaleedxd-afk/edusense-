@@ -335,6 +335,17 @@ export function DoctorOfficeHours({ theme: C, doctor }) {
     return loadLS(`${LS_DOC_BOOKINGS}_${doctor?.id}`, []);
   });
   const [tab, setTab] = useState('schedule');
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function loadBookings(docId) {
+    if (!docId) return;
+    try {
+      const bRes = await get(`/api/office-hours/bookings/doctor/${docId}`);
+      const dbBookings = bRes?.bookings || [];
+      setBookings(dbBookings);
+      saveLS(`${LS_DOC_BOOKINGS}_${docId}`, dbBookings);
+    } catch(e) { console.error('loadBookings error:', e); }
+  }
 
   // Load slots + bookings from backend on mount; seed DB if empty
   useEffect(() => {
@@ -353,15 +364,19 @@ export function DoctorOfficeHours({ theme: C, doctor }) {
           setSlots(defaults);
         }
       } catch {}
-      try {
-        // Load bookings
-        const bRes = await get(`/api/office-hours/bookings/doctor/${doctor.id}`);
-        const dbBookings = bRes?.bookings || [];
-        setBookings(dbBookings);
-        saveLS(`${LS_DOC_BOOKINGS}_${doctor.id}`, dbBookings);
-      } catch {}
+      await loadBookings(doctor.id);
     })();
+
+    // Auto-refresh bookings every 20 seconds
+    const interval = setInterval(() => loadBookings(doctor.id), 20000);
+    return () => clearInterval(interval);
   }, [doctor?.id]);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await loadBookings(doctor?.id);
+    setRefreshing(false);
+  }
 
   async function toggleSlot(slotId) {
     const slot    = slots.find(s => s.id === slotId);
@@ -390,6 +405,19 @@ export function DoctorOfficeHours({ theme: C, doctor }) {
       </div>
       <div style={{ fontSize: 12, color: C.text2, marginBottom: 20 }}>
         Set your availability and view student bookings
+      </div>
+
+      {/* Debug + Refresh */}
+      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:12 }}>
+        <div style={{ fontSize:11, color:C.text3 }}>
+          Doctor ID: <strong style={{color:C.blue}}>{doctor?.id || '(loading…)'}</strong>
+        </div>
+        <button onClick={handleRefresh} disabled={refreshing} style={{
+          padding:'5px 14px', borderRadius:8, fontSize:11, fontWeight:700, cursor:'pointer',
+          background: C.blue, color:'#fff', border:'none', opacity: refreshing ? 0.6 : 1,
+        }}>
+          {refreshing ? '⏳ Refreshing…' : '🔄 Refresh Bookings'}
+        </button>
       </div>
 
       {/* Stats */}
