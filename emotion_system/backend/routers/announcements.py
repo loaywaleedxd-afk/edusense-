@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, Request
 from database import get_db
 from auth_utils import require_auth, require_role
 from notifier import manager
+from utils import parse_dt
 
 router = APIRouter()
 
@@ -48,7 +49,7 @@ async def add_announcement(
              title=EXCLUDED.title, body=EXCLUDED.body, created_at=EXCLUDED.created_at""",
         data["id"], data.get("courseId",""), data.get("courseName",""),
         data.get("doctorId",""), data.get("doctorName",""),
-        data.get("title",""), data.get("body",""), data.get("createdAt","")
+        data.get("title",""), data.get("body",""), parse_dt(data.get("createdAt"))
     )
     # Push to all enrolled students in real-time
     course_id = data.get("courseId","")

@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends
 from database import get_db
 from auth_utils import require_auth, require_role
+from utils import parse_dt
 
 router = APIRouter()
 
@@ -47,7 +48,7 @@ async def add_resource(data: dict, payload: dict = Depends(require_role("doctor"
         data.get("title",""), data.get("url",""), data.get("type","link"),
         data.get("description",""), data.get("doctorId",""),
         data.get("fileName",""), int(data.get("fileSize",0)),
-        data.get("fileData"), data.get("createdAt","")
+        data.get("fileData"), parse_dt(data.get("createdAt"))
     )
     return {"ok": True}
 

@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends
 from database import get_db
 from auth_utils import require_auth, require_role
+from utils import parse_dt
 
 router = APIRouter()
 
@@ -49,7 +50,7 @@ async def upsert_complaint(data: dict, payload: dict = Depends(require_auth), db
         data.get("description",""), data.get("status","pending"),
         data.get("doctorId",""), data.get("doctorResponse",""),
         data.get("adminResponse",""),
-        data.get("createdAt",""), data.get("updatedAt","")
+        parse_dt(data.get("createdAt")), parse_dt(data.get("updatedAt"))
     )
     return {"ok": True}
 

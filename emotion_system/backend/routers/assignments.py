@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from database import get_db
 from auth_utils import require_auth, require_role
 from notifier import manager
+from utils import parse_dt
 
 router = APIRouter()
 
@@ -52,7 +53,7 @@ async def add_assignment(data: dict, request: Request, payload: dict = Depends(r
         data.get("description",""), data.get("deadline",""),
         int(data.get("maxScore",100)),
         data.get("attachmentName",""), int(data.get("attachmentSize",0)),
-        data.get("attachmentData"), data.get("createdAt","")
+        data.get("attachmentData"), parse_dt(data.get("createdAt"))
     )
     # Push to all enrolled students in real-time
     course_id = data.get("courseId","")
@@ -128,9 +129,9 @@ async def upsert_submission(data: dict, payload: dict = Depends(require_auth), d
         data["id"], data.get("assignmentId",""), data.get("studentId",""),
         data.get("courseId",""), data.get("content",""),
         data.get("fileName",""), int(data.get("fileSize",0)),
-        data.get("fileData"), data.get("submittedAt",""),
+        data.get("fileData"), parse_dt(data.get("submittedAt")),
         data.get("grade"), data.get("feedback",""),
-        data.get("gradedAt"), data.get("gradedBy","")
+        parse_dt(data.get("gradedAt")), data.get("gradedBy","")
     )
     return {"ok": True}
 
@@ -142,7 +143,7 @@ async def grade_submission(data: dict, payload: dict = Depends(require_role("doc
            SET grade=$1, feedback=$2, graded_at=$3, graded_by=$4
            WHERE assignment_id=$5 AND student_id=$6""",
         data.get("grade"), data.get("feedback",""),
-        data.get("gradedAt",""), data.get("gradedBy",""),
+        parse_dt(data.get("gradedAt")), data.get("gradedBy",""),
         data.get("assignmentId",""), data.get("studentId","")
     )
     return {"ok": True}

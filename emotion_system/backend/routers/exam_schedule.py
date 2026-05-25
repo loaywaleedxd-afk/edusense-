@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends
 from database import get_db
 from auth_utils import require_auth, require_role
+from utils import parse_dt
 
 router = APIRouter()
 
@@ -45,7 +46,7 @@ async def add_exam(data: dict, payload: dict = Depends(require_role("doctor", "a
         data["id"], data.get("courseId",""), data.get("courseName",""),
         data.get("type","midterm"), data.get("date",""), data.get("time",""),
         data.get("room",""), int(data.get("duration",120)),
-        data.get("notes",""), data.get("createdAt","")
+        data.get("notes",""), parse_dt(data.get("createdAt"))
     )
     return {"ok": True}
 
