@@ -299,7 +299,7 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
   useEffect(() => {
     // Only connect when user.id is a numeric DB id (API login); local-auth IDs like 'S019' are skipped.
     if (!user?.id || !/^\d+$/.test(String(user.id))) return;
-    const BASE_WS = (import.meta.env.VITE_API_URL || '').replace(/^http/, 'ws') || `ws://${location.host}`;
+    const BASE_WS = (import.meta.env.VITE_API_URL || '').replace(/^http/, 'ws') || `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
     const ws = new WebSocket(`${BASE_WS}/ws/notifications/${user.id}`);
     ws.onmessage = (e) => {
       try {

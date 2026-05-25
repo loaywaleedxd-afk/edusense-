@@ -77,7 +77,7 @@ export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogo
   const { isRTL, t } = useLang();
   useEffect(() => {
     if (!user?.id || !/^\d+$/.test(String(user.id))) return;
-    const BASE_WS = (import.meta.env.VITE_API_URL || '').replace(/^http/, 'ws') || `ws://${location.host}`;
+    const BASE_WS = (import.meta.env.VITE_API_URL || '').replace(/^http/, 'ws') || `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
     const ws = new WebSocket(`${BASE_WS}/ws/notifications/${user.id}`);
     ws.onmessage = (e) => {
       try {
