@@ -5,8 +5,9 @@ import { get, post, del } from '../api.js';
 import { useLang } from '../context/LanguageContext';
 
 /* ── Local storage keys ── */
-const LS_SLOTS    = 'es_oh_slots';
-const LS_BOOKINGS = 'es_oh_bookings';
+const LS_SLOTS        = 'es_oh_slots';
+const LS_BOOKINGS     = 'es_oh_bookings';        // student bookings (keyed by student id)
+const LS_DOC_BOOKINGS = 'es_oh_doc_bookings';   // doctor bookings (separate key)
 
 function loadLS(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key) ?? 'null') ?? fallback; }
@@ -43,7 +44,7 @@ function buildDefaultSlots(doctorId) {
 export function StudentOfficeHours({ theme: C, stu }) {
   const { t } = useLang();
   const [slots, setSlots]       = useState([]);
-  const [bookings, setBookings] = useState(() => loadLS(LS_BOOKINGS, []));
+  const [bookings, setBookings] = useState(() => loadLS(`${LS_BOOKINGS}_${stu?.id}`, []));
   const [doctors,  setDoctors]  = useState([]);
   const [selDoc, setSelDoc]     = useState('');
   const [note, setNote]         = useState('');
@@ -58,18 +59,26 @@ export function StudentOfficeHours({ theme: C, stu }) {
     }).catch(() => {});
   }, []);
 
-  // Load bookings from backend, fall back to localStorage
+  // Always load bookings from DB (source of truth); merge with localStorage fallback
   useEffect(() => {
+    if (!stu?.id) return;
     (async () => {
       try {
         const res = await get(`/api/office-hours/bookings/student/${stu.id}`);
-        if (res?.bookings?.length > 0) {
-          setBookings(res.bookings);
-          saveLS(LS_BOOKINGS, res.bookings);
-        }
-      } catch {}
+        const dbBookings = res?.bookings || [];
+        // Merge: start with DB bookings, add any LS-only ones not yet in DB
+        const lsBookings = loadLS(`${LS_BOOKINGS}_${stu.id}`, []);
+        const dbIds = new Set(dbBookings.map(b => b.id));
+        const merged = [...dbBookings, ...lsBookings.filter(b => !dbIds.has(b.id))];
+        setBookings(merged);
+        saveLS(`${LS_BOOKINGS}_${stu.id}`, merged);
+      } catch {
+        // Network error — fall back to localStorage only
+        const lsBookings = loadLS(`${LS_BOOKINGS}_${stu.id}`, []);
+        setBookings(lsBookings);
+      }
     })();
-  }, [stu.id]);
+  }, [stu?.id]);
 
   const loadSlots = useCallback(async () => {
     // Try API first
@@ -88,14 +97,16 @@ export function StudentOfficeHours({ theme: C, stu }) {
   async function bookSlot(slot) {
     if (busy) return;
     setBusy(true);
+    // Slots from DB have snake_case (doctor_id); locally-generated have camelCase (doctorId)
+    const doctorId = slot.doctorId || slot.doctor_id || selDoc;
     const booking = {
       id: `bk-${Date.now()}`,
       slotId: slot.id,
-      doctorId: slot.doctorId,
-      doctorName: doctors.find(d => d.id === slot.doctorId)?.name || slot.doctorId,
-      studentId: stu.id,
+      doctorId,
+      doctorName: doctors.find(d => d.id === doctorId)?.name || doctorId,
+      studentId: String(stu.id),
       studentName: stu.name,
-      day: slot.day, time: slot.time, duration: slot.duration,
+      day: slot.day, time: slot.time, duration: slot.duration || 15,
       note: note.trim(),
       status: 'confirmed',
       createdAt: new Date().toISOString(),
@@ -103,13 +114,15 @@ export function StudentOfficeHours({ theme: C, stu }) {
 
     try {
       const res = await post('/api/office-hours/book', booking);
-      if (res?.booking) booking.id = res.booking.id;
-    } catch {}
+      if (res?.booking?.id) booking.id = res.booking.id;
+    } catch (e) {
+      console.warn('Office hours booking API error:', e);
+    }
 
-    // Local save always
+    // Local save always (DB is source of truth on next load)
     const newBookings = [...bookings, booking];
     setBookings(newBookings);
-    saveLS(LS_BOOKINGS, newBookings);
+    saveLS(`${LS_BOOKINGS}_${stu.id}`, newBookings);
 
     // Mark slot unavailable locally
     setSlots(prev => prev.map(s => s.id === slot.id ? { ...s, available: false } : s));
@@ -123,7 +136,7 @@ export function StudentOfficeHours({ theme: C, stu }) {
     try { await del(`/api/office-hours/booking/${bk.id}`); } catch {}
     const newBookings = bookings.filter(b => b.id !== bk.id);
     setBookings(newBookings);
-    saveLS(LS_BOOKINGS, newBookings);
+    saveLS(`${LS_BOOKINGS}_${stu.id}`, newBookings);
     loadSlots();
     setMsg(`🗑️ Booking cancelled`);
     setTimeout(() => setMsg(''), 2500);
@@ -136,7 +149,7 @@ export function StudentOfficeHours({ theme: C, stu }) {
     byDay[s.day].push(s);
   });
 
-  const myBookings = bookings.filter(b => b.studentId === stu.id);
+  const myBookings = bookings; // already student-specific (keyed LS + filtered from DB)
 
   return (
     <div style={{ padding: '8px 20px 40px' }}>
@@ -309,7 +322,7 @@ export function DoctorOfficeHours({ theme: C, doctor }) {
     return saved || buildDefaultSlots(doctor?.id || 'D001');
   });
   const [bookings, setBookings] = useState(() => {
-    return loadLS(LS_BOOKINGS, []).filter(b => b.doctorId === doctor?.id);
+    return loadLS(`${LS_DOC_BOOKINGS}_${doctor?.id}`, []);
   });
   const [tab, setTab] = useState('schedule');
 
@@ -333,10 +346,9 @@ export function DoctorOfficeHours({ theme: C, doctor }) {
       try {
         // Load bookings
         const bRes = await get(`/api/office-hours/bookings/doctor/${doctor.id}`);
-        if (bRes?.bookings?.length > 0) {
-          setBookings(bRes.bookings);
-          saveLS(LS_BOOKINGS, bRes.bookings);
-        }
+        const dbBookings = bRes?.bookings || [];
+        setBookings(dbBookings);
+        saveLS(`${LS_DOC_BOOKINGS}_${doctor.id}`, dbBookings);
       } catch {}
     })();
   }, [doctor?.id]);
