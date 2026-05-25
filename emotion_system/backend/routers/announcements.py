@@ -1,7 +1,8 @@
 """Announcements router."""
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from database import get_db
 from auth_utils import require_auth, require_role
+from notifier import manager
 
 router = APIRouter()
 
@@ -31,7 +32,12 @@ async def get_announcements(payload: dict = Depends(require_auth), db=Depends(ge
 
 
 @router.post("/")
-async def add_announcement(data: dict, payload: dict = Depends(require_role("doctor", "admin")), db=Depends(get_db)):
+async def add_announcement(
+    data: dict,
+    request: Request,
+    payload: dict = Depends(require_role("doctor", "admin")),
+    db=Depends(get_db),
+):
     await db.execute(
         """INSERT INTO announcements
            (id, course_id, course_name, doctor_id, doctor_name, title, body, created_at)
@@ -44,6 +50,25 @@ async def add_announcement(data: dict, payload: dict = Depends(require_role("doc
         data.get("doctorId",""), data.get("doctorName",""),
         data.get("title",""), data.get("body",""), data.get("createdAt","")
     )
+    # Push to all enrolled students in real-time
+    course_id = data.get("courseId","")
+    if course_id:
+        rows = await db.fetch(
+            """SELECT s.user_id FROM students s
+               JOIN course_enrollments ce ON ce.student_id = s.student_id
+               WHERE ce.course_id = $1""",
+            course_id,
+        )
+        notification = {
+            "type": "announcement",
+            "title": f"📢 {data.get('courseName', 'Course')}",
+            "message": data.get("title", "New announcement"),
+            "icon": "📢",
+            "color": "#3b82f6",
+        }
+        for row in rows:
+            if row["user_id"]:
+                await manager.notify_user(str(row["user_id"]), notification)
     return {"ok": True}
 
 

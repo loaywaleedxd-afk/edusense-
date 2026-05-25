@@ -1,10 +1,11 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { exportStudentReportPDF } from '../utils/pdfExport';
 import { useLang } from '../context/LanguageContext';
 import useMobile from '../hooks/useMobile';
 import AcademicCalendarPage from './AcademicCalendarPage';
 import GraduationRoadmapPage from './GraduationRoadmapPage';
 import FeeHistoryPage from './FeeHistoryPage';
+import ProfilePage from './ProfilePage';
 import Sidebar from '../components/Sidebar';
 import Topbar  from '../components/Topbar';
 import AnimatedPage from '../components/AnimatedPage';
@@ -54,7 +55,11 @@ const NAV = [
   {id:'roadmap',      icon:'🗺️', label:'Graduation Roadmap'},
   {id:'feehistory',   icon:'💳', label:'Fee History'},
   {id:'auditlog',     icon:'🗃️', label:'Audit Log'},
-  {id:'gradeappeals', icon:'🏷️', label:'Grade Appeals'},
+  {id:'gradeappeals',      icon:'🏷️', label:'Grade Appeals'},
+  {id:'enroll_requests',   icon:'🏛️', label:'Enrollment Requests'},
+  {id:'parent_linking',    icon:'🔗', label:'Parent Linking'},
+  {id:'csv_import',        icon:'📥', label:'CSV Import'},
+  {id:'profile',           icon:'👤', label:'My Profile'},
 ];
 
 const PAGE_TITLES = {
@@ -70,6 +75,21 @@ export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogo
   const [page, setPage] = useState('dashboard');
   const [menuOpen, setMenuOpen] = useState(false);
   const { isRTL, t } = useLang();
+  useEffect(() => {
+    if (!user?.id || !/^\d+$/.test(String(user.id))) return;
+    const BASE_WS = (import.meta.env.VITE_API_URL || '').replace(/^http/, 'ws') || `ws://${location.host}`;
+    const ws = new WebSocket(`${BASE_WS}/ws/notifications/${user.id}`);
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'connected') return;
+        // Admin sees notifications via the system alerts panel; just log here
+      } catch {}
+    };
+    ws.onerror = () => {};
+    const ping = setInterval(() => { if (ws.readyState === WebSocket.OPEN) ws.send('ping'); }, 30000);
+    return () => { clearInterval(ping); ws.close(); };
+  }, [user?.id]);
 
   const ADMIN_PAGE_KEYS = {
     dashboard:'dashboard', analytics:'system_analytics', students:'students',
@@ -113,7 +133,11 @@ export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogo
             {page==='roadmap'     && <GraduationRoadmapPage theme={C} role="admin"/>}
             {page==='feehistory'  && <FeeHistoryPage theme={C} role="admin"/>}
             {page==='auditlog'    && <AuditLogPage theme={C}/>}
-            {page==='gradeappeals'&& <AdminGradeAppeals theme={C}/>}
+            {page==='gradeappeals'    && <AdminGradeAppeals theme={C}/>}
+            {page==='enroll_requests' && <AdminEnrollmentRequests theme={C}/>}
+            {page==='parent_linking'  && <AdminParentLinking theme={C}/>}
+            {page==='csv_import'      && <AdminCSVImport theme={C}/>}
+            {page==='profile'         && <ProfilePage theme={C} user={user}/>}
           </AnimatedPage>
         </div>
       </div>
@@ -789,28 +813,70 @@ function AdminStudents({ theme: C }) {
 /* ── DOCTORS/LECTURERS ── */
 function AdminDoctors({ theme: C }) {
   const { t } = useLang();
-  const [doctors, setDoctors] = useState(store.doctors);
-  const [showAdd, setShowAdd] = useState(false);
+  const [doctors,  setDoctors]  = useState([]);
+  const [showAdd,  setShowAdd]  = useState(false);
+  const [saving,   setSaving]   = useState(false);
+  const [saveErr,  setSaveErr]  = useState('');
   const [form, setForm] = useState({name:'',dept:DEPARTMENTS[0],title:TITLES[0],email:'',phone:''});
   const [selected, setSelected] = useState(null);
   const [createdAccount, setCreatedAccount] = useState(null);
 
-  function addDoctor() {
-    if(!form.name.trim()) { alert('Name is required'); return; }
-    const d = store.addDoctor(form);
-    setDoctors([...store.doctors]); setShowAdd(false);
-    const firstName = form.name.trim().split(' ')[0].toLowerCase().replace(/[^a-z]/g,'') || 'doctor';
-    const username = `dr.${firstName}`;
-    const password = generatePassword();
-    store.addUser({ name: form.name, username, password, email: form.email, role: 'doctor', doctorId: d.id });
-    setCreatedAccount({ name: form.name, role: 'Doctor / Lecturer', username, password, email: form.email, id: d.id });
-    setForm({name:'',dept:DEPARTMENTS[0],title:TITLES[0],email:'',phone:''});
+  function loadDoctors() {
+    api.getLectureDoctors()
+      .then(rows => setDoctors(rows.map(r => ({
+        id:         r.doctor_id,
+        name:       r.name,
+        title:      r.title || '',
+        dept:       r.department || '',
+        email:      r.email || '',
+        phone:      r.phone || '',
+        color:      '#3b82f6',
+        emoji:      '👨‍🏫',
+        courses:    0,
+        students:   0,
+      }))))
+      .catch(() => {});
   }
 
-  function deleteSelected() {
-    if(!selected) { alert('Select a lecturer first'); return; }
-    if(!confirm(`Delete ${selected.name}?`)) return;
-    store.deleteDoctor(selected.id); setDoctors([...store.doctors]); setSelected(null);
+  useEffect(() => { loadDoctors(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function addDoctor() {
+    if (!form.name.trim()) { alert('Name is required'); return; }
+    setSaving(true); setSaveErr('');
+    const firstName = form.name.trim().split(' ')[0].toLowerCase().replace(/[^a-z]/g,'') || 'doctor';
+    const username  = `dr.${firstName}`;
+    const password  = generatePassword();
+    try {
+      const result = await api.createDoctor({
+        name:       form.name.trim(),
+        username,
+        password,
+        title:      form.title,
+        department: form.dept,
+        email:      form.email,
+        phone:      form.phone,
+      });
+      setCreatedAccount({ name: form.name, role: 'Doctor / Lecturer', username, password, email: form.email, id: result.doctor_id });
+      setShowAdd(false);
+      setForm({name:'',dept:DEPARTMENTS[0],title:TITLES[0],email:'',phone:''});
+      loadDoctors();
+    } catch (err) {
+      setSaveErr(err.message || 'Failed to create doctor');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteSelected() {
+    if (!selected) { alert('Select a lecturer first'); return; }
+    if (!confirm(`Delete ${selected.name}? This will also remove their login account.`)) return;
+    try {
+      await api.deleteDoctor(selected.id);
+      setSelected(null);
+      loadDoctors();
+    } catch (err) {
+      alert('Delete failed: ' + err.message);
+    }
   }
 
   return (
@@ -850,9 +916,12 @@ function AdminDoctors({ theme: C }) {
               </select>
             </div>
           </div>
+          {saveErr && <div style={{color:'#ef4444',fontSize:12,marginBottom:8}}>⚠️ {saveErr}</div>}
           <div style={{display:'flex',gap:8}}>
-            <button onClick={addDoctor} style={{background:C.green,border:'none',borderRadius:8,padding:'8px 20px',fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer'}}>✅ Add Lecturer</button>
-            <button onClick={()=>setShowAdd(false)} style={{background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 14px',fontSize:12,color:C.text2,cursor:'pointer'}}>Cancel</button>
+            <button onClick={addDoctor} disabled={saving} style={{background:C.green,border:'none',borderRadius:8,padding:'8px 20px',fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer',opacity:saving?0.6:1}}>
+              {saving ? '⏳ Saving…' : '✅ Add Lecturer'}
+            </button>
+            <button onClick={()=>{setShowAdd(false);setSaveErr('');}} style={{background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 14px',fontSize:12,color:C.text2,cursor:'pointer'}}>Cancel</button>
           </div>
         </div>
       )}
@@ -900,46 +969,110 @@ function AdminDoctors({ theme: C }) {
 /* ── COURSES ── */
 function AdminCourses({ theme: C }) {
   const { t } = useLang();
-  const [courses, setCourses]       = useState(store.courses);
-  const [showAdd, setShowAdd]       = useState(false);
-  const [weeksOpen, setWeeksOpen]   = useState(null); // courseId with weeks panel open
-  const [form, setForm] = useState({name:'',code:'',room:'',time:'09:00',duration:90,doctorId:'',color:'#3b82f6',semester:'Fall 2024',days:[1,4],capacity:300});
+  const [courses,    setCourses]   = useState([]);
+  const [apiDoctors, setApiDoctors]= useState([]);
+  const [showAdd,    setShowAdd]   = useState(false);
+  const [saving,     setSaving]    = useState(false);
+  const [saveErr,    setSaveErr]   = useState('');
+  const [weeksOpen,  setWeeksOpen] = useState(null);
+  const [form, setForm] = useState({name:'',code:'',room:'',time:'09:00',duration:90,doctorId:'',color:'#3b82f6',semester:'Fall 2025',days:[1,4],capacity:300});
 
-  function addCourse() {
-    if(!form.name.trim()||!form.code.trim()) { alert('Name and code required'); return; }
-    if(!form.days.length) { alert('Select at least one lecture day'); return; }
-    store.addCourse(form); setCourses([...store.courses]); setShowAdd(false);
-    setForm({name:'',code:'',room:'',time:'09:00',duration:90,doctorId:'',color:'#3b82f6',semester:'Fall 2024',days:[1,4],capacity:300});
+  // Helper: map API lecture row → display shape
+  function mapRow(r) {
+    return {
+      id:          r.lecture_id || r.course_code,
+      code:        r.course_code,
+      name:        r.course_name,
+      room:        r.room || '',
+      time:        r.scheduled_at || '',
+      duration:    r.duration_min || 90,
+      daysLabel:   r.days_label || '',
+      doctorName:  r.doctor_name || 'Unassigned',
+      semester:    r.semester || '',
+      color:       r.color || '#3b82f6',
+      capacity:    r.capacity || 300,
+      enrolledCount: r.enrolled_count || 0,
+      weeks:       Array.from({length:16},(_,k)=>k+1), // default all weeks on
+    };
+  }
+
+  function loadCourses() {
+    api.getAvailableCourses()
+      .then(rows => setCourses(rows.map(mapRow)))
+      .catch(() => {});
+  }
+
+  useEffect(() => {
+    loadCourses();
+    api.getLectureDoctors()
+      .then(setApiDoctors)
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function addCourse() {
+    if (!form.name.trim() || !form.code.trim()) { alert('Name and code required'); return; }
+    if (!form.days.length) { alert('Select at least one lecture day'); return; }
+    setSaving(true); setSaveErr('');
+    const DAY_NAMES = ['Sun','Mon','Tue','Wed','Thu'];
+    const daysLabel = form.days.map(d => DAY_NAMES[d]).join(', ');
+    try {
+      await api.createLecture({
+        course_name:  form.name.trim(),
+        course_code:  form.code.trim().toUpperCase(),
+        doctor_id:    form.doctorId || null,
+        room:         form.room.trim(),
+        scheduled_at: form.time,
+        duration_min: form.duration,
+        capacity:     form.capacity,
+        color:        form.color,
+        days:         form.days.join(','),
+        days_label:   daysLabel,
+        semester:     form.semester,
+      });
+      setShowAdd(false);
+      setForm({name:'',code:'',room:'',time:'09:00',duration:90,doctorId:'',color:'#3b82f6',semester:'Fall 2025',days:[1,4],capacity:300});
+      loadCourses(); // refresh list from DB
+    } catch (err) {
+      setSaveErr(err.message || 'Failed to save course');
+    } finally {
+      setSaving(false);
+    }
   }
 
   function toggleDay(d) {
     setForm(f => ({...f, days: f.days.includes(d) ? f.days.filter(x=>x!==d) : [...f.days,d].sort((a,b)=>a-b)}));
   }
 
-  function deleteCourse(id) {
-    if(!confirm('Delete this course?')) return;
-    store.deleteCourse(id); setCourses([...store.courses]);
-    if (weeksOpen === id) setWeeksOpen(null);
+  async function deleteCourse(courseCode) {
+    if (!confirm('Delete this course and all its lecture sections?')) return;
+    try {
+      await api.deleteCourseByCode(courseCode);
+      loadCourses();
+      if (weeksOpen === courseCode) setWeeksOpen(null);
+    } catch (err) {
+      alert('Delete failed: ' + err.message);
+    }
   }
 
   function toggleWeek(course, w) {
     const cur = course.weeks || Array.from({length:16},(_,k)=>k+1);
     const next = cur.includes(w) ? cur.filter(x=>x!==w) : [...cur, w].sort((a,b)=>a-b);
-    store.updateCourse(course.id, { weeks: next });
-    setCourses([...store.courses]);
+    setCourses(cs => cs.map(c => c.code === course.code ? {...c, weeks: next} : c));
   }
 
   function setAllWeeks(course, all) {
     const next = all ? Array.from({length:16},(_,k)=>k+1) : [];
-    store.updateCourse(course.id, { weeks: next });
-    setCourses([...store.courses]);
+    setCourses(cs => cs.map(c => c.code === course.code ? {...c, weeks: next} : c));
   }
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
         <div style={{fontSize:22,fontWeight:700,color:C.text}}>{t('courses')} ({courses.length})</div>
-        <button onClick={()=>setShowAdd(true)} style={{background:C.blue3,border:'none',borderRadius:8,padding:'8px 14px',fontSize:11,fontWeight:700,color:'#fff',cursor:'pointer'}}>+ Add Course</button>
+        <div style={{display:'flex',gap:8}}>
+          <button onClick={loadCourses} title="Refresh" style={{background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 12px',fontSize:13,color:C.text2,cursor:'pointer'}}>↻</button>
+          <button onClick={()=>setShowAdd(true)} style={{background:C.blue3,border:'none',borderRadius:8,padding:'8px 14px',fontSize:11,fontWeight:700,color:'#fff',cursor:'pointer'}}>+ Add Course</button>
+        </div>
       </div>
 
       {showAdd && (
@@ -958,7 +1091,7 @@ function AdminCourses({ theme: C }) {
               <select value={form.doctorId} onChange={e=>setForm({...form,doctorId:e.target.value})}
                 style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}>
                 <option value="">Unassigned</option>
-                {store.doctors.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}
+                {apiDoctors.map(d=><option key={d.doctor_id} value={d.doctor_id}>{d.name}</option>)}
               </select>
             </div>
             <div>
@@ -967,14 +1100,19 @@ function AdminCourses({ theme: C }) {
                 style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}/>
             </div>
             <div>
-              <div style={{fontSize:10,color:C.text3,marginBottom:4,textTransform:'uppercase',fontWeight:700}}>Color</div>
-              <input value={form.color} onChange={e=>setForm({...form,color:e.target.value})} type="color"
-                style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 4px',cursor:'pointer'}}/>
+              <div style={{fontSize:10,color:C.text3,marginBottom:4,textTransform:'uppercase',fontWeight:700}}>Semester</div>
+              <input value={form.semester} onChange={e=>setForm({...form,semester:e.target.value})} placeholder="e.g. Fall 2025"
+                style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}/>
             </div>
             <div>
               <div style={{fontSize:10,color:C.text3,marginBottom:4,textTransform:'uppercase',fontWeight:700}}>Capacity</div>
               <input value={form.capacity} onChange={e=>setForm({...form,capacity:parseInt(e.target.value)||300})} type="number" min="1" max="1000"
                 style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}/>
+            </div>
+            <div>
+              <div style={{fontSize:10,color:C.text3,marginBottom:4,textTransform:'uppercase',fontWeight:700}}>Color</div>
+              <input value={form.color} onChange={e=>setForm({...form,color:e.target.value})} type="color"
+                style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 4px',cursor:'pointer'}}/>
             </div>
           </div>
           {/* Day-of-week picker */}
@@ -996,9 +1134,12 @@ function AdminCourses({ theme: C }) {
             </div>
             {form.days.length === 0 && <div style={{fontSize:10,color:C.red2,marginTop:4}}>Select at least one day</div>}
           </div>
+          {saveErr && <div style={{color:'#ef4444',fontSize:12,marginBottom:8}}>⚠️ {saveErr}</div>}
           <div style={{display:'flex',gap:8}}>
-            <button onClick={addCourse} style={{background:C.green,border:'none',borderRadius:8,padding:'8px 20px',fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer'}}>✅ Add Course</button>
-            <button onClick={()=>setShowAdd(false)} style={{background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 14px',fontSize:12,color:C.text2,cursor:'pointer'}}>Cancel</button>
+            <button onClick={addCourse} disabled={saving} style={{background:C.green,border:'none',borderRadius:8,padding:'8px 20px',fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer',opacity:saving?0.6:1}}>
+              {saving ? '⏳ Saving…' : '✅ Add Course'}
+            </button>
+            <button onClick={()=>{setShowAdd(false);setSaveErr('');}} style={{background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 14px',fontSize:12,color:C.text2,cursor:'pointer'}}>Cancel</button>
           </div>
         </div>
       )}
@@ -1006,9 +1147,9 @@ function AdminCourses({ theme: C }) {
       <div style={{display:'flex',flexDirection:'column',gap:10}}>
         {courses.map((c,i)=>{
           const activeWeeks = c.weeks || Array.from({length:16},(_,k)=>k+1);
-          const isOpen = weeksOpen === c.id;
+          const isOpen = weeksOpen === c.code;
           return (
-            <div key={i} style={{background:C.card,borderRadius:14,border:`1px solid ${C.border}`,overflow:'hidden'}}>
+            <div key={c.code} style={{background:C.card,borderRadius:14,border:`1px solid ${C.border}`,overflow:'hidden'}}>
               {/* Course row */}
               <div style={{display:'flex'}}>
                 <div style={{width:6,background:c.color,flexShrink:0}}/>
@@ -1028,16 +1169,16 @@ function AdminCourses({ theme: C }) {
                     <div style={{fontSize:9,color:C.text3}}>Enrolled</div>
                   </div>
                   <div style={{textAlign:'center'}}>
-                    <div style={{fontSize:13,fontWeight:700,color:store.isCourseFull(c.id)?C.red:C.text3}}>{c.capacity||'∞'}</div>
+                    <div style={{fontSize:13,fontWeight:700,color:C.text3}}>{c.capacity||'∞'}</div>
                     <div style={{fontSize:9,color:C.text3}}>Capacity</div>
                   </div>
                   {/* Weeks edit button */}
                   <button
-                    onClick={()=>setWeeksOpen(isOpen ? null : c.id)}
+                    onClick={()=>setWeeksOpen(isOpen ? null : c.code)}
                     style={{background: isOpen ? C.blue3 : C.bg3, border:`1px solid ${isOpen ? C.blue3 : C.border}`, borderRadius:8, padding:'6px 12px', fontSize:11, fontWeight:700, color: isOpen ? '#fff' : C.text2, cursor:'pointer'}}>
                     📅 Weeks
                   </button>
-                  <button onClick={()=>deleteCourse(c.id)} style={{background:C.red_dim,border:`1px solid ${C.red}`,borderRadius:8,padding:'6px 10px',fontSize:10,color:C.red2,cursor:'pointer'}}>🗑️</button>
+                  <button onClick={()=>deleteCourse(c.code)} style={{background:C.red_dim,border:`1px solid ${C.red}`,borderRadius:8,padding:'6px 10px',fontSize:10,color:C.red2,cursor:'pointer'}}>🗑️</button>
                 </div>
               </div>
 
@@ -1086,124 +1227,122 @@ function AdminCourses({ theme: C }) {
 /* ── ENROLLMENTS ── */
 function AdminEnrollments({ theme: C }) {
   const { t } = useLang();
-  const [selCourse, setSelCourse] = useState(store.courses[0]?.id||'');
-  const [search, setSearch]       = useState('');
-  const [, forceUpdate] = useState(0);
+  const [courses,      setCourses]      = useState([]);
+  const [allStudents,  setAllStudents]  = useState([]); // all students from DB
+  const [enrollMap,    setEnrollMap]    = useState({}); // course_code → Set of student_ids
+  const [selCourse,    setSelCourse]    = useState('');
+  const [loading,      setLoading]      = useState(true);
+  const [search,       setSearch]       = useState('');
+  const [working,      setWorking]      = useState({});
 
-  const q          = search.toLowerCase();
-  const filterList = list => q ? list.filter(s=>(s.name||'').toLowerCase().includes(q)||(s.id||'').toLowerCase().includes(q)) : list;
+  function loadAll() {
+    setLoading(true);
+    Promise.all([
+      api.getAvailableCourses(),
+      api.getStudents(),
+      api.getEnrollments(),
+    ]).then(([courseList, studentList, enrollData]) => {
+      setCourses(courseList);
+      setAllStudents(studentList);
+      // enrollData = { course_code: [student_id, ...] }
+      const map = {};
+      Object.entries(enrollData).forEach(([cid, sids]) => { map[cid] = new Set(sids); });
+      setEnrollMap(map);
+      if (courseList.length > 0 && !selCourse) setSelCourse(courseList[0].course_code);
+    }).catch(() => {}).finally(() => setLoading(false));
+  }
 
-  const enrolled   = filterList(selCourse ? store.getEnrolledStudents(selCourse)   : []);
-  const unenrolled = filterList(selCourse ? store.getUnenrolledStudents(selCourse) : []);
-  const totalEnrolled   = selCourse ? store.getEnrolledStudents(selCourse).length   : 0;
-  const totalUnenrolled = selCourse ? store.getUnenrolledStudents(selCourse).length : 0;
+  useEffect(() => { loadAll(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const enrolledIds  = enrollMap[selCourse] || new Set();
+  const q = search.toLowerCase();
+  const match = s => !q || (s.name||'').toLowerCase().includes(q) || (s.student_id||'').toLowerCase().includes(q);
+
+  const enrolled  = allStudents.filter(s => enrolledIds.has(s.student_id)  && match(s));
+  const available = allStudents.filter(s => !enrolledIds.has(s.student_id) && match(s));
+
+  async function handleEnroll(s) {
+    setWorking(w => ({...w, [s.student_id]: true}));
+    try {
+      await api.enroll(selCourse, s.student_id);
+      setEnrollMap(m => {
+        const next = new Set(m[selCourse] || []);
+        next.add(s.student_id);
+        return {...m, [selCourse]: next};
+      });
+    } catch (err) { alert('Enroll failed: ' + err.message); }
+    finally { setWorking(w => ({...w, [s.student_id]: false})); }
+  }
+
+  async function handleUnenroll(s) {
+    setWorking(w => ({...w, [s.student_id]: true}));
+    try {
+      await api.unenroll(selCourse, s.student_id);
+      setEnrollMap(m => {
+        const next = new Set(m[selCourse] || []);
+        next.delete(s.student_id);
+        return {...m, [selCourse]: next};
+      });
+    } catch (err) { alert('Remove failed: ' + err.message); }
+    finally { setWorking(w => ({...w, [s.student_id]: false})); }
+  }
+
+  function StuRow({ s, onAction, label, color }) {
+    const busy = working[s.student_id];
+    const initials = (s.name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    return (
+      <div style={{display:'flex',alignItems:'center',background:C.bg3,borderRadius:8,padding:'8px 10px',gap:10}}>
+        {s.photo_path
+          ? <img src={s.photo_path} alt={s.name} style={{width:32,height:32,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
+          : <div style={{width:32,height:32,borderRadius:'50%',background:'#3b82f6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,color:'#fff',flexShrink:0}}>{initials}</div>
+        }
+        <div style={{flex:1}}>
+          <div style={{fontSize:11,fontWeight:700,color:C.text}}>{s.name}</div>
+          <div style={{fontSize:10,color:C.text3}}>{s.student_id}</div>
+        </div>
+        <button onClick={() => onAction(s)} disabled={busy}
+          style={{background:color+'22',border:`1px solid ${color}`,borderRadius:6,padding:'4px 8px',fontSize:10,color:color,cursor:'pointer',opacity:busy?0.5:1}}>
+          {busy ? '…' : label}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('enrollments')}</div>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+        <div style={{fontSize:22,fontWeight:700,color:C.text}}>{t('enrollments')}</div>
+        <button onClick={loadAll} title="Refresh" style={{background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'6px 12px',fontSize:13,color:C.text2,cursor:'pointer'}}>↻</button>
+      </div>
 
       <div style={{display:'flex',gap:10,marginBottom:12,flexWrap:'wrap'}}>
         <select value={selCourse} onChange={e=>setSelCourse(e.target.value)}
           style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 12px',fontSize:12,color:C.text}}>
-          {store.courses.map(c=><option key={c.id} value={c.id}>{c.name} ({c.code})</option>)}
+          {courses.map(c=><option key={c.course_code} value={c.course_code}>{c.course_name} ({c.course_code})</option>)}
         </select>
-        <input
-          value={search} onChange={e=>setSearch(e.target.value)}
-          placeholder="Search by name or ID…"
-          style={{flex:1,minWidth:180,background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 12px',fontSize:12,color:C.text}}
-        />
-        {search && <button onClick={()=>setSearch('')} style={{background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 12px',fontSize:12,color:C.text2,cursor:'pointer'}}>✕ Clear</button>}
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search by name or ID…"
+          style={{flex:1,minWidth:180,background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 12px',fontSize:12,color:C.text}}/>
+        {search && <button onClick={()=>setSearch('')} style={{background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 12px',fontSize:12,color:C.text2,cursor:'pointer'}}>✕</button>}
       </div>
 
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-        <Card theme={C} title={`Enrolled (${enrolled.length}${q ? ` of ${totalEnrolled}` : ''})`} accentColor={C.green}>
-          <div style={{padding:'4px 12px 12px',display:'flex',flexDirection:'column',gap:6,maxHeight:400,overflowY:'auto'}}>
-            {enrolled.map((s,i)=>{
-              const photo = s.capturedPhoto || store.getPhotoUrl(s);
-              return (
-              <div key={i} style={{display:'flex',alignItems:'center',background:C.bg3,borderRadius:8,padding:'8px 10px',gap:10}}>
-                {photo
-                  ? <img src={photo} alt={s.name} onError={e=>{e.target.style.display='none';e.target.nextSibling.style.display='flex';}}
-                      style={{width:32,height:32,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
-                  : null}
-                <div style={{width:32,height:32,borderRadius:'50%',background:s.color,display:photo?'none':'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>{s.emoji}</div>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:11,fontWeight:700,color:C.text}}>{s.name}</div>
-                  <div style={{fontSize:10,color:C.text3}}>{s.id}</div>
-                </div>
-                <button onClick={()=>{store.unenrollStudent(selCourse,s.id);forceUpdate(n=>n+1);}}
-                  style={{background:C.red_dim,border:`1px solid ${C.red}`,borderRadius:6,padding:'4px 8px',fontSize:10,color:C.red2,cursor:'pointer'}}>Remove</button>
-              </div>
-              );
-            })}
-            {enrolled.length===0&&<div style={{color:C.text3,fontSize:12,textAlign:'center',padding:'20px 0'}}>No enrolled students</div>}
-          </div>
-        </Card>
-
-        <Card theme={C} title={`Available to Enroll (${unenrolled.length}${q ? ` of ${totalUnenrolled}` : ''})`} accentColor={C.blue}>
-          <div style={{padding:'4px 12px 12px',display:'flex',flexDirection:'column',gap:6,maxHeight:400,overflowY:'auto'}}>
-            {unenrolled.map((s,i)=>{
-              const photo = s.capturedPhoto || store.getPhotoUrl(s);
-              return (
-              <div key={i} style={{display:'flex',alignItems:'center',background:C.bg3,borderRadius:8,padding:'8px 10px',gap:10}}>
-                {photo
-                  ? <img src={photo} alt={s.name} onError={e=>{e.target.style.display='none';e.target.nextSibling.style.display='flex';}}
-                      style={{width:32,height:32,borderRadius:'50%',objectFit:'cover',flexShrink:0}}/>
-                  : null}
-                <div style={{width:32,height:32,borderRadius:'50%',background:s.color,display:photo?'none':'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>{s.emoji}</div>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:11,fontWeight:700,color:C.text}}>{s.name}</div>
-                  <div style={{fontSize:10,color:C.text3}}>{s.id}</div>
-                </div>
-                {store.isCourseFull(selCourse) || store.isOnWaitlist(selCourse,s.id)
-                  ? <button onClick={()=>{store.joinWaitlist(selCourse,s.id);forceUpdate(n=>n+1);}}
-                      disabled={store.isOnWaitlist(selCourse,s.id)}
-                      style={{background:C.red_dim,border:`1px solid ${C.amber}`,borderRadius:6,padding:'4px 8px',fontSize:10,color:C.amber,cursor:'pointer',opacity:store.isOnWaitlist(selCourse,s.id)?0.5:1}}>
-                      {store.isOnWaitlist(selCourse,s.id)?'Waitlisted':'+ Waitlist'}
-                    </button>
-                  : <button onClick={()=>{store.enrollStudent(selCourse,s.id);forceUpdate(n=>n+1);}}
-                      style={{background:C.green_dim,border:`1px solid ${C.green}`,borderRadius:6,padding:'4px 8px',fontSize:10,color:C.green2,cursor:'pointer'}}>Enroll</button>
-                }
-              </div>
-              );
-            })}
-            {unenrolled.length===0&&<div style={{color:C.text3,fontSize:12,textAlign:'center',padding:'20px 0'}}>All students enrolled</div>}
-          </div>
-        </Card>
-      </div>
-
-      {/* Waitlist */}
-      {(() => {
-        const waitlist = store.getWaitlist(selCourse);
-        if (!waitlist.length) return null;
-        return (
-          <Card theme={C} title={`Waitlist (${waitlist.length})`} accentColor={C.amber} style={{marginTop:12}}>
-            <div style={{padding:'4px 12px 12px',display:'flex',flexDirection:'column',gap:6}}>
-              {waitlist.map((s,i)=>(
-                <div key={i} style={{display:'flex',alignItems:'center',background:C.bg3,borderRadius:8,padding:'8px 10px',gap:10}}>
-                  <div style={{width:24,height:24,borderRadius:'50%',background:C.amber,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'#fff',flexShrink:0}}>{i+1}</div>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:11,fontWeight:700,color:C.text}}>{s.name}</div>
-                    <div style={{fontSize:10,color:C.text3}}>{s.id}</div>
-                  </div>
-                  <button onClick={()=>{store.promoteFromWaitlist(selCourse);forceUpdate(n=>n+1);}}
-                    style={{background:C.green_dim,border:`1px solid ${C.green}`,borderRadius:6,padding:'4px 8px',fontSize:10,color:C.green2,cursor:'pointer'}}>
-                    ↑ Promote
-                  </button>
-                  <button onClick={()=>{store.removeFromWaitlist(selCourse,s.id);forceUpdate(n=>n+1);}}
-                    style={{background:C.red_dim,border:`1px solid ${C.red}`,borderRadius:6,padding:'4px 8px',fontSize:10,color:C.red2,cursor:'pointer'}}>
-                    Remove
-                  </button>
-                </div>
-              ))}
-              <button onClick={()=>{store.promoteFromWaitlist(selCourse);forceUpdate(n=>n+1);}}
-                style={{background:C.green,border:'none',borderRadius:8,padding:'8px',fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer',marginTop:4}}>
-                ↑ Promote Next Person
-              </button>
+      {loading ? (
+        <div style={{color:C.text2,fontSize:13,padding:'20px 0'}}>Loading…</div>
+      ) : (
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+          <Card theme={C} title={`Enrolled (${enrolled.length})`} accentColor={C.green}>
+            <div style={{padding:'4px 12px 12px',display:'flex',flexDirection:'column',gap:6,maxHeight:400,overflowY:'auto'}}>
+              {enrolled.map(s => <StuRow key={s.student_id} s={s} onAction={handleUnenroll} label="Remove" color="#ef4444"/>)}
+              {enrolled.length===0 && <div style={{color:C.text3,fontSize:12,textAlign:'center',padding:'20px 0'}}>No enrolled students</div>}
             </div>
           </Card>
-        );
-      })()}
+          <Card theme={C} title={`Available to Enroll (${available.length})`} accentColor={C.blue}>
+            <div style={{padding:'4px 12px 12px',display:'flex',flexDirection:'column',gap:6,maxHeight:400,overflowY:'auto'}}>
+              {available.map(s => <StuRow key={s.student_id} s={s} onAction={handleEnroll} label="Enroll" color="#10b981"/>)}
+              {available.length===0 && <div style={{color:C.text3,fontSize:12,textAlign:'center',padding:'20px 0'}}>All students enrolled</div>}
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
@@ -2030,6 +2169,305 @@ function AdminGradeAppeals({ theme: C }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ── ADMIN: ENROLLMENT REQUESTS ─────────────────────────────────────────────── */
+function AdminEnrollmentRequests({ theme: C }) {
+  const [requests, setRequests] = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [working,  setWorking]  = useState({});
+
+  function load() {
+    setLoading(true);
+    api.getEnrollmentRequests()
+      .then(setRequests)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }
+  useEffect(() => { load(); }, []);
+
+  async function decide(id, status) {
+    setWorking(w => ({ ...w, [id]: true }));
+    try {
+      await api.processEnrollmentRequest(id, { status });
+      setRequests(rs => rs.filter(r => r.id !== id));
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setWorking(w => ({ ...w, [id]: false }));
+    }
+  }
+
+  return (
+    <div style={{ padding: '8px 20px 20px' }}>
+      <div style={{ fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 16 }}>
+        🏛️ Enrollment Requests
+      </div>
+      {loading ? (
+        <div style={{ color: C.text2 }}>Loading…</div>
+      ) : requests.length === 0 ? (
+        <div style={{ color: C.text2, textAlign: 'center', padding: 40 }}>
+          No pending enrollment requests.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {requests.map(r => (
+            <div key={r.id} style={{
+              background: C.card, border: `1px solid ${C.border}`,
+              borderRadius: 12, padding: 16, display: 'flex',
+              alignItems: 'center', gap: 16, flexWrap: 'wrap',
+            }}>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <div style={{ fontWeight: 700, color: C.text }}>{r.student_name || r.student_id}</div>
+                <div style={{ color: C.text2, fontSize: 13 }}>
+                  → {r.course_name || r.course_id}
+                  {r.note ? ` · "${r.note}"` : ''}
+                </div>
+                <div style={{ color: C.text2, fontSize: 11, marginTop: 2 }}>
+                  {r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => decide(r.id, 'approved')}
+                  disabled={working[r.id]}
+                  style={{
+                    padding: '7px 16px', borderRadius: 8, border: 'none',
+                    background: '#10b981', color: '#fff', cursor: 'pointer',
+                    fontSize: 13, fontWeight: 600, opacity: working[r.id] ? 0.6 : 1,
+                  }}
+                >✅ Approve</button>
+                <button
+                  onClick={() => decide(r.id, 'rejected')}
+                  disabled={working[r.id]}
+                  style={{
+                    padding: '7px 16px', borderRadius: 8, border: 'none',
+                    background: '#ef4444', color: '#fff', cursor: 'pointer',
+                    fontSize: 13, fontWeight: 600, opacity: working[r.id] ? 0.6 : 1,
+                  }}
+                >❌ Reject</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── ADMIN: PARENT LINKING ───────────────────────────────────────────────────── */
+function AdminParentLinking({ theme: C }) {
+  const [links,    setLinks]    = useState([]);
+  const [parents,  setParents]  = useState([]);
+  const [students, setStudents] = useState([]);
+  const [form,     setForm]     = useState({ parent_id: '', student_id: '' });
+  const [saving,   setSaving]   = useState(false);
+
+  useEffect(() => {
+    api.listParentStudents().then(setLinks).catch(() => {});
+    api.init().then(d => {
+      setParents(d.parents || store.users.filter(u => u.role === 'parent'));
+      setStudents(d.students || store.students);
+    }).catch(() => {
+      setParents(store.users.filter(u => u.role === 'parent'));
+      setStudents(store.students);
+    });
+  }, []);
+
+  async function handleLink() {
+    if (!form.parent_id || !form.student_id) { alert('Select both parent and student'); return; }
+    setSaving(true);
+    try {
+      await api.linkParentStudent(form.parent_id, form.student_id);
+      const par = parents.find(p => String(p.id) === String(form.parent_id));
+      setLinks(l => [...l, {
+        parent_id: parseInt(form.parent_id), student_id: form.student_id,
+        parent_name: par?.name || par?.full_name || '', parent_email: par?.email || '',
+      }]);
+      setForm({ parent_id: '', student_id: '' });
+    } catch (err) { alert(err.message); }
+    finally { setSaving(false); }
+  }
+
+  async function handleUnlink(parent_id, student_id) {
+    if (!confirm('Remove this link?')) return;
+    await api.unlinkParentStudent(parent_id, student_id).catch(() => {});
+    setLinks(l => l.filter(x => !(x.parent_id === parent_id && x.student_id === student_id)));
+  }
+
+  const sel = { width: '100%', background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 10px', color: C.text, fontSize: 13 };
+
+  return (
+    <div style={{ padding: '8px 20px 20px' }}>
+      <div style={{ fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 16 }}>🔗 Parent ↔ Student Linking</div>
+
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20, marginBottom: 20 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 12 }}>Link a Parent to a Student</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 12, alignItems: 'end' }}>
+          <div>
+            <div style={{ fontSize: 11, color: C.text2, marginBottom: 4 }}>PARENT</div>
+            <select value={form.parent_id} onChange={e => setForm(f => ({ ...f, parent_id: e.target.value }))} style={sel}>
+              <option value="">Select parent…</option>
+              {parents.map(p => <option key={p.id} value={p.id}>{p.name || p.full_name}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: C.text2, marginBottom: 4 }}>STUDENT</div>
+            <select value={form.student_id} onChange={e => setForm(f => ({ ...f, student_id: e.target.value }))} style={sel}>
+              <option value="">Select student…</option>
+              {students.map(s => <option key={s.id} value={s.id}>{s.name} ({s.id})</option>)}
+            </select>
+          </div>
+          <button onClick={handleLink} disabled={saving}
+            style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: C.blue2, color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 13 }}>
+            {saving ? '…' : '🔗 Link'}
+          </button>
+        </div>
+      </div>
+
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}`, fontWeight: 700, color: C.text, fontSize: 14 }}>
+          Existing Links ({links.length})
+        </div>
+        {links.length === 0
+          ? <div style={{ padding: 24, color: C.text2, textAlign: 'center' }}>No links yet.</div>
+          : links.map(l => (
+            <div key={`${l.parent_id}-${l.student_id}`} style={{
+              display: 'flex', alignItems: 'center', padding: '10px 16px',
+              borderBottom: `1px solid ${C.border}`, gap: 12,
+            }}>
+              <span style={{ fontSize: 20 }}>👨‍👩‍👧</span>
+              <div style={{ flex: 1 }}>
+                <span style={{ fontWeight: 700, color: C.text }}>{l.parent_name || `Parent #${l.parent_id}`}</span>
+                <span style={{ color: C.text2, fontSize: 12, margin: '0 8px' }}>→</span>
+                <span style={{ color: C.text2, fontSize: 13 }}>{l.student_id}</span>
+              </div>
+              <button onClick={() => handleUnlink(l.parent_id, l.student_id)}
+                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 18 }}>×</button>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  );
+}
+
+/* ── ADMIN: CSV IMPORT ───────────────────────────────────────────────────────── */
+function AdminCSVImport({ theme: C }) {
+  const [mode,     setMode]     = useState('students');
+  const [rows,     setRows]     = useState([]);
+  const [progress, setProgress] = useState(null);
+  const [running,  setRunning]  = useState(false);
+  const fileRef = useRef();
+
+  const MODES = [
+    { id: 'students',    label: '🎓 Students',    desc: 'student_id, name, email, dept, year' },
+    { id: 'grades',      label: '📝 Grades',       desc: 'student_id, course_code, course_name, grade' },
+    { id: 'enrollments', label: '📋 Enrollments',  desc: 'student_id, course_id' },
+  ];
+
+  function parseCSV(text) {
+    const lines = text.trim().split('\n');
+    if (lines.length < 2) return [];
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/[\r"]/g,''));
+    return lines.slice(1).map(line => {
+      const vals = line.split(',').map(v => v.trim().replace(/[\r"]/g,''));
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
+      return obj;
+    }).filter(r => Object.values(r).some(v => v));
+  }
+
+  function handleFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => { setRows(parseCSV(ev.target.result)); setProgress(null); };
+    reader.readAsText(file);
+  }
+
+  async function handleImport() {
+    if (!rows.length) return;
+    setRunning(true);
+    let done = 0, errors = 0;
+    setProgress({ done: 0, total: rows.length, errors: 0 });
+    for (const row of rows) {
+      try {
+        if (mode === 'students') {
+          await api.createStudent({ student_id: row.student_id, name: row.name || row.full_name, email: row.email, department: row.dept || row.department, year: parseInt(row.year) || 1 });
+        } else if (mode === 'grades') {
+          await api.saveCourseGrade({ student_id: row.student_id, course_code: row.course_code, course_name: row.course_name || row.course_code, grade: parseFloat(row.grade) || 0 });
+        } else if (mode === 'enrollments') {
+          await api.enroll(row.course_id, row.student_id);
+        }
+        done++;
+      } catch { errors++; done++; }
+      setProgress({ done, total: rows.length, errors });
+    }
+    setRunning(false);
+  }
+
+  const pct = progress ? Math.round(progress.done / progress.total * 100) : 0;
+
+  return (
+    <div style={{ padding: '8px 20px 20px', maxWidth: 720 }}>
+      <div style={{ fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 4 }}>📥 Bulk CSV Import</div>
+      <div style={{ color: C.text2, fontSize: 13, marginBottom: 20 }}>Upload a CSV to bulk-import students, grades, or enrollments.</div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+        {MODES.map(m => (
+          <button key={m.id} onClick={() => { setMode(m.id); setRows([]); setProgress(null); }}
+            style={{ padding: '7px 16px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 600, background: mode === m.id ? C.blue2 : C.bg3, color: mode === m.id ? '#fff' : C.text2, cursor: 'pointer' }}>
+            {m.label}
+          </button>
+        ))}
+      </div>
+      <div style={{ background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: C.text2, fontFamily: 'monospace' }}>
+        Columns: <strong style={{ color: C.text }}>{MODES.find(m2 => m2.id === mode)?.desc}</strong>
+      </div>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16 }}>
+        <button onClick={() => fileRef.current?.click()}
+          style={{ padding: '9px 20px', borderRadius: 8, background: C.bg3, border: `1px solid ${C.border}`, color: C.text, cursor: 'pointer', fontSize: 13 }}>
+          📂 Choose CSV File
+        </button>
+        <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleFile} />
+        {rows.length > 0 && <span style={{ color: C.text2, fontSize: 13 }}>{rows.length} rows parsed</span>}
+      </div>
+      {rows.length > 0 && (
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', marginBottom: 16 }}>
+          <div style={{ overflowX: 'auto', maxHeight: 200 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead><tr style={{ background: C.bg3 }}>
+                {Object.keys(rows[0]).map(h => <th key={h} style={{ padding: '8px 12px', textAlign: 'left', color: C.text2, fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {rows.slice(0, 5).map((r, i) => (
+                  <tr key={i} style={{ borderTop: `1px solid ${C.border}` }}>
+                    {Object.values(r).map((v, j) => <td key={j} style={{ padding: '7px 12px', color: C.text }}>{v}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {rows.length > 5 && <div style={{ padding: '6px 12px', color: C.text2, fontSize: 11 }}>… and {rows.length - 5} more rows</div>}
+        </div>
+      )}
+      {progress && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: C.text2, marginBottom: 4 }}>
+            <span>{running ? 'Importing…' : 'Done!'} {progress.done}/{progress.total}</span>
+            {progress.errors > 0 && <span style={{ color: '#ef4444' }}>{progress.errors} errors</span>}
+          </div>
+          <div style={{ height: 6, background: C.bg3, borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${pct}%`, background: '#10b981', borderRadius: 4, transition: 'width .2s' }} />
+          </div>
+        </div>
+      )}
+      <button onClick={handleImport} disabled={!rows.length || running}
+        style={{ padding: '10px 28px', borderRadius: 8, border: 'none', background: C.blue2, color: '#fff', fontSize: 14, fontWeight: 700, cursor: (!rows.length || running) ? 'not-allowed' : 'pointer', opacity: (!rows.length || running) ? 0.6 : 1 }}>
+        {running ? '⏳ Importing…' : '🚀 Start Import'}
+      </button>
     </div>
   );
 }

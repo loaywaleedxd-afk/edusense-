@@ -116,7 +116,43 @@ async def init_data(payload: dict = Depends(require_auth), db=Depends(get_db)):
     # ── Excuses ───────────────────────────────────────────────────────────
     excuse_rows = await _q(db, "SELECT * FROM excuses ORDER BY created_at DESC")
 
+    # ── Parent ↔ student links ────────────────────────────────────────────
+    parent_student_rows = await _q(db, "SELECT parent_id, student_id FROM parent_students")
+
     # ── Scope data to role ────────────────────────────────────────────────
+    if role == "parent":
+        # Find which students this parent is linked to
+        linked_ids = [r["student_id"] for r in parent_student_rows if r["parent_id"] == uid]
+        my_courses = [c for c in all_courses if any(
+            sid in course_enrollments.get(c.get("course_code") or c.get("lecture_id",""), [])
+            for sid in linked_ids
+        )]
+        my_grades = {sid: exam_results.get(sid, {}) for sid in linked_ids}
+        my_attendance = {
+            k: {sid: v for sid, v in vals.items() if sid in linked_ids}
+            for k, vals in attendance.items()
+        }
+        linked_students = [s for s in all_students if s["id"] in linked_ids]
+        return {
+            "role": "parent",
+            "linkedStudentIds": linked_ids,
+            "students": linked_students,
+            "courses": my_courses,
+            "courseEnrollments": {
+                cid: [s for s in sids if s in linked_ids]
+                for cid, sids in course_enrollments.items()
+            },
+            "examResults": my_grades,
+            "attendance": my_attendance,
+            "announcements": [a for a in announcements if a["course_id"] in {
+                c.get("course_code") or c.get("lecture_id","") for c in my_courses
+            }],
+            "examSchedule": [e for e in exam_schedule if e["course_id"] in {
+                c.get("course_code") or c.get("lecture_id","") for c in my_courses
+            }],
+            "calendarEvents": calendar_events,
+        }
+
     if role == "student":
         stu_row = await _one(db, "SELECT student_id FROM students WHERE user_id=$1", uid)
         stu_id  = stu_row["student_id"] if stu_row else ""
@@ -196,12 +232,18 @@ async def init_data(payload: dict = Depends(require_auth), db=Depends(get_db)):
         }
 
     else:  # admin
+        # All parents
+        all_parents = await _q(db,
+            "SELECT id, full_name AS name, email FROM users WHERE role='parent' ORDER BY full_name"
+        )
         return {
             "role": "admin",
             "courses": all_courses,
             "courseEnrollments": course_enrollments,
             "students": all_students,
             "doctors": all_doctors,
+            "parents": all_parents,
+            "parentStudents": [dict(r) for r in parent_student_rows],
             "announcements": announcements,
             "examSchedule": exam_schedule,
             "courseResources": course_resources,

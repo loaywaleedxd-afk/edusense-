@@ -9,9 +9,10 @@ import Badge from '../components/Badge';
 import DataTable from '../components/DataTable';
 import { BarChart, LineChart, DonutChart } from '../components/Charts';
 import EmotionBarsWidget from '../components/EmotionBars';
-import store from '../dataStore';
+import store from '../dataStore';          // kept for store.emotionDist / store.trendData (demo charts)
 import { EMOTION_ICONS } from '../theme';
-import { get } from '../api.js';
+import { get, api } from '../api.js';
+import { pushToast } from '../components/NotificationToast';
 
 const NAV = [
   {id:'overview',    icon:'📊', label:'Overview'},
@@ -36,12 +37,65 @@ const PAGE_TITLES = {
 function letterGrade(g){if(g>=90)return'A+';if(g>=85)return'A';if(g>=80)return'B+';if(g>=75)return'B';if(g>=70)return'C+';if(g>=65)return'C';if(g>=60)return'D+';if(g>=50)return'D';return'F';}
 function gradeColor(g,C){return g>=75?C.green:g>=50?C.amber:C.red;}
 
+// ── GPA helpers ────────────────────────────────────────────────────────────
+function gradeToGPA(g){if(g>=90)return 4.0;if(g>=85)return 3.7;if(g>=80)return 3.3;if(g>=75)return 3.0;if(g>=70)return 2.7;if(g>=65)return 2.3;if(g>=60)return 2.0;if(g>=55)return 1.7;if(g>=50)return 1.0;return 0.0;}
+function calcGPAFrom(gradeVals){if(!gradeVals.length)return null;return+(gradeVals.reduce((a,b)=>a+gradeToGPA(b),0)/gradeVals.length).toFixed(2);}
+function academicStanding(gpa){if(gpa===null)return'No Grades Yet';if(gpa>=3.5)return'Honors';if(gpa>=2.0)return'Good Standing';if(gpa>=1.0)return'Academic Warning';return'Academic Probation';}
+
 export default function ParentPage({ theme: C, user, isDark, onToggleMode, onLogout, branding }) {
   const [page, setPage] = useState('overview');
   const [menuOpen, setMenuOpen] = useState(false);
   const { isRTL, t } = useLang();
-  const sid   = user.studentId || user.id || '';
-  const child = store.getStudent(sid) || store.students[0];
+
+  // ── Multi-child support ──────────────────────────────────────────────────
+  const linkedIds = user.linkedStudentIds || [];
+  const [linkedStudents, setLinkedStudents] = useState([]);
+
+  useEffect(() => {
+    const ids = linkedIds.length > 0
+      ? linkedIds
+      : [user.studentId || user.id || ''].filter(Boolean);
+    if (!ids.length) return;
+    Promise.all(ids.map(id => api.getStudent(id).catch(() => null)))
+      .then(results => {
+        const students = results.filter(Boolean).map(s => ({
+          id:             s.student_id,
+          name:           s.name,
+          email:          s.email || '',
+          dept:           s.department || '',
+          year:           s.year || 1,
+          photo:          s.photo_path || null,
+          emoji:          '👤',
+          color:          '#8b5cf6',
+          attendanceRate: s.attendance_rate || 75,
+          gpa:            s.gpa || 0,
+          engagement:     s.engagement || 70,
+          attentionScore: s.attention_score || 70,
+        }));
+        setLinkedStudents(students);
+      })
+      .catch(() => {});
+  }, [user.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const child = linkedStudents[selectedIdx] || linkedStudents[0];
+
+  // ── Real-time WebSocket ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!user?.id || !/^\d+$/.test(String(user.id))) return;
+    const BASE_WS = (import.meta.env.VITE_API_URL || '').replace(/^http/, 'ws') || `ws://${location.host}`;
+    const ws = new WebSocket(`${BASE_WS}/ws/notifications/${user.id}`);
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'connected') return;
+        pushToast({ title: msg.title, message: msg.message, color: msg.color || '#8b5cf6' });
+      } catch {}
+    };
+    ws.onerror = () => {};
+    const ping = setInterval(() => { if (ws.readyState === WebSocket.OPEN) ws.send('ping'); }, 30000);
+    return () => { clearInterval(ping); ws.close(); };
+  }, [user?.id]);
 
   const PARENT_PAGE_KEYS = {
     overview:'overview', grades:'page_grades', attendance:'page_attendance',
@@ -55,23 +109,52 @@ export default function ParentPage({ theme: C, user, isDark, onToggleMode, onLog
       <Sidebar theme={C} navItems={NAV} activeId={page} onNav={setPage} mobileOpen={menuOpen} onMobileClose={() => setMenuOpen(false)} branding={branding}/>
       <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
         <Topbar theme={C} user={user} pageTitle={parentPageTitle} isDark={isDark} onToggleMode={onToggleMode} onLogout={onLogout} onMenuOpen={() => setMenuOpen(true)}/>
-        {/* Read-only banner */}
-        <div style={{background:'rgba(139,92,246,0.08)',borderBottom:`1px solid rgba(139,92,246,0.2)`,padding:'6px 20px',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+        {/* Read-only banner + child selector */}
+        <div style={{background:'rgba(139,92,246,0.08)',borderBottom:`1px solid rgba(139,92,246,0.2)`,padding:'6px 20px',display:'flex',alignItems:'center',gap:12,flexShrink:0,flexWrap:'wrap'}}>
           <span style={{fontSize:13}}>👁️</span>
-          <span style={{fontSize:11,color:'#a78bfa',fontWeight:600}}>Parent View — Read Only · Monitoring {child?.name?.split(' ')[0]}'s academic progress</span>
+          <span style={{fontSize:11,color:'#a78bfa',fontWeight:600}}>
+            Parent View — Read Only
+          </span>
+          {linkedStudents.length > 1 && (
+            <>
+              <span style={{color:'#a78bfa',fontSize:11}}>·</span>
+              <span style={{fontSize:11,color:'#a78bfa'}}>Viewing:</span>
+              <select
+                value={selectedIdx}
+                onChange={e => setSelectedIdx(Number(e.target.value))}
+                style={{
+                  background:'rgba(139,92,246,0.15)', border:'1px solid rgba(139,92,246,0.3)',
+                  borderRadius:6, color:'#c4b5fd', fontSize:12, padding:'2px 8px', cursor:'pointer',
+                }}
+              >
+                {linkedStudents.map((s, i) => (
+                  <option key={s.id} value={i}>{s.name}</option>
+                ))}
+              </select>
+            </>
+          )}
+          {linkedStudents.length <= 1 && child && (
+            <span style={{fontSize:11,color:'#a78bfa'}}>· Monitoring {child?.name?.split(' ')[0]}'s academic progress</span>
+          )}
         </div>
         <div className="content-scroll" style={{flex:1,overflowY:'auto',background:C.bg}}>
-          <AnimatedPage pageKey={page}>
-            {page==='overview'    && <ParentOverview    theme={C} child={child}/>}
-            {page==='grades'      && <ParentGrades      theme={C} child={child}/>}
-            {page==='attendance'  && <ParentAttendance  theme={C} child={child}/>}
-            {page==='exams'       && <ParentExams       theme={C} child={child}/>}
-            {page==='alerts'      && <ParentAlerts      theme={C} child={child}/>}
-            {page==='performance' && <ParentPerformance theme={C} child={child}/>}
-            {page==='emotions'    && <ParentEmotions    theme={C} child={child}/>}
-            {page==='schedule'    && <ParentSchedule    theme={C} child={child}/>}
-            {page==='riskstatus'  && <ParentChildRisk   theme={C} child={child}/>}
-          </AnimatedPage>
+          {!child ? (
+            <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:C.text3,fontSize:14}}>
+              Loading student data…
+            </div>
+          ) : (
+            <AnimatedPage pageKey={page + (child?.id || '')}>
+              {page==='overview'    && <ParentOverview    theme={C} child={child}/>}
+              {page==='grades'      && <ParentGrades      theme={C} child={child}/>}
+              {page==='attendance'  && <ParentAttendance  theme={C} child={child}/>}
+              {page==='exams'       && <ParentExams       theme={C} child={child}/>}
+              {page==='alerts'      && <ParentAlerts      theme={C} child={child}/>}
+              {page==='performance' && <ParentPerformance theme={C} child={child}/>}
+              {page==='emotions'    && <ParentEmotions    theme={C} child={child}/>}
+              {page==='schedule'    && <ParentSchedule    theme={C} child={child}/>}
+              {page==='riskstatus'  && <ParentChildRisk   theme={C} child={child}/>}
+            </AnimatedPage>
+          )}
         </div>
       </div>
     </div>
@@ -81,16 +164,26 @@ export default function ParentPage({ theme: C, user, isDark, onToggleMode, onLog
 /* ── OVERVIEW ── */
 function ParentOverview({ theme: C, child }) {
   const { t } = useLang();
-  const results   = store.getStudentResults(child.id);
-  const grades    = Object.values(results).map(r=>r.grade);
-  const avgG      = grades.length ? +(grades.reduce((a,b)=>a+b,0)/grades.length).toFixed(1) : 0;
-  const courses   = store.getStudentCourses(child.id);
-  const standing  = store.getAcademicStanding(child.id);
-  const calcGPA   = store.calculateSemesterGPA(child.id);
-  const exams     = store.getStudentExams(child.id);
-  const today     = new Date().toISOString().slice(0,10);
-  const upcoming  = exams.filter(e=>e.date>=today).slice(0,3);
-  const alerts    = (store.systemAlerts||[]).filter(a=>a.studentId===child.id&&!a.read).slice(0,4);
+  const [grades, setGrades] = useState([]);
+  const [exams, setExams]   = useState([]);
+
+  useEffect(() => {
+    if (!child?.id) return;
+    api.getStudentGrades(child.id).then(data => setGrades(data || [])).catch(() => {});
+    api.getExams().then(data => setExams(data || [])).catch(() => {});
+  }, [child?.id]);
+
+  // Derived from grades
+  const gradeVals    = grades.map(g => g.grade || 0);
+  const avgG         = gradeVals.length ? +(gradeVals.reduce((a,b)=>a+b,0)/gradeVals.length).toFixed(1) : 0;
+  const courseCodes  = new Set(grades.map(g => g.course_code));
+  const uniqueCourses = [...new Map(grades.map(g => [g.course_code, g])).values()];
+  const calcGPA      = calcGPAFrom(gradeVals);
+  const standing     = academicStanding(calcGPA);
+
+  const today        = new Date().toISOString().slice(0,10);
+  const studentExams = exams.filter(e => !courseCodes.size || courseCodes.has(e.course_id));
+  const upcoming     = studentExams.filter(e => (e.date||'') >= today).slice(0,3);
 
   const STANDING_CFG = {
     'Honors':            {color:'#10b981',bg:'#10b98115',icon:'🏆'},
@@ -106,10 +199,10 @@ function ParentOverview({ theme: C, child }) {
       {/* Child profile */}
       <div style={{background:C.card,borderRadius:16,border:`1px solid ${C.border}`,padding:'16px 20px',marginBottom:12,display:'flex',alignItems:'center',gap:20}}>
         <div style={{width:90,height:90,borderRadius:'50%',background:child.color||C.blue,display:'flex',alignItems:'center',justifyContent:'center',fontSize:40,flexShrink:0,overflow:'hidden',border:`3px solid ${child.color||C.blue}`}}>
-          {(child.capturedPhoto||store.getPhotoUrl(child))
-            ? <img src={child.capturedPhoto||store.getPhotoUrl(child)} alt={child.name} onError={e=>{e.target.style.display='none';e.target.nextSibling.style.display='flex';}} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+          {child.photo
+            ? <img src={child.photo} alt={child.name} onError={e=>{e.target.style.display='none';e.target.nextSibling.style.display='flex';}} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
             : null}
-          <span style={{display:(child.capturedPhoto||store.getPhotoUrl(child))?'none':'flex'}}>{child.emoji||'👤'}</span>
+          <span style={{display:child.photo?'none':'flex'}}>{child.emoji||'👤'}</span>
         </div>
         <div style={{flex:1}}>
           <div style={{fontSize:20,fontWeight:700,color:C.text}}>{child.name}</div>
@@ -123,7 +216,7 @@ function ParentOverview({ theme: C, child }) {
           </div>
         </div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-          {[['GPA',calcGPA??child.gpa,C.blue],['Attendance',`${child.attendanceRate}%`,C.green],['Avg Grade',`${avgG}%`,C.amber],['Courses',courses.length,C.purple]].map(([l,v,col],i)=>(
+          {[['GPA',calcGPA??child.gpa,C.blue],['Attendance',`${child.attendanceRate}%`,C.green],['Avg Grade',`${avgG}%`,C.amber],['Courses',uniqueCourses.length,C.purple]].map(([l,v,col],i)=>(
             <div key={i} style={{textAlign:'center',background:C.bg3,borderRadius:10,padding:'8px 14px'}}>
               <div style={{fontSize:18,fontWeight:700,color:col}}>{v}</div>
               <div style={{fontSize:10,color:C.text3}}>{l}</div>
@@ -157,7 +250,7 @@ function ParentOverview({ theme: C, child }) {
                 <div key={i} style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
                   <span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:20,background:TYPE_COLOR[e.type]+'22',color:TYPE_COLOR[e.type]}}>{e.type}</span>
                   <div style={{flex:1}}>
-                    <div style={{fontSize:11,fontWeight:700,color:C.text}}>{e.courseName}</div>
+                    <div style={{fontSize:11,fontWeight:700,color:C.text}}>{e.course_name}</div>
                     <div style={{fontSize:10,color:C.text3}}>{e.date}{e.room&&` · ${e.room}`}</div>
                   </div>
                 </div>
@@ -166,30 +259,19 @@ function ParentOverview({ theme: C, child }) {
           }
         </div>
 
-        {/* Recent alerts */}
+        {/* Recent alerts — parent's own notifications */}
         <div style={{background:C.card,borderRadius:14,border:`1px solid ${C.border}`,padding:16}}>
-          <div style={{fontSize:11,fontWeight:700,color:C.text3,textTransform:'uppercase',marginBottom:8}}>Recent Alerts ({alerts.length} unread)</div>
-          {alerts.length===0
-            ? <div style={{fontSize:12,color:C.text3,marginTop:8}}>No unread alerts.</div>
-            : alerts.map((a,i)=>{
-              const ic={attendance:'⚠️',grade:'📝',announcement:'📢',appeal:'📋',danger:'🚨'}[a.alertKind||a.type]||'🔔';
-              return (
-                <div key={i} style={{display:'flex',gap:6,marginBottom:6,alignItems:'flex-start'}}>
-                  <span style={{fontSize:14,flexShrink:0}}>{ic}</span>
-                  <div style={{fontSize:11,color:C.text2,lineHeight:1.4}}>{a.title}</div>
-                </div>
-              );
-            })
-          }
+          <div style={{fontSize:11,fontWeight:700,color:C.text3,textTransform:'uppercase',marginBottom:8}}>Recent Alerts</div>
+          <div style={{fontSize:12,color:C.text3,marginTop:8}}>Check the Alerts tab for notifications.</div>
         </div>
       </div>
 
       {/* Stats row */}
       <div style={{display:'flex',gap:12}}>
-        <StatCard theme={C} label="Attendance"    value={`${child.attendanceRate}%`} sub="This semester"    icon="✅" accent="green"/>
-        <StatCard theme={C} label="Avg Grade"     value={`${avgG||'—'}%`}            sub="All graded subjects" icon="📝" accent="blue"/>
-        <StatCard theme={C} label="Engagement"    value={`${child.engagement}%`}     sub="In-class average"   icon="🧠" accent="amber"/>
-        <StatCard theme={C} label="Enrolled In"   value={courses.length}             sub="Active courses"     icon="📚" accent="purple"/>
+        <StatCard theme={C} label="Attendance"  value={`${child.attendanceRate}%`}  sub="This semester"       icon="✅" accent="green"/>
+        <StatCard theme={C} label="Avg Grade"   value={`${avgG||'—'}%`}             sub="All graded subjects" icon="📝" accent="blue"/>
+        <StatCard theme={C} label="GPA"         value={calcGPA??'—'}               sub="Semester GPA"        icon="📈" accent="amber"/>
+        <StatCard theme={C} label="Enrolled In" value={uniqueCourses.length}        sub="Active courses"      icon="📚" accent="purple"/>
       </div>
     </div>
   );
@@ -198,12 +280,25 @@ function ParentOverview({ theme: C, child }) {
 /* ── GRADES ── */
 function ParentGrades({ theme: C, child }) {
   const { t } = useLang();
-  const results = store.getStudentResults(child.id);
-  const entries = Object.entries(results);
-  const calcGPA = store.calculateSemesterGPA(child.id);
-  const standing= store.getAcademicStanding(child.id);
+  const [grades, setGrades]   = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  if(!entries.length) return (
+  useEffect(() => {
+    if (!child?.id) return;
+    setLoading(true);
+    api.getStudentGrades(child.id)
+      .then(data => { setGrades(data || []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [child?.id]);
+
+  if (loading) return (
+    <div style={{padding:'8px 20px 20px'}}>
+      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('page_grades')} — {child.name}</div>
+      <div style={{textAlign:'center',paddingTop:60,color:C.text3}}>Loading grades…</div>
+    </div>
+  );
+
+  if (!grades.length) return (
     <div style={{padding:'8px 20px 20px'}}>
       <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('page_grades')} — {child.name}</div>
       <div style={{textAlign:'center',paddingTop:60}}>
@@ -214,10 +309,12 @@ function ParentGrades({ theme: C, child }) {
     </div>
   );
 
-  const grades  = entries.map(([,v])=>v.grade);
-  const avg     = +(grades.reduce((a,b)=>a+b,0)/grades.length).toFixed(1);
-  const passed  = grades.filter(g=>g>=50).length;
-  const highest = Math.max(...grades);
+  const gradeVals = grades.map(g => g.grade || 0);
+  const avg       = +(gradeVals.reduce((a,b)=>a+b,0)/gradeVals.length).toFixed(1);
+  const passed    = gradeVals.filter(g=>g>=50).length;
+  const highest   = Math.max(...gradeVals);
+  const calcGPA   = calcGPAFrom(gradeVals);
+  const standing  = academicStanding(calcGPA);
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
@@ -238,16 +335,16 @@ function ParentGrades({ theme: C, child }) {
       </div>
 
       <div style={{display:'flex',flexDirection:'column',gap:10}}>
-        {entries.map(([cid,rec])=>{
-          const g=rec.grade; const gc=gradeColor(g,C);
-          const course=store.getCourse(cid);
+        {grades.map((rec,i)=>{
+          const g  = rec.grade || 0;
+          const gc = gradeColor(g,C);
           return (
-            <div key={cid} style={{background:C.card,borderRadius:12,border:`1px solid ${C.border}`,display:'flex',overflow:'hidden'}}>
+            <div key={i} style={{background:C.card,borderRadius:12,border:`1px solid ${C.border}`,display:'flex',overflow:'hidden'}}>
               <div style={{width:6,background:gc,flexShrink:0}}/>
               <div style={{flex:1,padding:'14px',display:'flex',alignItems:'center'}}>
                 <div style={{flex:1}}>
-                  <div style={{fontSize:14,fontWeight:700,color:C.text}}>{course?.name||cid} ({cid})</div>
-                  <div style={{fontSize:11,color:C.text3,marginTop:2}}>{course?.doctorName||'—'}</div>
+                  <div style={{fontSize:14,fontWeight:700,color:C.text}}>{rec.course_name||rec.course_code} ({rec.course_code})</div>
+                  <div style={{fontSize:11,color:C.text3,marginTop:2}}>{rec.doctor_name||'—'}</div>
                   {rec.date&&<div style={{fontSize:10,color:C.text3,marginTop:1}}>Posted: {rec.date}</div>}
                 </div>
                 <div style={{textAlign:'center',paddingRight:6}}>
@@ -267,26 +364,58 @@ function ParentGrades({ theme: C, child }) {
 /* ── ATTENDANCE ── */
 function ParentAttendance({ theme: C, child }) {
   const { t } = useLang();
-  const myCourses = store.getStudentCourses(child.id);
-  const attRecs   = store.getStudentAttendance(child.id);
-  const rate      = child.attendanceRate || 0;
-  const idHash    = child.id.split('').reduce((a,c)=>a+c.charCodeAt(0),0);
+  const [attRecs, setAttRecs]         = useState([]);
+  const [courseGrades, setCourseGrades] = useState([]);
 
-  const courseRows = myCourses.map((course,i)=>{
-    const recorded = Object.keys(store.getStudentCourseAttendance(child.id,course.id)).length;
-    const weeks = recorded>0 ? recorded : Math.max(0,Math.min(16,Math.round(rate/100*16+((idHash+i*7)%5)-2)));
+  useEffect(() => {
+    if (!child?.id) return;
+    api.getStudentAttendance(child.id).then(data => setAttRecs(data || [])).catch(() => {});
+    api.getStudentGrades(child.id).then(data => setCourseGrades(data || [])).catch(() => {});
+  }, [child?.id]);
+
+  const rate = child.attendanceRate || 0;
+
+  // Unique enrolled courses derived from grade records
+  const enrolledCourses = [...new Map(courseGrades.map(g => [g.course_code, g])).values()];
+
+  // Group attendance records by course_code
+  const attByCourse = {};
+  for (const rec of attRecs) {
+    const code = rec.course_code || rec.courseId || '';
+    if (!attByCourse[code]) attByCourse[code] = [];
+    attByCourse[code].push(rec);
+  }
+
+  const courseRows = enrolledCourses.map(g => {
+    const recs    = attByCourse[g.course_code] || [];
+    const present = recs.filter(r => r.status === 'present' || r.status === 'excused').length;
+    const total   = recs.length || 0;
+    const ratio   = total ? present / total : null;
     return {
-      course:`${course.name} (${course.code})`,weeks:`${weeks} / 16`,time:course.time,
-      method:weeks>0?'👤 Face Recognition':'—',
-      status:weeks>=12?'✅ Good Standing':weeks>=8?'⚠️ At Risk':'❌ Low Attendance',
+      course:  `${g.course_name||g.course_code} (${g.course_code})`,
+      weeks:   total ? `${present} / ${total}` : '— / —',
+      time:    '—',
+      method:  total > 0 ? '👤 Face Recognition' : '—',
+      status:  ratio === null ? '—'
+             : ratio >= 0.75 ? '✅ Good Standing'
+             : ratio >= 0.5  ? '⚠️ At Risk'
+             :                 '❌ Low Attendance',
     };
   });
 
-  const recRows = attRecs.map(rec=>({
-    course:store.getCourse(rec.courseId)?.name||rec.courseId,
-    date:rec.date,week:`Week ${rec.week}`,time:rec.time,
-    method:rec.method,status:rec.status==='excused'?'📄 Excused':'✅ Present',
-  }));
+  const recRows = attRecs.slice(0, 50).map(rec => {
+    const cg = courseGrades.find(g => g.course_code === (rec.course_code || rec.courseId));
+    return {
+      course: cg?.course_name || rec.course_code || rec.courseId || '—',
+      date:   rec.date   || '—',
+      week:   rec.week   ? `Week ${rec.week}` : '—',
+      time:   rec.time   || '—',
+      method: rec.method || '—',
+      status: rec.status === 'excused' ? '📄 Excused'
+            : rec.status === 'absent'  ? '❌ Absent'
+            :                           '✅ Present',
+    };
+  });
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
@@ -294,9 +423,9 @@ function ParentAttendance({ theme: C, child }) {
       <div style={{fontSize:12,color:C.text2,marginBottom:12}}>{t('sub_attendance')}</div>
 
       <div style={{display:'flex',gap:12,marginBottom:12,flexWrap:'wrap'}}>
-        <StatCard theme={C} label="Attendance Rate"  value={`${rate}%`}         sub="This semester"        icon="✅" accent="green"/>
-        <StatCard theme={C} label="Courses Enrolled" value={myCourses.length}    sub="Active enrollments"   icon="📚" accent="blue"/>
-        <StatCard theme={C} label="Sessions Logged"  value={attRecs.length}       sub="Recorded by system"   icon="📊" accent="purple"/>
+        <StatCard theme={C} label="Attendance Rate"  value={`${rate}%`}              sub="This semester"        icon="✅" accent="green"/>
+        <StatCard theme={C} label="Courses Enrolled" value={enrolledCourses.length}   sub="Active enrollments"   icon="📚" accent="blue"/>
+        <StatCard theme={C} label="Sessions Logged"  value={attRecs.length}           sub="Recorded by system"   icon="📊" accent="purple"/>
         <StatCard theme={C} label="Standing"         value={rate>=75?'Good':'At Risk'} sub={rate>=75?'Meeting requirement':'Below 75% threshold'} icon={rate>=75?'👍':'⚠️'} accent={rate>=75?'green':'red'}/>
       </div>
 
@@ -314,17 +443,17 @@ function ParentAttendance({ theme: C, child }) {
         <div style={{padding:'4px 12px 12px'}}>
           {courseRows.length>0
             ? <DataTable theme={C} columns={[
-                {key:'course',label:'Course',width:220},{key:'weeks',label:'Weeks Attended',width:120},
+                {key:'course',label:'Course',width:220},{key:'weeks',label:'Sessions',width:120},
                 {key:'time',label:'Time',width:80},{key:'method',label:'Method',width:140},
                 {key:'status',label:'Status',width:140},
               ]} rows={courseRows}/>
-            : <div style={{textAlign:'center',padding:'20px 0',color:C.text3,fontSize:12}}>Not enrolled in any courses yet.</div>
+            : <div style={{textAlign:'center',padding:'20px 0',color:C.text3,fontSize:12}}>No course records yet.</div>
           }
         </div>
       </Card>
 
       {recRows.length>0 && (
-        <Card theme={C} title={`Check-In Records (${recRows.length})`} style={{marginTop:12}}>
+        <Card theme={C} title={`Check-In Records (${attRecs.length})`} style={{marginTop:12}}>
           <div style={{padding:'4px 12px 12px'}}>
             <DataTable theme={C} columns={[
               {key:'course',label:'Course',width:200},{key:'date',label:'Date',width:100},
@@ -341,16 +470,26 @@ function ParentAttendance({ theme: C, child }) {
 /* ── EXAM SCHEDULE ── */
 function ParentExams({ theme: C, child }) {
   const { t } = useLang();
-  const exams = store.getStudentExams(child.id);
-  const today = new Date().toISOString().slice(0,10);
+  const [exams, setExams]           = useState([]);
+  const [courseCodes, setCourseCodes] = useState(new Set());
+
+  useEffect(() => {
+    if (!child?.id) return;
+    api.getStudentGrades(child.id)
+      .then(data => setCourseCodes(new Set((data||[]).map(g => g.course_code))))
+      .catch(() => {});
+    api.getExams().then(data => setExams(data || [])).catch(() => {});
+  }, [child?.id]);
+
+  const today        = new Date().toISOString().slice(0,10);
+  const studentExams = exams.filter(e => !courseCodes.size || courseCodes.has(e.course_id));
   const TYPE_CFG = {
     midterm:{label:'Midterm',color:'#8b5cf6',bg:'#8b5cf622'},
     final:  {label:'Final',  color:'#ef4444',bg:'#ef444422'},
     quiz:   {label:'Quiz',   color:'#10b981',bg:'#10b98122'},
   };
-
-  const upcoming = exams.filter(e=>e.date>=today);
-  const past     = exams.filter(e=>e.date<today);
+  const upcoming = studentExams.filter(e=>(e.date||'')>=today);
+  const past     = studentExams.filter(e=>(e.date||'')<today);
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
@@ -358,7 +497,7 @@ function ParentExams({ theme: C, child }) {
       <div style={{fontSize:12,color:C.text2,marginBottom:16}}>{t('sub_exams')}</div>
 
       <div style={{display:'flex',gap:12,marginBottom:16}}>
-        {[['Upcoming',upcoming.length,C.blue],['Past',past.length,C.text3],['Total',exams.length,C.green]].map(([lbl,val,col],i)=>(
+        {[['Upcoming',upcoming.length,C.blue],['Past',past.length,C.text3],['Total',studentExams.length,C.green]].map(([lbl,val,col],i)=>(
           <div key={i} style={{flex:1,background:C.card,borderRadius:12,border:`1px solid ${C.border}`,padding:'14px',textAlign:'center'}}>
             <div style={{fontSize:24,fontWeight:700,color:col}}>{val}</div>
             <div style={{fontSize:11,color:C.text2,marginTop:2}}>{lbl}</div>
@@ -366,16 +505,16 @@ function ParentExams({ theme: C, child }) {
         ))}
       </div>
 
-      {exams.length===0
+      {studentExams.length===0
         ? <div style={{textAlign:'center',padding:60,color:C.text3}}>
             <div style={{fontSize:48,marginBottom:12}}>🗓️</div>
             <div style={{fontSize:14,fontWeight:700,color:C.text}}>No exams scheduled yet</div>
           </div>
         : <div style={{display:'flex',flexDirection:'column',gap:10}}>
-            {exams.map((exam,i)=>{
-              const cfg=TYPE_CFG[exam.type]||TYPE_CFG.midterm;
-              const isPast=exam.date<today;
-              const isToday=exam.date===today;
+            {studentExams.map((exam,i)=>{
+              const cfg    = TYPE_CFG[exam.type]||TYPE_CFG.midterm;
+              const isPast = (exam.date||'')<today;
+              const isToday= exam.date===today;
               return (
                 <div key={i} style={{background:C.card,borderRadius:14,border:`1px solid ${isPast?C.border:cfg.color+'44'}`,padding:18,display:'flex',gap:16,alignItems:'center',opacity:isPast?0.65:1}}>
                   <div style={{width:56,textAlign:'center',flexShrink:0}}>
@@ -389,7 +528,7 @@ function ParentExams({ theme: C, child }) {
                       {isToday&&<span style={{fontSize:11,fontWeight:700,padding:'2px 10px',borderRadius:20,background:'#ef444422',color:'#ef4444'}}>TODAY</span>}
                       {isPast&&<span style={{fontSize:11,color:C.text3}}>Completed</span>}
                     </div>
-                    <div style={{fontSize:14,fontWeight:700,color:C.text}}>{exam.courseName}</div>
+                    <div style={{fontSize:14,fontWeight:700,color:C.text}}>{exam.course_name}</div>
                     <div style={{fontSize:11,color:C.text3,marginTop:2}}>
                       {exam.time&&`⏰ ${exam.time}`}{exam.room&&` · 📍 ${exam.room}`}{exam.duration&&` · ⏱ ${exam.duration} min`}
                     </div>
@@ -407,17 +546,22 @@ function ParentExams({ theme: C, child }) {
 /* ── ACADEMIC ALERTS ── */
 function ParentAlerts({ theme: C, child }) {
   const { t } = useLang();
-  const allAlerts = (store.systemAlerts||[]).filter(a=>a.studentId===child.id);
-  const unread    = allAlerts.filter(a=>!a.read).length;
+  const [notifications, setNotifications] = useState([]);
 
-  const KIND_ICON = {attendance:'⚠️',grade:'📝',announcement:'📢',appeal:'📋',new_appeal:'📋',danger:'🚨',info:'ℹ️'};
+  useEffect(() => {
+    api.getNotifications().then(data => setNotifications(data || [])).catch(() => {});
+  }, []);
+
+  const KIND_ICON  = {attendance:'⚠️',grade:'📝',announcement:'📢',appeal:'📋',new_appeal:'📋',danger:'🚨',info:'ℹ️'};
   const KIND_COLOR = {
-    attendance:{bg:'rgba(245,158,11,0.1)',border:'#f59e0b44',text:'#f59e0b'},
-    danger:    {bg:'rgba(239,68,68,0.08)',border:'#ef444444',text:'#ef4444'},
-    grade:     {bg:'rgba(59,130,246,0.08)',border:'#3b82f644',text:'#3b82f6'},
+    attendance:  {bg:'rgba(245,158,11,0.1)', border:'#f59e0b44',text:'#f59e0b'},
+    danger:      {bg:'rgba(239,68,68,0.08)', border:'#ef444444',text:'#ef4444'},
+    grade:       {bg:'rgba(59,130,246,0.08)',border:'#3b82f644',text:'#3b82f6'},
     announcement:{bg:'rgba(139,92,246,0.08)',border:'#8b5cf644',text:'#8b5cf6'},
-    appeal:    {bg:'rgba(16,185,129,0.08)',border:'#10b98144',text:'#10b981'},
+    appeal:      {bg:'rgba(16,185,129,0.08)',border:'#10b98144',text:'#10b981'},
   };
+
+  const unread = notifications.filter(n => !(n.is_read || n.read)).length;
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
@@ -426,31 +570,33 @@ function ParentAlerts({ theme: C, child }) {
         System notifications about your child's academic activity · {unread} unread
       </div>
 
-      {allAlerts.length===0
+      {notifications.length===0
         ? <div style={{textAlign:'center',padding:60,color:C.text3}}>
             <div style={{fontSize:48,marginBottom:12}}>🔔</div>
             <div style={{fontSize:14,fontWeight:700,color:C.text}}>No alerts yet</div>
             <div style={{fontSize:12,marginTop:4}}>Academic alerts will appear here.</div>
           </div>
-        : allAlerts.map((a,i)=>{
-          const icon=KIND_ICON[a.alertKind||a.type]||'🔔';
-          const colCfg=KIND_COLOR[a.alertKind]||KIND_COLOR[a.type]||{bg:C.bg3,border:C.border,text:C.text2};
-          const timeStr=(()=>{ try{return new Date(a.createdAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});}catch{return '';} })();
+        : notifications.map((a,i)=>{
+          const kind   = a.type || 'info';
+          const icon   = KIND_ICON[kind] || '🔔';
+          const colCfg = KIND_COLOR[kind] || {bg:C.bg3,border:C.border,text:C.text2};
+          const isRead = a.is_read || a.read;
+          const timeStr=(()=>{try{return new Date(a.created_at||a.createdAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});}catch{return '';}})();
           return (
             <div key={i} style={{
-              background:a.read?C.card:colCfg.bg,
-              border:`1px solid ${a.read?C.border:colCfg.border}`,
+              background:isRead?C.card:colCfg.bg,
+              border:`1px solid ${isRead?C.border:colCfg.border}`,
               borderRadius:12,padding:16,marginBottom:10,
               display:'flex',gap:12,alignItems:'flex-start',
-              opacity:a.read?0.7:1,
+              opacity:isRead?0.7:1,
             }}>
               <span style={{fontSize:22,flexShrink:0,marginTop:2}}>{icon}</span>
               <div style={{flex:1}}>
                 <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
-                  <div style={{fontSize:13,fontWeight:700,color:C.text,flex:1}}>{a.title}</div>
-                  {!a.read&&<span style={{width:8,height:8,borderRadius:'50%',background:colCfg.text,flexShrink:0}}/>}
+                  <div style={{fontSize:13,fontWeight:700,color:C.text,flex:1}}>{a.title||a.message}</div>
+                  {!isRead&&<span style={{width:8,height:8,borderRadius:'50%',background:colCfg.text,flexShrink:0}}/>}
                 </div>
-                <div style={{fontSize:12,color:C.text2,lineHeight:1.5,marginBottom:4}}>{a.message}</div>
+                <div style={{fontSize:12,color:C.text2,lineHeight:1.5,marginBottom:4}}>{a.message||a.body}</div>
                 {timeStr&&<div style={{fontSize:10,color:C.text3}}>{timeStr}</div>}
               </div>
             </div>
@@ -464,33 +610,52 @@ function ParentAlerts({ theme: C, child }) {
 /* ── PERFORMANCE ── */
 function ParentPerformance({ theme: C, child }) {
   const { t } = useLang();
-  const myCourses = store.getStudentCourses(child.id);
-  const results   = store.getStudentResults(child.id);
-  const idHash    = child.id.split('').reduce((a,c)=>a+c.charCodeAt(0),0);
+  const [grades, setGrades]   = useState([]);
+  const [attRecs, setAttRecs] = useState([]);
 
-  const rows = myCourses.map((course,i)=>{
-    const rec  = results[course.id];
-    const seed = (idHash+i*17)%100;
-    const att  = `${Math.min(100,Math.max(50,child.attendanceRate+((seed%20)-10)))}%`;
-    const eng  = `${Math.min(100,Math.max(30,child.engagement+((seed*3+7)%30)-15))}%`;
-    const atn  = `${Math.min(100,Math.max(30,child.attentionScore+((seed*7+3)%28)-14))}%`;
-    const grade = rec?`${rec.grade}% (${letterGrade(rec.grade)})`:'—';
-    return {course:`${course.name} (${course.code})`,attendance:att,engagement:eng,attention:atn,grade};
+  useEffect(() => {
+    if (!child?.id) return;
+    api.getStudentGrades(child.id).then(data => setGrades(data || [])).catch(() => {});
+    api.getStudentAttendance(child.id).then(data => setAttRecs(data || [])).catch(() => {});
+  }, [child?.id]);
+
+  // Build a map of course_code → attendance stats
+  const attByCourse = {};
+  for (const rec of attRecs) {
+    const code = rec.course_code || '';
+    if (!attByCourse[code]) attByCourse[code] = { present: 0, total: 0 };
+    attByCourse[code].total++;
+    if (rec.status === 'present' || rec.status === 'excused') attByCourse[code].present++;
+  }
+
+  const uniqueCourses = [...new Map(grades.map(g => [g.course_code, g])).values()];
+
+  const rows = uniqueCourses.map(g => {
+    const att     = attByCourse[g.course_code];
+    const attPct  = att ? Math.round(att.present / att.total * 100) : child.attendanceRate || '—';
+    const grade   = `${g.grade}% (${letterGrade(g.grade)})`;
+    return {
+      course:      `${g.course_name||g.course_code} (${g.course_code})`,
+      attendance:  `${attPct}%`,
+      engagement:  `${child.engagement||70}%`,
+      attention:   `${child.attentionScore||70}%`,
+      grade,
+    };
   });
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
       <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('page_performance')} — {child.name}</div>
       <div style={{display:'flex',gap:12,marginBottom:12,flexWrap:'wrap'}}>
-        <StatCard theme={C} label="GPA"            value={child.gpa}              sub="Current semester"    icon="📈" accent="blue"/>
-        <StatCard theme={C} label="Avg Engagement" value={`${child.engagement}%`} sub="In class"            icon="🧠" accent="green"/>
-        <StatCard theme={C} label="Attention"      value={`${child.attentionScore}%`} sub="Average"        icon="👁️" accent="purple"/>
-        <StatCard theme={C} label="Attendance"     value={`${child.attendanceRate}%`} sub="This semester"  icon="✅" accent="amber"/>
+        <StatCard theme={C} label="GPA"            value={child.gpa||'—'}              sub="Current semester" icon="📈" accent="blue"/>
+        <StatCard theme={C} label="Avg Engagement" value={`${child.engagement||70}%`}  sub="In class"         icon="🧠" accent="green"/>
+        <StatCard theme={C} label="Attention"      value={`${child.attentionScore||70}%`} sub="Average"       icon="👁️" accent="purple"/>
+        <StatCard theme={C} label="Attendance"     value={`${child.attendanceRate}%`}  sub="This semester"    icon="✅" accent="amber"/>
       </div>
       <Card theme={C} title="Performance per Course">
         <div style={{padding:'4px 12px 12px'}}>
           {rows.length===0
-            ? <div style={{textAlign:'center',padding:'20px 0',color:C.text3,fontSize:12}}>Not enrolled in any courses yet.</div>
+            ? <div style={{textAlign:'center',padding:'20px 0',color:C.text3,fontSize:12}}>No grade records available yet.</div>
             : <DataTable theme={C} columns={[
                 {key:'course',label:'Course',width:220},{key:'attendance',label:'Attendance',width:100},
                 {key:'engagement',label:'Engagement',width:100},{key:'attention',label:'Attention',width:100},
@@ -506,6 +671,7 @@ function ParentPerformance({ theme: C, child }) {
 /* ── EMOTIONS ── */
 function ParentEmotions({ theme: C, child }) {
   const { t } = useLang();
+  // Emotion charts use demo/simulation data — no DB equivalent
   return (
     <div style={{padding:'8px 20px 20px'}}>
       <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('page_emotions')} — {child.name}</div>
@@ -544,31 +710,57 @@ function ParentEmotions({ theme: C, child }) {
 /* ── SCHEDULE ── */
 function ParentSchedule({ theme: C, child }) {
   const { t } = useLang();
-  const myCourses = store.getStudentCourses(child.id);
+  const [courses, setCourses] = useState([]);
+
+  useEffect(() => {
+    if (!child?.id) return;
+    Promise.all([
+      api.getStudentGrades(child.id).catch(() => []),
+      api.getLectures().catch(() => []),
+    ]).then(([gradesData, lecturesData]) => {
+      const codes = new Set((gradesData||[]).map(g => g.course_code));
+      const seen  = new Set();
+      const list  = [];
+      for (const l of (lecturesData||[])) {
+        if (codes.has(l.course_code) && !seen.has(l.course_code)) {
+          seen.add(l.course_code);
+          list.push({
+            id:         l.course_code,
+            code:       l.course_code,
+            name:       l.course_name,
+            color:      l.color || '#3b82f6',
+            room:       l.room || '—',
+            time:       l.scheduled_at || '—',
+            duration:   l.duration_min || 90,
+            daysLabel:  l.days_label || '',
+            doctorName: l.doctor_name || '—',
+          });
+        }
+      }
+      setCourses(list);
+    });
+  }, [child?.id]);
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
       <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('page_schedule')} — {child.name}</div>
-      <Card theme={C} title={`Enrolled Courses (${myCourses.length})`}>
+      <Card theme={C} title={`Enrolled Courses (${courses.length})`}>
         <div style={{padding:'4px 14px 14px',display:'flex',flexDirection:'column',gap:8}}>
-          {myCourses.length===0
+          {courses.length===0
             ? <div style={{textAlign:'center',padding:'20px 0',color:C.text3,fontSize:12}}>Not enrolled in any courses.</div>
-            : myCourses.map((course,i)=>{
-                const lec=store.lectures.find(l=>l.code===course.code)||store.lectures[i%store.lectures.length];
-                return (
-                  <div key={i} style={{background:C.bg3,borderRadius:10,display:'flex',overflow:'hidden'}}>
-                    <div style={{width:5,background:course.color,flexShrink:0}}/>
-                    <div style={{padding:'12px 14px',flex:1}}>
-                      <div style={{fontSize:10,color:C.text3}}>{course.time} · {course.duration} min{course.daysLabel?` · ${course.daysLabel}`:''}</div>
-                      <div style={{fontSize:13,fontWeight:700,color:C.text}}>{course.name}</div>
-                      <div style={{fontSize:10,color:C.text2}}>{course.room} · {course.code} · {course.doctorName}</div>
-                    </div>
-                    <div style={{padding:'12px 14px',display:'flex',alignItems:'center'}}>
-                      <Badge text={lec?.status?lec.status.replace(/^\w/,c=>c.toUpperCase()):'Scheduled'} color={{active:'green',scheduled:'amber',ended:'gray'}[lec?.status]||'amber'} isDark/>
-                    </div>
+            : courses.map((course,i)=>(
+                <div key={i} style={{background:C.bg3,borderRadius:10,display:'flex',overflow:'hidden'}}>
+                  <div style={{width:5,background:course.color,flexShrink:0}}/>
+                  <div style={{padding:'12px 14px',flex:1}}>
+                    <div style={{fontSize:10,color:C.text3}}>{course.time} · {course.duration} min{course.daysLabel?` · ${course.daysLabel}`:''}</div>
+                    <div style={{fontSize:13,fontWeight:700,color:C.text}}>{course.name}</div>
+                    <div style={{fontSize:10,color:C.text2}}>{course.room} · {course.code} · {course.doctorName}</div>
                   </div>
-                );
-              })
+                  <div style={{padding:'12px 14px',display:'flex',alignItems:'center'}}>
+                    <Badge text="Scheduled" color="amber" isDark/>
+                  </div>
+                </div>
+              ))
           }
         </div>
       </Card>
@@ -581,40 +773,11 @@ function ParentChildRisk({ theme: C, child }) {
   const { t } = useLang();
   const sid = child?.id || '';
 
-  function calcRisk() {
-    const grades   = (store.grades || []).filter(g => g.studentId === sid);
-    const att      = store.getStudentAttendance?.(sid) || (store.attendance || []).filter(a => a.studentId === sid);
-    const emotions = (store.emotions || []).filter(e => e.studentId === sid);
-    const subs     = (store.submissions || []).filter(s => s.studentId === sid);
-    const assigns  = store.assignments || [];
-
-    const totalAtt   = att.length || 1;
-    const presentAtt = att.filter(a => a.status === 'present').length;
-    const attRate    = Math.round(presentAtt / totalAtt * 100);
-    const avgGrade   = grades.length
-      ? Math.round(grades.reduce((s, g) => s + (g.grade || g.score || 0), 0) / grades.length)
-      : 85;
-    const negEmotions = ['sad', 'bored', 'angry', 'disgust', 'fear'];
-    const negRate = emotions.length
-      ? Math.round(emotions.filter(e => negEmotions.includes(e.emotion)).length / emotions.length * 100)
-      : 10;
-    const subRate = assigns.length
-      ? Math.round(subs.length / assigns.length * 100)
-      : 100;
-
-    const attFactor   = attRate  < 50 ? 30 : attRate  < 70 ? 20 : attRate  < 80 ? 10 : 0;
-    const gradeFactor = avgGrade < 50 ? 30 : avgGrade < 60 ? 20 : avgGrade < 70 ? 10 : 0;
-    const emFactor    = negRate  > 70 ? 20 : negRate  > 50 ? 12 : negRate  > 30 ?  6 : 0;
-    const subFactor   = subRate  < 50 ? 20 : subRate  < 70 ? 12 : subRate  < 85 ?  6 : 0;
-    const score       = attFactor + gradeFactor + emFactor + subFactor;
-    const level       = score >= 60 ? 'critical' : score >= 40 ? 'high' : score >= 20 ? 'medium' : 'low';
-    return { score, level, attRate, avgGrade, negRate, subRate };
-  }
-
-  const [risk, setRisk]     = useState(() => calcRisk());
+  const [risk, setRisk]       = useState(null);
   const [fromAPI, setFromAPI] = useState(false);
 
   useEffect(() => {
+    if (!sid) return;
     get(`/api/at-risk/student/${sid}`)
       .then(res => {
         if (res && res.risk_score !== undefined) {
@@ -623,16 +786,16 @@ function ParentChildRisk({ theme: C, child }) {
           setRisk({
             score:    res.risk_score,
             level:    res.risk_level,
-            attRate:  det.attendance_rate  ?? risk.attRate,
-            avgGrade: det.avg_grade        ?? risk.avgGrade,
-            negRate:  det.negative_emotion ?? risk.negRate,
-            subRate:  det.submission_rate  ?? risk.subRate,
+            attRate:  det.attendance_rate  ?? child.attendanceRate ?? 75,
+            avgGrade: det.avg_grade        ?? 85,
+            negRate:  det.negative_emotion ?? 10,
+            subRate:  det.submission_rate  ?? 100,
           });
           setFromAPI(true);
         }
       })
       .catch(() => {});
-  }, [sid]);
+  }, [sid]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const LEVEL_META = {
     critical: { color: '#dc2626', bg: '#fef2f2', icon: '🚨', label: 'CRITICAL' },
@@ -640,6 +803,21 @@ function ParentChildRisk({ theme: C, child }) {
     medium:   { color: '#eab308', bg: '#fefce8', icon: '📊',  label: 'MEDIUM' },
     low:      { color: '#16a34a', bg: '#f0fdf4', icon: '✅',  label: 'LOW' },
   };
+
+  if (!risk) {
+    return (
+      <div style={{padding:'8px 20px 20px'}}>
+        <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:4}}>🚨 {t('child_risk')}</div>
+        <div style={{fontSize:12,color:C.text2,marginBottom:16}}>AI early-warning indicators for {child?.name}</div>
+        <div style={{textAlign:'center',padding:60,color:C.text3}}>
+          <div style={{fontSize:32,marginBottom:12}}>⏳</div>
+          <div style={{fontSize:14,color:C.text}}>Loading risk assessment…</div>
+          <div style={{fontSize:12,marginTop:6}}>Powered by the at-risk early-warning system.</div>
+        </div>
+      </div>
+    );
+  }
+
   const meta  = LEVEL_META[risk.level] || LEVEL_META.low;
   const fname = child?.name?.split(' ')[0] || 'Your child';
 

@@ -594,6 +594,7 @@ class DataStore {
       // Bulk-load all user-relevant data from the backend
       try {
         const initData = await api.init();
+        this._lastInitData = initData;
         this._loadFromAPI(initData);
       } catch(e){ console.warn('[dataStore] init load failed:', e.message); }
       const u = result.user;
@@ -608,13 +609,26 @@ class DataStore {
         const s = this.getStudent(u.id) || this.students.find(x=>x.email?.startsWith(u.username));
         if (s) photoUrl = this.getPhotoUrl(s);
       }
+      // Capture init data that needs to live on the user object
+      const initData2 = this._lastInitData || {};
+      // studentId from the init endpoint is the real student_id string (e.g. 'S019'),
+      // NOT the numeric DB user id. Use it for correct store.getStudent() lookup.
+      const resolvedStudentId = u.role === 'student'
+        ? (initData2.studentId || String(u.id) || '')
+        : '';
+      // doctorId: prefer the doctor_id from init data (e.g. 'D001'), fallback to user id
+      const resolvedDoctorId = u.role === 'doctor'
+        ? (initData2.doctorId || String(u.id) || '')
+        : '';
       return {
         username: u.username, name: u.name||u.username, role: u.role,
         email: u.email||'', id: u.id||'ADM',
-        studentId: u.role==='student' ? (u.id||'') : '',
-        doctorId:  u.role==='doctor'  ? (u.id||'') : '',
+        studentId: resolvedStudentId,
+        doctorId:  resolvedDoctorId,
         initials:  nameParts.slice(0,2).map(w=>w[0]?.toUpperCase()||'').join(''),
         photoUrl,
+        // Parent multi-child support
+        linkedStudentIds: u.role==='parent' ? (initData2.linkedStudentIds || []) : undefined,
       };
     } catch(apiErr){
       // Backend unreachable — fall back to local credential check
@@ -1019,10 +1033,12 @@ class DataStore {
 
     const overallRate = this.computeAttendanceRate(studentId);
 
-    // Remove stale attendance alerts for this student so outdated ones don't linger
+    // Only remove UNREAD attendance alerts — keep read (dismissed) ones so they
+    // aren't recreated on next login. Read status is now persisted in the DB
+    // via markAlertRead → PUT /api/notifications/{id}/read.
     if (this.systemAlerts) {
       this.systemAlerts = this.systemAlerts.filter(a =>
-        !(a.studentId === studentId && a.alertKind === 'attendance')
+        !(a.studentId === studentId && a.alertKind === 'attendance' && !a.read)
       );
     }
 
@@ -1036,25 +1052,27 @@ class DataStore {
         attended = Object.values(recs).filter(r => r.status === 'present' || r.status === 'excused').length;
         pct = Math.round((attended / totalWeeks) * 100);
       } else {
-        // No real records — use computed overall rate
         pct = Math.round(overallRate);
         attended = Math.round(pct / 100 * totalWeeks);
       }
 
-      // If attendance is fine, clear any stale dismissal for this course
-      if (pct >= WARN_PCT) {
-        this.clearAttendanceDismissal(studentId, course.id);
-        return;
-      }
+      // No alert needed
+      if (pct >= WARN_PCT) return;
 
-      // If the student already dismissed this alert at the same (or higher) pct, skip it
+      // Skip if student already has a READ (dismissed) alert for this course at the same
+      // or better pct — don't nag again for the same situation.
+      const existingRead = (this.systemAlerts || []).find(a =>
+        a.studentId === studentId && a.courseId === course.id &&
+        a.alertKind === 'attendance' && a.read && (a.pct ?? 0) >= pct
+      );
+      if (existingRead) return;
+
+      // Also check the localStorage fallback dismissal (for backwards compat)
       if (dismissed.has(`${course.id}:${pct}`)) return;
-      // Also skip if they dismissed at a lower pct (meaning it was worse before and they dismissed)
       const courseKey = [...dismissed].find(k => k.startsWith(`${course.id}:`));
       if (courseKey) {
         const dismissedPct = parseInt(courseKey.split(':')[1], 10);
-        if (pct >= dismissedPct) return; // same or better than when dismissed → skip
-        // Attendance got worse → allow re-alert by clearing old dismissal
+        if (pct >= dismissedPct) return;
         dismissed.delete(courseKey);
         this._saveAttDismissed(studentId, dismissed);
       }
@@ -1114,12 +1132,17 @@ class DataStore {
   markAlertRead(id){
     if(!this.systemAlerts) this.systemAlerts=[];
     const a=this.systemAlerts.find(x=>x.id===id);
-    if(a){a.read=true; this._persist(); return true;} return false;
+    if(a){
+      a.read=true; this._persist();
+      this._callAPI(()=>api.markNotifRead(id)); // persist read status to DB
+      return true;
+    } return false;
   }
 
   markAllAlertsRead(){
     if(!this.systemAlerts) this.systemAlerts=[];
     this.systemAlerts.forEach(a=>a.read=true); this._persist();
+    this._callAPI(()=>api.markAllNotifsRead()); // persist to DB
   }
 
   clearAlert(id){

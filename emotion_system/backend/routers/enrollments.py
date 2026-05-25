@@ -16,6 +16,38 @@ async def get_enrollments(payload: dict = Depends(require_role("doctor","admin")
     return result
 
 
+@router.get("/students/{course_code}")
+async def get_course_students(
+    course_code: str,
+    payload: dict = Depends(require_role("doctor", "admin")),
+    db=Depends(get_db),
+):
+    """Return enrolled and available students for a given course_code."""
+    enrolled_rows = await db.fetch(
+        """SELECT s.student_id, u.full_name AS name, u.photo
+           FROM course_enrollments ce
+           JOIN students s ON s.student_id = ce.student_id
+           JOIN users u ON u.id = s.user_id
+           WHERE ce.course_id = $1
+           ORDER BY u.full_name""",
+        course_code,
+    )
+    available_rows = await db.fetch(
+        """SELECT s.student_id, u.full_name AS name, u.photo
+           FROM students s
+           JOIN users u ON u.id = s.user_id
+           WHERE s.student_id NOT IN (
+               SELECT student_id FROM course_enrollments WHERE course_id = $1
+           )
+           ORDER BY u.full_name""",
+        course_code,
+    )
+    return {
+        "enrolled":   [dict(r) for r in enrolled_rows],
+        "available":  [dict(r) for r in available_rows],
+    }
+
+
 @router.post("/bulk")
 async def bulk_sync(data: dict, payload: dict = Depends(require_role("doctor","admin")), db=Depends(get_db)):
     """Sync the full enrollment map from the dataStore."""

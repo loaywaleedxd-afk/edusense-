@@ -2,23 +2,43 @@ version: "3.9"
 
 services:
 
+  # ── PostgreSQL Database ──────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-edusense}
+      POSTGRES_USER:     ${POSTGRES_USER:-edusense}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-edusense}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+
   # ── FastAPI Backend ──────────────────────────────────────────────────────────
   backend:
     build:
       context: ./emotion_system/backend
       dockerfile: Dockerfile
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
-      - DB_PATH=/data/emotion_system.db
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-edusense}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-edusense}
       - JWT_SECRET=${JWT_SECRET}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://${DOMAIN}}
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASS=${SMTP_PASS:-}
     volumes:
-      - db_data:/data                          # persistent SQLite storage
-      - ./emotion_system/student_photos:/app/../student_photos:ro
+      - ./emotion_system/student_photos:/app/student_photos:ro
     labels:
-      - "traefik.enable=false"                 # backend is internal only
+      - "traefik.enable=false"                 # backend is internal; nginx proxies /api/*
     networks:
       - internal
 
@@ -69,7 +89,7 @@ services:
       - traefik_proxy
 
 volumes:
-  db_data:
+  pg_data:
   letsencrypt:
 
 networks:

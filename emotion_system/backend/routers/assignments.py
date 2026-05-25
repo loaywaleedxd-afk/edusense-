@@ -1,7 +1,8 @@
 """Assignments and submissions router."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from database import get_db
 from auth_utils import require_auth, require_role
+from notifier import manager
 
 router = APIRouter()
 
@@ -33,7 +34,7 @@ async def get_assignments(payload: dict = Depends(require_auth), db=Depends(get_
 
 
 @router.post("/")
-async def add_assignment(data: dict, payload: dict = Depends(require_role("doctor", "admin")), db=Depends(get_db)):
+async def add_assignment(data: dict, request: Request, payload: dict = Depends(require_role("doctor", "admin")), db=Depends(get_db)):
     await db.execute(
         """INSERT INTO assignments
            (id, course_id, course_name, doctor_id, title, description, deadline,
@@ -53,6 +54,25 @@ async def add_assignment(data: dict, payload: dict = Depends(require_role("docto
         data.get("attachmentName",""), int(data.get("attachmentSize",0)),
         data.get("attachmentData"), data.get("createdAt","")
     )
+    # Push to all enrolled students in real-time
+    course_id = data.get("courseId","")
+    if course_id:
+        rows = await db.fetch(
+            """SELECT s.user_id FROM students s
+               JOIN course_enrollments ce ON ce.student_id = s.student_id
+               WHERE ce.course_id = $1""",
+            course_id,
+        )
+        notification = {
+            "type": "assignment",
+            "title": f"📋 New Assignment — {data.get('courseName', '')}",
+            "message": data.get("title", "New assignment posted"),
+            "icon": "📋",
+            "color": "#f59e0b",
+        }
+        for row in rows:
+            if row["user_id"]:
+                await manager.notify_user(str(row["user_id"]), notification)
     return {"ok": True}
 
 

@@ -11,6 +11,7 @@ import EmotionBarsWidget from '../components/EmotionBars';
 import ScheduleItem from '../components/ScheduleItem';
 import WebcamFeed from '../components/WebcamFeed';
 import store from '../dataStore';
+import api from '../api';
 import { EMOTION_ICONS } from '../theme';
 import GPACalculatorPage from './GPACalculatorPage';
 import TimetablePage from './TimetablePage';
@@ -21,6 +22,9 @@ import DigitalIDPage from './DigitalIDPage';
 import { exportGradesPDF, exportTranscriptPDF, exportPortfolioPDF } from '../utils/pdfExport';
 import FeeHistoryPage from './FeeHistoryPage';
 import { StudentOfficeHours } from './OfficeHoursPage';
+import ProfilePage from './ProfilePage';
+import DirectMessagePage from './DirectMessagePage';
+import CourseRegistrationPage from './CourseRegistrationPage';
 import { useLang } from '../context/LanguageContext';
 import { pushToast } from '../components/NotificationToast';
 import useMobile from '../hooks/useMobile';
@@ -55,6 +59,9 @@ const NAV_BASE = [
   { id:'calendar',      icon:'📅', label:'Academic Calendar' },
   { id:'roadmap',       icon:'🗺️', label:'Graduation Roadmap' },
   { id:'livepoll',      icon:'📊', label:'Live Poll' },
+  { id:'registration',  icon:'🏛️', label:'Course Registration' },
+  { id:'messages',      icon:'💬', label:'Messages' },
+  { id:'profile',       icon:'👤', label:'My Profile' },
 ];
 
 function loadLastSeen(stuId) {
@@ -279,6 +286,24 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
   const [lastSeen, setLastSeen] = useState(() => loadLastSeen(stuId));
   const nav = buildNav(stuId, lastSeen);
 
+  // ── Real-time WebSocket notifications ──────────────────────────────────────
+  useEffect(() => {
+    // Only connect when user.id is a numeric DB id (API login); local-auth IDs like 'S019' are skipped.
+    if (!user?.id || !/^\d+$/.test(String(user.id))) return;
+    const BASE_WS = (import.meta.env.VITE_API_URL || '').replace(/^http/, 'ws') || `ws://${location.host}`;
+    const ws = new WebSocket(`${BASE_WS}/ws/notifications/${user.id}`);
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'connected') return;
+        pushToast({ title: msg.title, message: msg.message, color: msg.color || '#3b82f6' });
+      } catch {}
+    };
+    ws.onerror = () => {}; // suppress console noise on connection failure
+    const ping = setInterval(() => { if (ws.readyState === WebSocket.OPEN) ws.send('ping'); }, 30000);
+    return () => { clearInterval(ping); ws.close(); };
+  }, [user?.id]);
+
   function navigate(id) {
     if (id === '__proctoring') { onOpenProctoring?.(); return; }
     if (id === '__advising')   { onOpenAdvising?.();   return; }
@@ -332,6 +357,9 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
             {page==='calendar'      && <AcademicCalendarPage theme={C} role="student"/>}
             {page==='roadmap'       && <GraduationRoadmapPage theme={C} stu={stu}/>}
             {page==='livepoll'      && <StudentLivePoll theme={C}/>}
+            {page==='registration'  && <CourseRegistrationPage theme={C}/>}
+            {page==='messages'      && <DirectMessagePage theme={C} user={user}/>}
+            {page==='profile'       && <ProfilePage theme={C} user={user}/>}
           </AnimatedPage>
         </div>
       </div>
@@ -340,8 +368,7 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
 }
 
 /* ══ DASHBOARD ══ */
-function calcStreak(studentId) {
-  const records = store.getStudentAttendance(studentId);
+function calcStreakFromRecs(records) {
   const weeks = [...new Set(
     records.filter(r => r.status === 'present' || r.status === 'excused').map(r => Number(r.week))
   )].sort((a, b) => a - b);
@@ -355,11 +382,28 @@ function calcStreak(studentId) {
 }
 
 function StudentDashboard({ theme: C, user, stu }) {
-  const myCoursesEnrolled = store.getStudentCourses(stu.id);
-  const streak = calcStreak(stu.id);
+  if (!stu) return <div style={{ padding: 40, textAlign: 'center', color: C?.text2 }}>Loading student data…</div>;
+  const [myCoursesEnrolled, setMyCoursesEnrolled] = useState([]);
+  const [attRecs, setAttRecs] = useState([]);
+  const [gradeRows, setGradeRows] = useState([]);
+
+  useEffect(() => {
+    api.getAvailableCourses()
+      .then(courses => setMyCoursesEnrolled(courses.filter(c => c.my_status === 'enrolled')))
+      .catch(() => {});
+    api.getStudentAttendance(stu.id).then(setAttRecs).catch(() => {});
+    api.getStudentGrades(stu.id).then(rows => setGradeRows(rows.map(r => ({ grade: r.grade })))).catch(() => {});
+  }, [stu.id]);
+
+  const streak = calcStreakFromRecs(attRecs);
   const streakMsg = streak >= 10 ? 'Incredible! Keep it up! 🏆' : streak >= 5 ? 'Great consistency!' : streak >= 2 ? 'Keep going!' : 'Start your streak today!';
-  // Use real attendance records instead of the static stu.attendanceRate (which defaults to 0)
-  const attendanceRate = store.computeAttendanceRate(stu.id);
+  const presentCount = attRecs.filter(r => r.status === 'present' || r.status === 'excused').length;
+  const attendanceRate = attRecs.length > 0 ? Math.round(presentCount / attRecs.length * 100) : (stu.attendanceRate || 0);
+
+  const gradeVals = gradeRows.map(r => r.grade);
+  const avgGrade = gradeVals.length ? +(gradeVals.reduce((a,b)=>a+b,0)/gradeVals.length).toFixed(1) : null;
+  const standing = avgGrade == null ? 'No Grades Yet' : avgGrade >= 87.5 ? 'Honors' : avgGrade >= 70 ? 'Good Standing' : avgGrade >= 50 ? 'Academic Warning' : 'Academic Probation';
+  const semGPA = avgGrade !== null ? (avgGrade / 100 * 4).toFixed(2) : (stu.gpa || '—');
 
   const { t: dashT, isRTL: dashRTL } = useLang();
   const isMobile = useMobile();
@@ -383,17 +427,16 @@ function StudentDashboard({ theme: C, user, stu }) {
       {/* Welcome header */}
       <div style={{ background:C.card, borderRadius:16, border:`1px solid ${C.border}`, padding:'16px 20px', display:'flex', alignItems:'center', gap:16, marginBottom:12, flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
         <div style={{ width: isMobile ? 60 : 90, height: isMobile ? 60 : 90, borderRadius:'50%', background:stu.color||C.blue, display:'flex', alignItems:'center', justifyContent:'center', fontSize: isMobile ? 28 : 40, flexShrink:0, overflow:'hidden', border:`3px solid ${stu.color||C.blue}` }}>
-          {(stu.capturedPhoto||store.getPhotoUrl(stu))
-            ? <img src={stu.capturedPhoto||store.getPhotoUrl(stu)} alt={stu.name} onError={e=>{e.target.style.display='none';e.target.nextSibling.style.display='flex';}} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+          {stu.capturedPhoto
+            ? <img src={stu.capturedPhoto} alt={stu.name} onError={e=>{e.target.style.display='none';e.target.nextSibling.style.display='flex';}} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
             : null}
-          <span style={{display:(stu.capturedPhoto||store.getPhotoUrl(stu))?'none':'flex'}}>{stu.emoji||'👤'}</span>
+          <span style={{display:stu.capturedPhoto?'none':'flex'}}>{stu.emoji||'👤'}</span>
         </div>
         <div style={{flex:1}}>
           <div style={{ fontSize:22, fontWeight:700, color:C.text }}>{dashT('welcome_back')}, {user.name.split(' ')[0]} 👋</div>
           <div style={{ fontSize:12, color:C.text2, marginTop:2 }}>{stu.id} · {stu.dept} · Year {stu.year}</div>
           <div style={{ fontSize:11, color:C.text3 }}>Your academic overview for this semester</div>
           {(() => {
-            const standing = store.getAcademicStanding(stu.id);
             const cfg = {
               'Honors':            { bg:'#10b98122', color:'#10b981', icon:'🏆' },
               'Good Standing':     { bg:'#3b82f622', color:'#3b82f6', icon:'✅' },
@@ -421,9 +464,9 @@ function StudentDashboard({ theme: C, user, stu }) {
       {/* Stat cards */}
       <div style={{ display:'flex', gap:12, marginBottom:12, flexWrap:'wrap' }}>
         <StatCard theme={C} label="Attendance Rate"  value={`${attendanceRate}%`} sub={`${Math.round(attendanceRate/100*16)} of 16 lectures`} icon="✅" accent="green"/>
-        <StatCard theme={C} label="Avg Engagement"   value={`${stu.engagement}%`}     sub="Above class average" icon="🧠" accent="blue"/>
-        <StatCard theme={C} label="Avg Attention"    value={`${stu.attentionScore}%`}  sub="Good focus level"  icon="👁️" accent="purple"/>
-        <StatCard theme={C} label="GPA"              value={stu.gpa}                  sub="Current semester"  icon="📈" accent="amber"/>
+        <StatCard theme={C} label="Avg Engagement"   value={`${stu.engagement||0}%`}     sub="Above class average" icon="🧠" accent="blue"/>
+        <StatCard theme={C} label="Avg Attention"    value={`${stu.attentionScore||0}%`}  sub="Good focus level"  icon="👁️" accent="purple"/>
+        <StatCard theme={C} label="GPA"              value={semGPA}                  sub="Current semester"  icon="📈" accent="amber"/>
       </div>
 
       {/* Charts row */}
@@ -475,8 +518,9 @@ function StudentDashboard({ theme: C, user, stu }) {
 /* ══ ATTENDANCE ══ */
 function StudentAttendance({ theme: C, stu, pendingQR, onClearPendingQR }) {
   const { t, isRTL } = useLang();
-  const myCourses  = store.getStudentCourses(stu.id);
-  const attRecs    = store.getStudentAttendance(stu.id);
+  const [myCourses, setMyCourses] = useState([]);
+  const [attRecs, setAttRecs]     = useState([]);
+  const [myExcuses, setMyExcuses] = useState([]);
   const [tab, setTab]           = useState('records');
   const [qrCode, setQrCode]     = useState('');
   const [qrMsg, setQrMsg]       = useState('');
@@ -484,51 +528,56 @@ function StudentAttendance({ theme: C, stu, pendingQR, onClearPendingQR }) {
   const [excuseSent, setExcuseSent] = useState(false);
   const [, refresh] = useState(0);
 
-  // Compute attendance rate dynamically from real records if they exist,
-  // otherwise fall back to the static stu.attendanceRate field
-  const computedRate = (() => {
-    let totalWeeks = 0, presentWeeks = 0;
-    for (const course of myCourses) {
-      const recs = Object.values(store.getStudentCourseAttendance(stu.id, course.id));
-      if (recs.length > 0) {
-        totalWeeks += 16;
-        presentWeeks += recs.filter(r => r.status === 'present' || r.status === 'excused').length;
-      }
-    }
-    return totalWeeks > 0 ? Math.round(presentWeeks / totalWeeks * 100) : (stu.attendanceRate || 0);
+  useEffect(() => {
+    api.getAvailableCourses()
+      .then(courses => {
+        const enrolled = courses
+          .filter(c => c.my_status === 'enrolled')
+          .map(c => ({ id: c.course_code, name: c.course_name, code: c.course_code, color: c.color }));
+        setMyCourses(enrolled);
+        if (enrolled.length > 0) setExcuseForm(f => f.courseId ? f : {...f, courseId: enrolled[0].id});
+      })
+      .catch(() => {});
+    api.getStudentAttendance(stu.id)
+      .then(setAttRecs)
+      .catch(() => {});
+    api.getStudentExcuses(stu.id)
+      .then(rows => setMyExcuses(rows.map(r => ({
+        id: r.id, courseId: r.course_code, week: r.week, reason: r.reason,
+        status: r.status, createdAt: r.created_at,
+      }))))
+      .catch(() => {});
+  }, [stu.id]);
+
+  // Compute attendance rate from real DB records
+  const rate = (() => {
+    if (!attRecs.length) return stu.attendanceRate || 0;
+    const present = attRecs.filter(r => r.status === 'present' || r.status === 'excused').length;
+    const total   = attRecs.length;
+    return total > 0 ? Math.round(present / total * 100) : (stu.attendanceRate || 0);
   })();
-  const rate = computedRate;
 
   // Auto-check-in from QR scan URL (cross-device)
   useEffect(() => {
     if (!pendingQR) return;
     setTab('qr');
-    try {
-      const { courseId, week, createdAt } = pendingQR;
-      const ageMin = (Date.now() - createdAt) / 60000;
-      if (ageMin > 90) {
-        setQrMsg('⚠️ QR code expired. Ask your lecturer to regenerate it.');
-      } else {
-        store.markAttendance(courseId, stu.id, 1.0, 'qr', week);
-        setQrMsg(`✅ Checked in for Week ${week}!`);
-        refresh(n => n + 1);
-      }
-    } catch(e) {
-      setQrMsg('⚠️ Invalid QR code.');
-    }
+    api.useQR({ token: pendingQR.token || '', studentId: stu.id })
+      .then(res => {
+        setQrMsg(`✅ Checked in for Week ${res.week}!`);
+        api.getStudentAttendance(stu.id).then(setAttRecs).catch(() => {});
+      })
+      .catch(err => setQrMsg(`⚠️ ${err.message || 'Invalid QR code.'}`));
     onClearPendingQR?.();
   }, [pendingQR]);
 
+  // Build per-course attendance summary from DB records
   const courseRows = myCourses.map((course) => {
-    const recs     = store.getStudentCourseAttendance(stu.id, course.id);
-    const recorded = Object.keys(recs).length;
-    // Use real records if they exist; otherwise derive directly from overall rate (no per-course offset)
-    const weeks    = recorded > 0
-      ? Object.values(recs).filter(r => r.status === 'present' || r.status === 'excused').length
-      : Math.round(rate / 100 * 16);
+    const courseRecs = attRecs.filter(r => r.course_code === course.code || r.lecture_id === course.code);
+    const weeks = courseRecs.filter(r => r.status === 'present' || r.status === 'excused').length;
     return {
       course: `${course.name} (${course.code})`,
-      weeks: `${weeks} / 16`, time: course.time,
+      weeks: `${weeks} / 16`,
+      time: '',
       method: weeks > 0 ? '👤 Face Recognition' : '—',
       status: weeks >= 12 ? '✅ Good Standing' : weeks >= 8 ? '⚠️ At Risk' : '❌ Low Attendance',
     };
@@ -538,41 +587,49 @@ function StudentAttendance({ theme: C, stu, pendingQR, onClearPendingQR }) {
   const recRows = attRecs
     .filter(rec => rec.status !== 'absent')
     .map(rec => ({
-      course: store.getCourse(rec.courseId)?.name || rec.courseId,
-      date: rec.date, week: `Week ${rec.week}`, time: rec.time,
+      course: rec.course_name || rec.course_code || rec.lecture_id,
+      date: rec.date || (rec.check_in_time ? rec.check_in_time.slice(0,10) : ''),
+      week: `Week ${rec.week}`, time: rec.time || '',
       method: rec.method,
       status: rec.status === 'excused' ? '📄 Excused' : '✅ Present',
     }));
 
-  const useRecords = recRows.length > 0;
-
-  function checkIn() {
+  async function checkIn() {
     const code = qrCode.trim().toUpperCase();
-    if(!code){setQrMsg('⚠️ Enter the code shown by your lecturer.');return;}
-    const result = store.useQRToken(code, stu.id);
-    if(result.ok) {
-      setQrMsg(`✅ Checked in successfully for Week ${result.week}!`);
-      setQrCode(''); refresh(n=>n+1);
-    } else {
-      setQrMsg(`❌ ${result.error}`);
+    if (!code) { setQrMsg('⚠️ Enter the code shown by your lecturer.'); return; }
+    try {
+      const res = await api.useQR({ token: code, studentId: stu.id });
+      setQrMsg(`✅ Checked in successfully for Week ${res.week}!`);
+      setQrCode('');
+      api.getStudentAttendance(stu.id).then(setAttRecs).catch(() => {});
+    } catch(err) {
+      setQrMsg(`❌ ${err.message || 'Invalid code'}`);
     }
   }
 
-  function submitExcuse() {
-    if(!excuseForm.courseId){setQrMsg('Select a course.');return;}
-    if(!excuseForm.reason.trim()){setQrMsg('Please enter a reason.');return;}
-    const course = store.getCourse(excuseForm.courseId);
-    store.submitExcuse({
-      studentId: stu.id, studentName: stu.name,
-      courseId: excuseForm.courseId, courseName: course?.name||'',
-      week: excuseForm.week, reason: excuseForm.reason,
-    });
-    setExcuseSent(true);
-    setTimeout(()=>setExcuseSent(false), 3000);
-    setExcuseForm({courseId:'', week:1, reason:''});
+  async function submitExcuse() {
+    if (!excuseForm.courseId) { setQrMsg('Select a course.'); return; }
+    if (!excuseForm.reason.trim()) { setQrMsg('Please enter a reason.'); return; }
+    try {
+      await api.submitExcuse({
+        student_id: stu.id,
+        course_code: excuseForm.courseId,
+        week: excuseForm.week,
+        reason: excuseForm.reason,
+      });
+      setExcuseSent(true);
+      setTimeout(() => setExcuseSent(false), 3000);
+      setExcuseForm({ courseId: myCourses[0]?.id || '', week: 1, reason: '' });
+      api.getStudentExcuses(stu.id)
+        .then(rows => setMyExcuses(rows.map(r => ({
+          id: r.id, courseId: r.course_code, week: r.week, reason: r.reason,
+          status: r.status, createdAt: r.created_at,
+        }))))
+        .catch(() => {});
+    } catch(err) {
+      setQrMsg(`❌ ${err.message}`);
+    }
   }
-
-  const myExcuses = store.getStudentExcuses(stu.id);
 
   const TAB = (id, label) => (
     <button onClick={()=>setTab(id)} style={{padding:'8px 18px',fontSize:12,fontWeight:700,cursor:'pointer',border:'none',borderRadius:8,background:tab===id?C.blue3:C.bg3,color:tab===id?'#fff':C.text2}}>
@@ -763,7 +820,22 @@ function StudentEmotions({ theme: C, stu }) {
 /* ══ SCHEDULE ══ */
 function StudentSchedule({ theme: C, stu }) {
   const { t, isRTL } = useLang();
-  const myCourses = store.getStudentCourses(stu.id);
+  const [myCourses, setMyCourses] = useState([]);
+
+  useEffect(() => {
+    api.getAvailableCourses()
+      .then(courses => setMyCourses(
+        courses
+          .filter(c => c.my_status === 'enrolled')
+          .map(c => ({
+            id: c.course_code, name: c.course_name, code: c.course_code,
+            color: c.color, room: c.room || '—',
+            doctorName: c.doctor_name || '—', semester: c.semester || '',
+            daysLabel: c.days_label || '', scheduledAt: c.scheduled_at || '',
+          }))
+      ))
+      .catch(() => {});
+  }, []);
 
   if (!myCourses.length) {
     return (
@@ -779,23 +851,20 @@ function StudentSchedule({ theme: C, stu }) {
       <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:12 }}>📅 {t('page_schedule')}</div>
       <Card theme={C} title={`My Courses (${myCourses.length})`}>
         <div style={{ padding:'4px 14px 14px', display:'flex', flexDirection:'column', gap:8 }}>
-          {myCourses.map((course,i)=>{
-            const lec = store.lectures.find(l=>l.code===course.code) || store.lectures[i%store.lectures.length];
-            return (
-              <div key={i} style={{ background:C.bg3, borderRadius:10, display:'flex', overflow:'hidden' }}>
-                <div style={{ width:5, background:course.color, flexShrink:0 }}/>
-                <div style={{ padding:'12px 14px', flex:1 }}>
-                  <div style={{ fontSize:10, color:C.text3 }}>{course.time} · {course.duration} min{course.daysLabel ? ` · ${course.daysLabel}` : ''}</div>
-                  <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{course.name}</div>
-                  <div style={{ fontSize:10, color:C.text2 }}>{course.room} · {course.code} · {course.doctorName}</div>
-                  <div style={{ fontSize:10, color:C.text3 }}>{course.semester}</div>
-                </div>
-                <div style={{ padding:'12px 14px', display:'flex', alignItems:'center' }}>
-                  <Badge text={lec?.status ? lec.status.replace(/^\w/,c=>c.toUpperCase()) : 'Scheduled'} color={{active:'green',scheduled:'amber',ended:'gray'}[lec?.status]||'amber'} isDark/>
-                </div>
+          {myCourses.map((course,i)=>(
+            <div key={i} style={{ background:C.bg3, borderRadius:10, display:'flex', overflow:'hidden' }}>
+              <div style={{ width:5, background:course.color||C.blue, flexShrink:0 }}/>
+              <div style={{ padding:'12px 14px', flex:1 }}>
+                <div style={{ fontSize:10, color:C.text3 }}>{course.scheduledAt}{course.daysLabel ? ` · ${course.daysLabel}` : ''}</div>
+                <div style={{ fontSize:13, fontWeight:700, color:C.text }}>{course.name}</div>
+                <div style={{ fontSize:10, color:C.text2 }}>{course.room} · {course.code} · {course.doctorName}</div>
+                <div style={{ fontSize:10, color:C.text3 }}>{course.semester}</div>
               </div>
-            );
-          })}
+              <div style={{ padding:'12px 14px', display:'flex', alignItems:'center' }}>
+                <Badge text="Scheduled" color="amber" isDark/>
+              </div>
+            </div>
+          ))}
         </div>
       </Card>
     </div>
@@ -805,27 +874,37 @@ function StudentSchedule({ theme: C, stu }) {
 /* ══ PERFORMANCE ══ */
 function StudentPerformance({ theme: C, stu }) {
   const { t, isRTL } = useLang();
-  const myCourses = store.getStudentCourses(stu.id);
-  const results   = store.getStudentResults(stu.id);
-  const idHash    = stu.id.split('').reduce((a,c)=>a+c.charCodeAt(0),0);
-  const overallRate = store.computeAttendanceRate(stu.id);
+  const [myCourses, setMyCourses] = useState([]);
+  const [gradeRows, setGradeRows] = useState([]);
+  const [attRecs,   setAttRecs]   = useState([]);
 
-  const gradeEntries = Object.entries(results);
-  const passed = gradeEntries.filter(([,v])=>v.grade>=50).length;
+  useEffect(() => {
+    api.getAvailableCourses()
+      .then(courses => setMyCourses(
+        courses.filter(c => c.my_status === 'enrolled')
+          .map(c => ({ id: c.course_code, name: c.course_name, code: c.course_code }))
+      )).catch(() => {});
+    api.getStudentGrades(stu.id)
+      .then(rows => setGradeRows(rows.map(r => ({ courseCode: r.course_code, grade: r.grade }))))
+      .catch(() => {});
+    api.getStudentAttendance(stu.id).then(setAttRecs).catch(() => {});
+  }, [stu.id]);
 
-  const rows = myCourses.map((course, i) => {
-    const rec = results[course.id];
-    const seed = (idHash + i*17) % 100;
-    // Use real per-course records if available, else vary overallRate slightly per course
-    const courseRecs = Object.values(store.getStudentCourseAttendance(stu.id, course.id));
-    const courseRate = courseRecs.length > 0
-      ? Math.round(courseRecs.filter(r=>r.status==='present'||r.status==='excused').length / 16 * 100)
-      : Math.min(100, Math.max(0, overallRate + ((seed%20)-10)));
-    const att  = `${courseRate}%`;
-    const eng  = `${Math.min(100, Math.max(30, stu.engagement     + ((seed*3+7)%30)-15))}%`;
-    const atn  = `${Math.min(100, Math.max(30, stu.attentionScore + ((seed*7+3)%28)-14))}%`;
-    const grade = rec ? `${rec.grade}% (${letterGrade(rec.grade)})` : '—';
-    return { course: `${course.name} (${course.code})`, attendance: att, engagement: eng, attention: atn, grade };
+  const gradeMap = Object.fromEntries(gradeRows.map(r => [r.courseCode, r.grade]));
+  const passed = gradeRows.filter(r => r.grade >= 50).length;
+
+  const rows = myCourses.map((course) => {
+    const grade = gradeMap[course.code];
+    const courseRecs = attRecs.filter(r => r.course_code === course.code);
+    const present = courseRecs.filter(r => r.status === 'present' || r.status === 'excused').length;
+    const courseRate = courseRecs.length > 0 ? Math.round(present / courseRecs.length * 100) : (stu.attendanceRate || 0);
+    return {
+      course: `${course.name} (${course.code})`,
+      attendance: `${courseRate}%`,
+      engagement: `${stu.engagement || 0}%`,
+      attention: `${stu.attentionScore || 0}%`,
+      grade: grade != null ? `${grade}% (${letterGrade(grade)})` : '—',
+    };
   });
 
   return (
@@ -833,9 +912,9 @@ function StudentPerformance({ theme: C, stu }) {
       <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:12 }}>📈 {t('page_performance')}</div>
       <div style={{ display:'flex', gap:12, marginBottom:12, flexWrap:'wrap' }}>
         <StatCard theme={C} label="GPA"              value={stu.gpa||'—'}          sub="Current semester"           icon="📈" accent="blue"/>
-        <StatCard theme={C} label="Avg Engagement"   value={`${stu.engagement}%`}  sub="In-class average"           icon="🧠" accent="green"/>
-        <StatCard theme={C} label="Courses Graded"   value={`${passed}/${gradeEntries.length||myCourses.length}`} sub="This semester" icon="🎯" accent="purple"/>
-        <StatCard theme={C} label="Attention Score"  value={`${stu.attentionScore}%`} sub="Avg attention level"    icon="👁️" accent="amber"/>
+        <StatCard theme={C} label="Avg Engagement"   value={`${stu.engagement||0}%`}  sub="In-class average"        icon="🧠" accent="green"/>
+        <StatCard theme={C} label="Courses Graded"   value={`${passed}/${gradeRows.length||myCourses.length}`} sub="This semester" icon="🎯" accent="purple"/>
+        <StatCard theme={C} label="Attention Score"  value={`${stu.attentionScore||0}%`} sub="Avg attention level"  icon="👁️" accent="amber"/>
       </div>
       <Card theme={C} title="Performance per Course">
         <div style={{ padding:'4px 12px 12px' }}>
@@ -853,8 +932,20 @@ function StudentPerformance({ theme: C, stu }) {
 /* ══ GRADES ══ */
 function StudentGrades({ theme: C, stu }) {
   const { t, isRTL } = useLang();
-  const feeStatus = store.getStudentFeeStatus(stu.id);
-  if(!feeStatus.paid) return (
+  const [feeStatus, setFeeStatus] = useState({ paid: true });
+  const [gradeRows, setGradeRows] = useState([]);
+
+  useEffect(() => {
+    api.getFeeStatus(stu.id).then(setFeeStatus).catch(() => {});
+    api.getStudentGrades(stu.id)
+      .then(rows => setGradeRows(rows.map(r => ({
+        courseCode: r.course_code, courseName: r.course_name,
+        grade: r.grade, date: r.created_at,
+      }))))
+      .catch(() => {});
+  }, [stu.id]);
+
+  if (!feeStatus.paid) return (
     <div style={{padding:'8px 20px 20px'}}>
       <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>My Grades</div>
       <div style={{background:C.card,borderRadius:16,border:`1px solid ${C.red}`,padding:40,textAlign:'center'}}>
@@ -865,10 +956,7 @@ function StudentGrades({ theme: C, stu }) {
     </div>
   );
 
-  const results = store.getStudentResults(stu.id);
-  const entries = Object.entries(results);
-
-  if (!entries.length) {
+  if (!gradeRows.length) {
     return (
       <div style={{ padding:'8px 20px 20px', textAlign:'center' }}>
         <div style={{ fontSize:22, fontWeight:700, color:C.text, textAlign:'left', marginBottom:12 }}>📝 My Exam Results</div>
@@ -881,28 +969,20 @@ function StudentGrades({ theme: C, stu }) {
     );
   }
 
-  const grades = entries.map(([,v])=>v.grade);
-  const avg = +(grades.reduce((a,b)=>a+b,0)/grades.length).toFixed(1);
-  const passed = grades.filter(g=>g>=50).length;
-  const highest = Math.max(...grades);
+  const gradeVals = gradeRows.map(r => r.grade);
+  const avg = +(gradeVals.reduce((a,b)=>a+b,0)/gradeVals.length).toFixed(1);
+  const passed = gradeVals.filter(g=>g>=50).length;
+  const highest = Math.max(...gradeVals);
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
         <div style={{ fontSize:22, fontWeight:700, color:C.text }}>📝 {t('page_grades')}</div>
-        <button onClick={async () => exportGradesPDF({
-            studentName: stu.name, studentId: stu.id,
-            dept: stu.dept, year: stu.year, email: stu.email,
-            results, courses: store.courses,
-          })}
-          style={{ background:C.blue3, border:'none', borderRadius:8, padding:'8px 16px', fontSize:12, fontWeight:700, color:'#fff', cursor:'pointer' }}>
-          📄 {t('export_pdf')}
-        </button>
       </div>
 
       {/* Mini stats */}
       <div style={{ display:'flex', gap:12, marginBottom:16 }}>
-        {[[t('subjects_graded'),grades.length,C.blue],[t('average'),`${avg}%`,C.amber],[t('passed'),passed,C.green],[t('highest'),`${highest}%`,C.purple]].map(([lbl,val,col],i)=>(
+        {[[t('subjects_graded'),gradeVals.length,C.blue],[t('average'),`${avg}%`,C.amber],[t('passed'),passed,C.green],[t('highest'),`${highest}%`,C.purple]].map(([lbl,val,col],i)=>(
           <div key={i} style={{ flex:1, background:C.card, borderRadius:12, border:`1px solid ${C.border}`, padding:'14px 12px', textAlign:'center' }}>
             <div style={{ fontSize:24, fontWeight:700, color:col }}>{val}</div>
             <div style={{ fontSize:11, color:C.text2, marginTop:2 }}>{lbl}</div>
@@ -912,16 +992,15 @@ function StudentGrades({ theme: C, stu }) {
 
       {/* Grade cards */}
       <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-        {entries.map(([cid,rec])=>{
+        {gradeRows.map((rec, i)=>{
           const g = rec.grade; const gc = gradeColor(g,C);
-          const course = store.getCourse(cid);
           return (
-            <div key={cid} style={{ background:C.card, borderRadius:12, border:`1px solid ${C.border}`, display:'flex', overflow:'hidden' }}>
+            <div key={i} style={{ background:C.card, borderRadius:12, border:`1px solid ${C.border}`, display:'flex', overflow:'hidden' }}>
               <div style={{ width:6, background:gc, flexShrink:0, borderRadius:'12px 0 0 12px' }}/>
               <div style={{ flex:1, padding:'14px', display:'flex', alignItems:'center' }}>
                 <div style={{ flex:1 }}>
-                  <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{course?.name||cid} ({cid})</div>
-                  {rec.date && <div style={{ fontSize:10, color:C.text3, marginTop:2 }}>Date: {rec.date}</div>}
+                  <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{rec.courseName} ({rec.courseCode})</div>
+                  {rec.date && <div style={{ fontSize:10, color:C.text3, marginTop:2 }}>Date: {new Date(rec.date).toLocaleDateString()}</div>}
                 </div>
                 <div style={{ textAlign:'center', paddingRight:6 }}>
                   <div style={{ fontSize:28, fontWeight:700, color:gc }}>{g}%</div>
@@ -941,11 +1020,20 @@ function StudentGrades({ theme: C, stu }) {
 function StudentPortfolio({ theme: C, user, stu }) {
   const { t, isRTL } = useLang();
   const [capturedSelfie, setCapturedSelfie] = useState(null);
-  const results = store.getStudentResults(stu.id);
-  const entries = Object.entries(results);
-  const grades = entries.map(([,v])=>v.grade);
-  const avgG = grades.length ? +(grades.reduce((a,b)=>a+b,0)/grades.length).toFixed(1) : 0;
-  const portfolioAttRate = store.computeAttendanceRate(stu.id);
+  const [gradeRows, setGradeRows] = useState([]);
+  const [attRecs,   setAttRecs]   = useState([]);
+
+  useEffect(() => {
+    api.getStudentGrades(stu.id)
+      .then(rows => setGradeRows(rows.map(r => ({ courseCode: r.course_code, courseName: r.course_name, grade: r.grade }))))
+      .catch(() => {});
+    api.getStudentAttendance(stu.id).then(setAttRecs).catch(() => {});
+  }, [stu.id]);
+
+  const gradeVals = gradeRows.map(r => r.grade);
+  const avgG = gradeVals.length ? +(gradeVals.reduce((a,b)=>a+b,0)/gradeVals.length).toFixed(1) : 0;
+  const present = attRecs.filter(r => r.status === 'present' || r.status === 'excused').length;
+  const portfolioAttRate = attRecs.length > 0 ? Math.round(present / attRecs.length * 100) : (stu.attendanceRate || 0);
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
@@ -957,8 +1045,8 @@ function StudentPortfolio({ theme: C, user, stu }) {
         {/* Header band */}
         <div style={{ background:C.blue3, borderRadius:12, padding:16, display:'flex', alignItems:'center', gap:16, marginBottom:12 }}>
           <div style={{ width:80, height:80, borderRadius:'50%', background:stu.color||C.blue, display:'flex', alignItems:'center', justifyContent:'center', fontSize:36, flexShrink:0, overflow:'hidden' }}>
-            {(stu.capturedPhoto||store.getPhotoUrl(stu)) ? <img src={stu.capturedPhoto||store.getPhotoUrl(stu)} alt={stu.name} onError={e=>{e.target.style.display='none';e.target.nextSibling.style.display='flex';}} style={{width:'100%',height:'100%',objectFit:'cover'}}/> : null}
-            <span style={{display:(stu.capturedPhoto||store.getPhotoUrl(stu))?'none':'flex'}}>{stu.emoji||'👤'}</span>
+            {stu.capturedPhoto ? <img src={stu.capturedPhoto} alt={stu.name} onError={e=>{e.target.style.display='none';e.target.nextSibling.style.display='flex';}} style={{width:'100%',height:'100%',objectFit:'cover'}}/> : null}
+            <span style={{display:stu.capturedPhoto?'none':'flex'}}>{stu.emoji||'👤'}</span>
           </div>
           <div>
             <div style={{ fontSize:20, fontWeight:700, color:'#fff' }}>{stu.name}</div>
@@ -969,7 +1057,7 @@ function StudentPortfolio({ theme: C, user, stu }) {
 
         {/* Stats */}
         <div style={{ display:'flex', gap:12, marginBottom:12, flexWrap:'wrap' }}>
-          {[['Attendance',`${portfolioAttRate}%`,C.green],['Avg Grade',`${avgG}%`,C.blue],['Engagement',`${stu.engagement}%`,C.amber],['Courses Graded',grades.length,C.purple]].map(([lbl,val,col],i)=>(
+          {[['Attendance',`${portfolioAttRate}%`,C.green],['Avg Grade',`${avgG}%`,C.blue],['Engagement',`${stu.engagement||0}%`,C.amber],['Courses Graded',gradeVals.length,C.purple]].map(([lbl,val,col],i)=>(
             <div key={i} style={{ flex:1, background:C.bg3, borderRadius:10, padding:'12px', textAlign:'center' }}>
               <div style={{ fontSize:22, fontWeight:700, color:col }}>{val}</div>
               <div style={{ fontSize:10, color:C.text2, marginTop:2 }}>{lbl}</div>
@@ -978,15 +1066,14 @@ function StudentPortfolio({ theme: C, user, stu }) {
         </div>
 
         {/* Exam results preview */}
-        {entries.length > 0 && (
+        {gradeRows.length > 0 && (
           <>
             <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:8 }}>Exam Results</div>
-            {entries.slice(0,4).map(([cid,rec])=>{
+            {gradeRows.slice(0,4).map((rec,i)=>{
               const g=rec.grade; const gc=gradeColor(g,C);
-              const course=store.getCourse(cid);
               return (
-                <div key={cid} style={{ background:C.bg3, borderRadius:8, padding:'6px 12px', marginBottom:4, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                  <span style={{ fontSize:11, color:C.text }}>{course?.name||cid}</span>
+                <div key={i} style={{ background:C.bg3, borderRadius:8, padding:'6px 12px', marginBottom:4, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <span style={{ fontSize:11, color:C.text }}>{rec.courseName||rec.courseCode}</span>
                   <span style={{ fontSize:11, fontWeight:700, color:gc }}>{g}% {letterGrade(g)}</span>
                 </div>
               );
@@ -997,14 +1084,17 @@ function StudentPortfolio({ theme: C, user, stu }) {
 
       {/* PDF button */}
       <button
-        onClick={async () => exportPortfolioPDF({
-          stu,
-          courses: store.getStudentCourses(stu.id),
-          results: store.getStudentResults(stu.id),
-          attendanceRate: stu.attendanceRate,
-          gpa: store.calculateSemesterGPA(stu.id) ?? stu.gpa,
-          standing: store.getAcademicStanding(stu.id),
-        })}
+        onClick={async () => {
+          const avgForGPA = gradeVals.length ? avgG : null;
+          exportPortfolioPDF({
+            stu,
+            courses: gradeRows.map(r => ({ id: r.courseCode, name: r.courseName, code: r.courseCode })),
+            results: Object.fromEntries(gradeRows.map(r => [r.courseCode, { grade: r.grade }])),
+            attendanceRate: portfolioAttRate,
+            gpa: avgForGPA !== null ? (avgForGPA / 100 * 4).toFixed(2) : (stu.gpa || '—'),
+            standing: avgForGPA == null ? 'No Grades Yet' : avgForGPA >= 87.5 ? 'Honors' : avgForGPA >= 70 ? 'Good Standing' : avgForGPA >= 50 ? 'Academic Warning' : 'Academic Probation',
+          });
+        }}
         style={{
           width:'100%', height:50, background:C.blue3, border:'none', borderRadius:12,
           fontSize:14, fontWeight:700, color:'#fff', cursor:'pointer', marginBottom:8,
@@ -1049,28 +1139,65 @@ function StudentPortfolio({ theme: C, user, stu }) {
 /* ══ COMMUNITY CHAT ══ */
 function StudentChat({ theme: C, user, stu, isDark }) {
   const { t, isRTL } = useLang();
-  const myCourses = store.getStudentCourses(stu.id);
-  const [selIdx, setSelIdx] = useState(0);
-  const [msg, setMsg] = useState('');
-  const [, forceUpdate] = useState(0);
+  const [myCourses, setMyCourses] = useState([]);
+  const [selIdx, setSelIdx]       = useState(0);
+  const [messages, setMessages]   = useState([]);
+  const [msg, setMsg]             = useState('');
 
-  if(!myCourses.length) {
+  useEffect(() => {
+    api.getAvailableCourses()
+      .then(courses => {
+        const enrolled = courses
+          .filter(c => c.my_status === 'enrolled')
+          .map(c => ({ id: c.course_code, name: c.course_name, code: c.course_code }));
+        setMyCourses(enrolled);
+      })
+      .catch(() => {});
+  }, []);
+
+  const course = myCourses[selIdx];
+
+  const fetchMessages = (courseId) =>
+    api.getMessages(courseId)
+      .then(rows => setMessages(rows.map(r => ({
+        id: r.id, senderId: String(r.sender_id), sender: r.sender_name || String(r.sender_id),
+        text: r.text, timestamp: r.created_at ? new Date(r.created_at).toLocaleTimeString() : '',
+        type: r.sender_role === 'doctor' ? 'announcement' : 'message', reactions: {},
+      }))))
+      .catch(() => {});
+
+  useEffect(() => {
+    if (!course) return;
+    fetchMessages(course.id);
+  }, [course?.id]);
+
+  async function sendMsg() {
+    if (!msg.trim() || !course) return;
+    try {
+      await api.sendMessage({
+        course_code: course.id, sender_id: stu.id,
+        sender_name: stu.name, sender_role: 'student', text: msg,
+      });
+      setMsg('');
+      fetchMessages(course.id);
+    } catch(err) {
+      // fallback: show optimistically
+      setMessages(prev => [...prev, {
+        id: Date.now(), senderId: stu.id, sender: stu.name,
+        text: msg, timestamp: new Date().toLocaleTimeString(),
+        type: 'message', reactions: {},
+      }]);
+      setMsg('');
+    }
+  }
+
+  if (!myCourses.length) {
     return (
       <div style={{ padding:'8px 20px 20px', textAlign:'center', paddingTop:80 }}>
         <div style={{ fontSize:48 }}>💬</div>
         <div style={{ fontSize:14, color:C.text3, marginTop:8 }}>Not enrolled in any courses yet.</div>
       </div>
     );
-  }
-
-  const course = myCourses[selIdx];
-  const messages = store.getMessages(course?.id||'');
-
-  function sendMsg() {
-    if(!msg.trim()||!course) return;
-    store.postMessage(course.id, stu.name, stu.id, 'student', msg, 'message');
-    setMsg('');
-    forceUpdate(n=>n+1);
   }
 
   return (
@@ -1136,7 +1263,7 @@ function ChatMessage({ msg, myId, theme: C, course, onReact }) {
       {/* Reactions */}
       <div style={{ display:'flex', gap:4, marginTop:2 }}>
         {['👍','❤️','😂','🎉'].map(emoji=>(
-          <button key={emoji} onClick={()=>{ store.addReaction(course.id,msg.id,emoji,myId); onReact(); }}
+          <button key={emoji} onClick={()=>{ onReact?.(); }}
             style={{ background:'transparent', border:'none', fontSize:14, cursor:'pointer', padding:'2px 4px', borderRadius:6 }}>{emoji}</button>
         ))}
         {Object.entries(msg.reactions||{}).filter(([,r])=>r.length>0).map(([e,r])=>(
@@ -1150,25 +1277,54 @@ function ChatMessage({ msg, myId, theme: C, course, onReact }) {
 /* ══ APPEALS ══ */
 function StudentAppeals({ theme: C, user, stu }) {
   const { t, isRTL } = useLang();
-  const myCourses = store.getStudentCourses(stu.id);
-  const [complaints, setComplaints] = useState(store.getStudentComplaints(stu.id));
-  const [form, setForm] = useState({ type:'absence_excuse', courseId: myCourses[0]?.id||'', description:'' });
+  const [myCourses, setMyCourses] = useState([]);
+  const [complaints, setComplaints] = useState([]);
+  const [form, setForm] = useState({ type:'absence_excuse', courseId:'', description:'' });
   const [submitted, setSubmitted] = useState(false);
 
-  function submit() {
+  const loadComplaints = () =>
+    api.getComplaints()
+      .then(rows => setComplaints(rows.map(r => ({
+        id: r.id, type: r.type, courseId: r.course_id, courseName: r.course_name,
+        description: r.description, status: r.status,
+        doctorResponse: r.doctor_response, adminResponse: r.admin_response,
+        createdAt: r.created_at,
+      }))))
+      .catch(() => {});
+
+  useEffect(() => {
+    api.getAvailableCourses()
+      .then(courses => {
+        const enrolled = courses
+          .filter(c => c.my_status === 'enrolled')
+          .map(c => ({ id: c.course_code, name: c.course_name, code: c.course_code }));
+        setMyCourses(enrolled);
+        if (enrolled.length > 0) setForm(f => ({...f, courseId: enrolled[0].id}));
+      })
+      .catch(() => {});
+    loadComplaints();
+  }, []);
+
+  async function submit() {
     if (!form.description.trim()) return;
-    const course = store.getCourse(form.courseId);
-    const doctorId = course?.doctorId || '';
-    store.submitComplaint({
-      studentId: stu.id, studentName: stu.name,
-      type: form.type, courseId: form.courseId,
-      courseName: course?.name||'', description: form.description,
-      doctorId,
-    });
-    setComplaints(store.getStudentComplaints(stu.id));
-    setForm({ type:'absence_excuse', courseId: myCourses[0]?.id||'', description:'' });
-    setSubmitted(true);
-    setTimeout(() => setSubmitted(false), 3000);
+    const courseName = myCourses.find(c => c.id === form.courseId)?.name || '';
+    try {
+      await api.upsertComplaint({
+        id: Date.now().toString(),
+        studentId: stu.id, studentName: stu.name,
+        type: form.type, courseId: form.courseId,
+        courseName, description: form.description,
+        status: 'pending', doctorId: '',
+        doctorResponse: '', adminResponse: '',
+        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      });
+      await loadComplaints();
+      setForm({ type:'absence_excuse', courseId: myCourses[0]?.id||'', description:'' });
+      setSubmitted(true);
+      setTimeout(() => setSubmitted(false), 3000);
+    } catch(err) {
+      alert(`Error: ${err.message}`);
+    }
   }
 
   const statusColor = { pending: 'amber', reviewed: 'blue', resolved: 'green' };
@@ -1239,29 +1395,39 @@ function StudentAppeals({ theme: C, user, stu }) {
 /* ══ TRANSCRIPT ══ */
 function StudentTranscript({ theme: C, stu }) {
   const { t, isRTL } = useLang();
-  const myCourses = store.getStudentCourses(stu.id);
-  const results   = store.getStudentResults(stu.id);
-  const reg       = store.getRegistrationStatus();
-  const fee       = store.getStudentFeeStatus(stu.id);
-  const idHash    = stu.id.split('').reduce((a,c)=>a+c.charCodeAt(0),0);
+  const [myCourses, setMyCourses] = useState([]);
+  const [gradeRows, setGradeRows] = useState([]);
+  const [attRecs,   setAttRecs]   = useState([]);
+  const [fee,       setFee]       = useState({ paid: true });
+  const reg = { semester: 'Spring 2025' }; // static fallback
 
-  const overallTranscriptRate = store.computeAttendanceRate(stu.id);
-  const rows = myCourses.map((course, i) => {
-    const rec = results[course.id];
-    const seed = (idHash + i*17) % 100;
-    // Use real per-course records; fall back to computed overall rate ± small offset
-    const courseRecs = Object.values(store.getStudentCourseAttendance(stu.id, course.id));
-    const att = courseRecs.length > 0
-      ? Math.round(courseRecs.filter(r=>r.status==='present'||r.status==='excused').length / 16 * 100)
-      : Math.min(100, Math.max(0, overallTranscriptRate + ((seed%20)-10)));
-    const grade = rec ? rec.grade : null;
+  useEffect(() => {
+    api.getAvailableCourses()
+      .then(courses => setMyCourses(
+        courses.filter(c => c.my_status === 'enrolled')
+          .map(c => ({ id: c.course_code, name: c.course_name, code: c.course_code }))
+      )).catch(() => {});
+    api.getStudentGrades(stu.id)
+      .then(rows => setGradeRows(rows.map(r => ({ courseCode: r.course_code, grade: r.grade, date: r.created_at }))))
+      .catch(() => {});
+    api.getStudentAttendance(stu.id).then(setAttRecs).catch(() => {});
+    api.getFeeStatus(stu.id).then(setFee).catch(() => {});
+  }, [stu.id]);
+
+  const gradeMap = Object.fromEntries(gradeRows.map(r => [r.courseCode, r.grade]));
+
+  const rows = myCourses.map((course) => {
+    const courseRecs = attRecs.filter(r => r.course_code === course.code);
+    const present = courseRecs.filter(r => r.status === 'present' || r.status === 'excused').length;
+    const att = courseRecs.length > 0 ? Math.round(present / courseRecs.length * 100) : (stu.attendanceRate || 0);
+    const grade = gradeMap[course.code] ?? null;
     return { course, att, grade };
   });
 
-  const graded   = rows.filter(r=>r.grade!==null);
-  const calcGPA  = store.calculateSemesterGPA(stu.id);
-  const semGPA   = calcGPA !== null ? calcGPA : (stu.gpa||'—');
-  const standing = store.getAcademicStanding(stu.id);
+  const graded = rows.filter(r => r.grade !== null);
+  const avgGrade = graded.length ? +(graded.reduce((a,r)=>a+r.grade,0)/graded.length).toFixed(2) : null;
+  const semGPA = avgGrade !== null ? (avgGrade / 100 * 4).toFixed(2) : (stu.gpa || '—');
+  const standing = avgGrade == null ? 'No Grades Yet' : avgGrade >= 87.5 ? 'Honors' : avgGrade >= 70 ? 'Good Standing' : avgGrade >= 50 ? 'Academic Warning' : 'Academic Probation';
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
@@ -1333,8 +1499,17 @@ function StudentTranscript({ theme: C, stu }) {
 /* ══ ANNOUNCEMENTS ══ */
 function StudentAnnouncements({ theme: C, stu }) {
   const { t, isRTL } = useLang();
-  const announcements = store.getStudentAnnouncements(stu.id);
-  const TYPE_COLOR = { blue: C.blue, purple: C.purple, green: C.green, amber: C.amber };
+  const [announcements, setAnnouncements] = useState([]);
+
+  useEffect(() => {
+    api.getAnnouncements()
+      .then(rows => setAnnouncements(rows.map(r => ({
+        id: r.id, courseId: r.course_id, courseName: r.course_name,
+        doctorId: r.doctor_id, doctorName: r.doctor_name,
+        title: r.title, body: r.body, createdAt: r.created_at,
+      }))))
+      .catch(() => {});
+  }, []);
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
@@ -1350,12 +1525,11 @@ function StudentAnnouncements({ theme: C, stu }) {
           </div>
         )
         : announcements.map((ann, i) => {
-          const course = store.getCourse(ann.courseId);
           const timeStr = (() => { try { return new Date(ann.createdAt).toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); } catch{ return ''; } })();
           return (
             <div key={i} style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, padding:18, marginBottom:12 }}>
               <div style={{ display:'flex', alignItems:'flex-start', gap:12 }}>
-                <div style={{ width:42, height:42, borderRadius:10, background:course?.color||C.blue, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>📢</div>
+                <div style={{ width:42, height:42, borderRadius:10, background:C.blue, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>📢</div>
                 <div style={{ flex:1 }}>
                   <div style={{ fontSize:14, fontWeight:700, color:C.text, marginBottom:3 }}>{ann.title}</div>
                   <div style={{ fontSize:11, color:C.text3, marginBottom:8 }}>
@@ -1375,8 +1549,19 @@ function StudentAnnouncements({ theme: C, stu }) {
 /* ══ EXAM SCHEDULE ══ */
 function StudentExamSchedule({ theme: C, stu }) {
   const { t, isRTL } = useLang();
-  const exams = store.getStudentExams(stu.id);
+  const [exams, setExams] = useState([]);
   const today = new Date().toISOString().slice(0,10);
+
+  useEffect(() => {
+    api.getExams()
+      .then(rows => setExams(rows.map(r => ({
+        id: r.id, courseId: r.course_id, courseName: r.course_name,
+        type: r.type, date: r.date, time: r.time,
+        room: r.room, duration: r.duration, notes: r.notes,
+        createdAt: r.created_at,
+      }))))
+      .catch(() => {});
+  }, []);
   const TYPE_CFG = {
     midterm: { label:'Midterm', color:'#8b5cf6', bg:'#8b5cf622' },
     final:   { label:'Final',   color:'#ef4444', bg:'#ef444422' },
@@ -1435,8 +1620,14 @@ function StudentExamSchedule({ theme: C, stu }) {
 function StudentDegreeAudit({ theme: C, stu }) {
   const { t, isRTL } = useLang();
   const audit = store.getDegreeAudit(stu.id);
-  const gpa = store.calculateSemesterGPA(stu.id);
-  const standing = store.getAcademicStanding(stu.id);
+  const [gradeRows, setGradeRows] = useState([]);
+  useEffect(() => {
+    api.getStudentGrades(stu.id).then(rows => setGradeRows(rows.map(r => ({ grade: r.grade })))).catch(() => {});
+  }, [stu.id]);
+  const gradeVals = gradeRows.map(r => r.grade);
+  const avgGrade = gradeVals.length ? +(gradeVals.reduce((a,b)=>a+b,0)/gradeVals.length).toFixed(1) : null;
+  const gpa = avgGrade !== null ? parseFloat((avgGrade / 100 * 4).toFixed(2)) : null;
+  const standing = avgGrade == null ? 'No Grades Yet' : avgGrade >= 87.5 ? 'Honors' : avgGrade >= 70 ? 'Good Standing' : avgGrade >= 50 ? 'Academic Warning' : 'Academic Probation';
 
   const STATUS_CFG = {
     completed:  { icon:'✅', color:'#10b981', label:'Completed' },
@@ -1534,9 +1725,26 @@ function StudentDegreeAudit({ theme: C, stu }) {
 /* ══ STUDY RESOURCES ══ */
 function StudentResources({ theme: C, stu }) {
   const { t, isRTL } = useLang();
-  const myCourses = store.getStudentCourses(stu.id);
+  const [resources, setResources] = useState([]);
+  const [myCourses, setMyCourses] = useState([]);
   const [selCourse, setSelCourse] = useState('all');
-  const weeks = Array.from({length:14},(_,i)=>i+1);
+
+  useEffect(() => {
+    Promise.all([api.getResources(), api.getAvailableCourses()])
+      .then(([resList, courseList]) => {
+        setResources(resList.map(r => ({
+          id: r.id, courseId: r.course_id, week: r.week,
+          title: r.title, url: r.url, type: r.type,
+          description: r.description, createdAt: r.created_at,
+        })));
+        setMyCourses(
+          courseList
+            .filter(c => c.my_status === 'enrolled')
+            .map(c => ({ id: c.course_code, name: c.course_name, code: c.course_code, color: c.color }))
+        );
+      })
+      .catch(() => {});
+  }, []);
 
   const TYPE_CFG = {
     link:  { icon:'🔗', label:'Link',  color:'#3b82f6' },
@@ -1545,11 +1753,17 @@ function StudentResources({ theme: C, stu }) {
     note:  { icon:'📝', label:'Note',  color:'#f59e0b' },
   };
 
-  const coursesToShow = selCourse==='all' ? myCourses : myCourses.filter(c=>c.id===selCourse);
+  // Group resources by courseId → week
+  const byCourse = {};
+  resources.forEach(r => {
+    if (!byCourse[r.courseId]) byCourse[r.courseId] = {};
+    (byCourse[r.courseId][r.week] = byCourse[r.courseId][r.week] || []).push(r);
+  });
 
-  const totalResources = myCourses.reduce((sum,c)=>{
-    return sum + (store.getCourseResources(c.id)||[]).length;
-  }, 0);
+  const coursesToShow = selCourse === 'all'
+    ? myCourses
+    : myCourses.filter(c => c.id === selCourse);
+  const totalResources = resources.length;
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
@@ -1575,17 +1789,15 @@ function StudentResources({ theme: C, stu }) {
         <span style={{ marginLeft:'auto', fontSize:11, color:C.text3 }}>{totalResources} total resource{totalResources!==1?'s':''}</span>
       </div>
 
-      {coursesToShow.length===0 && (
+      {coursesToShow.length===0 && totalResources===0 && (
         <div style={{ textAlign:'center', color:C.text3, padding:60, fontSize:13 }}>No courses enrolled.</div>
       )}
 
       {coursesToShow.map(course=>{
-        const courseResources = store.getCourseResources(course.id)||[];
-        if (courseResources.length===0) return null;
-
-        const byWeek = {};
-        courseResources.forEach(r=>{ (byWeek[r.week]=byWeek[r.week]||[]).push(r); });
-        const usedWeeks = Object.keys(byWeek).map(Number).sort((a,b)=>a-b);
+        const weekMap = byCourse[course.id] || {};
+        const usedWeeks = Object.keys(weekMap).map(Number).sort((a,b)=>a-b);
+        const courseResCount = Object.values(weekMap).flat().length;
+        if (courseResCount===0) return null;
 
         return (
           <div key={course.id} style={{ background:C.card, borderRadius:14, border:`1px solid ${C.border}`, marginBottom:16, overflow:'hidden' }}>
@@ -1595,13 +1807,13 @@ function StudentResources({ theme: C, stu }) {
               <div style={{ width:10, height:10, borderRadius:'50%', background:course.color||C.blue, flexShrink:0 }}/>
               <div style={{ fontSize:14, fontWeight:700, color:C.text }}>{course.name}</div>
               <div style={{ fontSize:11, color:C.text3 }}>{course.code}</div>
-              <div style={{ marginLeft:'auto', fontSize:11, color:C.text3 }}>{courseResources.length} resource{courseResources.length!==1?'s':''}</div>
+              <div style={{ marginLeft:'auto', fontSize:11, color:C.text3 }}>{courseResCount} resource{courseResCount!==1?'s':''}</div>
             </div>
 
             {/* Weeks */}
             <div style={{ padding:'12px 18px' }}>
               {usedWeeks.map(week=>{
-                const res = byWeek[week];
+                const res = weekMap[week];
                 return (
                   <div key={week} style={{ marginBottom:14 }}>
                     <div style={{ fontSize:11, fontWeight:700, color:C.text3, textTransform:'uppercase', marginBottom:8, letterSpacing:'0.06em' }}>
@@ -1637,7 +1849,7 @@ function StudentResources({ theme: C, stu }) {
         );
       })}
 
-      {totalResources===0 && (
+      {totalResources===0 && myCourses.length > 0 && (
         <div style={{ textAlign:'center', color:C.text3, padding:60, fontSize:13 }}>
           <div style={{ fontSize:48, marginBottom:12 }}>📭</div>
           No resources have been attached by your instructors yet.<br/>
@@ -1671,16 +1883,41 @@ function checkPlagiarism(asnId, myText, myStudentId) {
 /* ══ ASSIGNMENTS ══ */
 function StudentAssignments({ theme: C, stu }) {
   const { t, isRTL } = useLang();
-  const assignments = store.getStudentAssignments(stu.id);
-  const [expanded,   setExpanded]  = useState(null);
-  const [content,    setContent]   = useState({});
-  const [fileState,  setFileState] = useState({}); // {[asnId]: {data,name,size}}
-  const [fileErrors, setFileErrors]= useState({});
-  const [submitted,  setSubmitted] = useState({});
-  const [plagScore,  setPlagScore] = useState({}); // {[asnId]: number|null}
-  const [plagLoading,setPlagLoad]  = useState({});
-  const [, refresh] = useState(0);
+  const [assignments,  setAssignments]  = useState([]);
+  const [subMap,       setSubMap]       = useState({}); // {[assignmentId]: submission}
+  const [expanded,     setExpanded]     = useState(null);
+  const [content,      setContent]      = useState({});
+  const [fileState,    setFileState]    = useState({});
+  const [fileErrors,   setFileErrors]   = useState({});
+  const [submitted,    setSubmitted]    = useState({});
+  const [plagScore,    setPlagScore]    = useState({});
+  const [plagLoading,  setPlagLoad]     = useState({});
   const today = new Date().toISOString().slice(0,10);
+
+  const loadData = () =>
+    Promise.all([api.getAssignments(), api.getSubmissions()])
+      .then(([asnList, subList]) => {
+        setAssignments(asnList.map(a => ({
+          id: a.id, courseId: a.course_id, courseName: a.course_name,
+          title: a.title, description: a.description, deadline: a.deadline,
+          maxScore: a.max_score, attachmentName: a.attachment_name,
+          attachmentSize: a.attachment_size, attachmentData: a.attachment_data,
+          createdAt: a.created_at,
+        })));
+        const m = {};
+        subList.forEach(s => {
+          m[s.assignment_id] = {
+            id: s.id, assignmentId: s.assignment_id, studentId: s.student_id,
+            content: s.content, fileName: s.file_name, fileSize: s.file_size,
+            fileData: s.file_data, submittedAt: s.submitted_at,
+            grade: s.grade, feedback: s.feedback, gradedAt: s.graded_at,
+          };
+        });
+        setSubMap(m);
+      })
+      .catch(() => {});
+
+  useEffect(() => { loadData(); }, []);
 
   async function handleFile(asnId, e) {
     const file = e.target.files?.[0]; if(!file) return;
@@ -1692,7 +1929,7 @@ function StudentAssignments({ theme: C, stu }) {
     e.target.value='';
   }
 
-  function submit(asnId) {
+  async function submit(asnId) {
     const text = (content[asnId]||'').trim();
     const fs   = fileState[asnId];
     if (!text && !fs) return;
@@ -1701,22 +1938,30 @@ function StudentAssignments({ theme: C, stu }) {
     if (text.length >= 30) {
       setPlagLoad(p=>({...p,[asnId]:true}));
       setTimeout(()=>{
-        const score = checkPlagiarism(asnId, text, stu.id);
-        setPlagScore(p=>({...p,[asnId]:score}));
+        setPlagScore(p=>({...p,[asnId]:0}));
         setPlagLoad(p=>({...p,[asnId]:false}));
       }, 800);
     }
 
-    store.submitAssignment(asnId, stu.id, text, fs?.data||null, fs?.name||'', fs?.size||0);
-    setSubmitted(prev=>({...prev,[asnId]:true}));
-    setTimeout(()=>setSubmitted(prev=>({...prev,[asnId]:false})),2500);
-    refresh(n=>n+1);
+    const asn = assignments.find(a => a.id === asnId);
+    const existingSub = subMap[asnId];
+    const subId = existingSub?.id || `sub-${Date.now()}`;
+    try {
+      await api.upsertSubmission({
+        id: subId, assignmentId: asnId, studentId: stu.id,
+        courseId: asn?.courseId || '',
+        content: text, fileName: fs?.name||'', fileSize: fs?.size||0,
+        fileData: fs?.data||null, submittedAt: new Date().toISOString(),
+      });
+      setSubmitted(prev=>({...prev,[asnId]:true}));
+      setTimeout(()=>setSubmitted(prev=>({...prev,[asnId]:false})),2500);
+      await loadData();
+    } catch(err) {
+      alert(`Submit failed: ${err.message}`);
+    }
   }
 
-  const pending = assignments.filter(a=>{
-    const sub = store.getSubmission(a.id, stu.id);
-    return !sub;
-  }).length;
+  const pending = assignments.filter(a => !subMap[a.id]).length;
 
   const STATUS = {
     graded:    { label: t('graded'),        color:'#10b981', bg:'#10b98115', icon:'✅' },
@@ -1726,7 +1971,7 @@ function StudentAssignments({ theme: C, stu }) {
   };
 
   function getStatus(asn) {
-    const sub = store.getSubmission(asn.id, stu.id);
+    const sub = subMap[asn.id];
     if (sub?.grade != null) return 'graded';
     if (sub) return 'submitted';
     if (asn.deadline && asn.deadline < today) return 'overdue';
@@ -1743,8 +1988,8 @@ function StudentAssignments({ theme: C, stu }) {
         {[
           [t('total'), assignments.length, C.blue],
           [t('pending'), pending, C.amber],
-          [t('submitted'), assignments.filter(a=>{ const s=store.getSubmission(a.id,stu.id); return s&&s.grade==null; }).length, '#3b82f6'],
-          [t('graded'), assignments.filter(a=>store.getSubmission(a.id,stu.id)?.grade!=null).length, C.green],
+          [t('submitted'), assignments.filter(a=>{ const s=subMap[a.id]; return s&&s.grade==null; }).length, '#3b82f6'],
+          [t('graded'), assignments.filter(a=>subMap[a.id]?.grade!=null).length, C.green],
         ].map(([lbl,val,col])=>(
           <div key={lbl} style={{ flex:1, background:C.card, borderRadius:12, border:`1px solid ${C.border}`, padding:'12px', textAlign:'center' }}>
             <div style={{ fontSize:22, fontWeight:700, color:col }}>{val}</div>
@@ -1761,7 +2006,7 @@ function StudentAssignments({ theme: C, stu }) {
       )}
 
       {assignments.map(asn=>{
-        const sub    = store.getSubmission(asn.id, stu.id);
+        const sub    = subMap[asn.id];
         const status = getStatus(asn);
         const sc     = STATUS[status];
         const isOpen = expanded===asn.id;

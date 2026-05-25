@@ -1,10 +1,11 @@
 """Grades router — protected by JWT auth."""
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
 from typing import Optional
 
 from database import get_db
 from auth_utils import require_auth, require_role
+from notifier import manager
 
 router = APIRouter()
 
@@ -61,6 +62,7 @@ async def get_course_grades(
 @router.post("/")
 async def save_grade(
     entry: GradeEntry,
+    request: Request,
     payload: dict = Depends(require_role("doctor", "admin")),
     db=Depends(get_db),
 ):
@@ -71,4 +73,16 @@ async def save_grade(
            ON CONFLICT(student_id, course_code) DO UPDATE SET grade=EXCLUDED.grade""",
         entry.student_id, entry.course_code, entry.course_name, entry.grade, entry.doctor_id,
     )
+    # Notify the student in real-time
+    stu_row = await db.fetchrow(
+        "SELECT user_id FROM students WHERE student_id=$1", entry.student_id
+    )
+    if stu_row and stu_row["user_id"]:
+        await manager.notify_user(str(stu_row["user_id"]), {
+            "type": "grade_posted",
+            "title": "Grade Posted",
+            "message": f"Your grade for {entry.course_name}: {entry.grade:.1f}",
+            "icon": "📝",
+            "color": "#10b981",
+        })
     return {"message": "Grade saved"}

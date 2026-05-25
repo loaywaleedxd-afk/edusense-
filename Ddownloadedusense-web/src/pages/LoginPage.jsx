@@ -46,7 +46,7 @@ function maskEmail(email) {
 }
 
 const ROLES = [
-  { role: 'student', emoji: '🎓', label: 'Student',            desc: 'View attendance & emotions',       color: '#3b82f6', user: '231014184.0', pass: 'WGaub52Z' },
+  { role: 'student', emoji: '🎓', label: 'Student',            desc: 'View attendance & emotions',       color: '#3b82f6', user: '231014184.0', pass: 'pass123' },
   { role: 'doctor',  emoji: '👨‍🏫', label: 'Doctor / Lecturer', desc: 'Manage lectures & live sessions',  color: '#8b5cf6', user: 'dr.ahmed',    pass: 'Ahmed@2024' },
   { role: 'admin',   emoji: '🏛️', label: 'Admin',              desc: 'System management & reports',      color: '#10b981', user: 'admin',        pass: 'Admin@EduSense2025!' },
   { role: 'parent',  emoji: '👨‍👩‍👧', label: 'Parent',            desc: 'Monitor child performance',        color: '#f59e0b', user: 'parent',       pass: 'Parent@EduSense2025!' },
@@ -202,7 +202,7 @@ export default function LoginPage({ theme: C, onLogin, branding }) {
           {branding?.logo ? (
             <>
               <img src={branding.logo} alt={branding.name || 'University'}
-                style={{ maxHeight: 90, maxWidth: 240, objectFit: 'contain', marginBottom: 14 }} />
+                style={{ maxHeight: 130, maxWidth: 320, objectFit: 'contain', marginBottom: 14 }} />
               {branding.name && (
                 <div style={{ fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
                   {branding.name}

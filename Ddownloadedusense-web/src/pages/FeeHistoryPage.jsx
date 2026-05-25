@@ -153,7 +153,39 @@ export default function FeeHistoryPage({ theme: C, stu, user, role }) {
     setData(buildLocalFees(id || ''));
     setFromAPI(false);
     get(`/api/fees/${id}`)
-      .then(res => { if (res?.records) { setData(res); setFromAPI(true); } })
+      .then(res => {
+        if (!res) return;
+        if (res.records) {
+          // Full history format
+          setData(res); setFromAPI(true);
+        } else if (res.amount !== undefined || res.paid !== undefined) {
+          // Simple {paid, amount, due_date} format from backend — convert to a single record
+          const amount   = parseFloat(res.amount) || 1500;
+          const isPaid   = Boolean(res.paid);
+          const dueDate  = res.due_date || '';
+          const month    = dueDate
+            ? new Date(dueDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+            : 'Current Semester';
+          const record = {
+            id: `FEE-LIVE-${id}`,
+            month,
+            description: 'University Registration & Tuition Fee',
+            amount,
+            status: isPaid ? 'paid' : 'pending',
+            paidDate: isPaid ? dueDate : null,
+            method: 'University Payment Portal',
+          };
+          setData({
+            records: [record],
+            aid: [],
+            totalFees: amount,
+            totalPaid: isPaid ? amount : 0,
+            totalAid: 0,
+            balance: isPaid ? 0 : amount,
+          });
+          setFromAPI(true);
+        }
+      })
       .catch(() => {});
   }, [selectedStuId, stu?.id, isAdmin]);
 

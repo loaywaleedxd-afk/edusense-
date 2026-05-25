@@ -4,7 +4,8 @@ FastAPI Backend — main entry point
 """
 # Load .env file first so DATABASE_URL, JWT_SECRET, etc. are available
 from dotenv import load_dotenv
-load_dotenv()
+from pathlib import Path
+load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,17 +26,15 @@ from routers import (
     notifications, complaints, fees, registration, waitlist,
     qr_sessions, enrollments, init_data,
     proctoring, advising, at_risk, office_hours, payment,
-    tenants, calendar, polls,
+    tenants, calendar, polls, dm, enrollment_requests,
 )
 from database import init_pool, init_tenant_schema, get_db
-from websocket_manager import ConnectionManager
+from notifier import manager
 from r_runner import r_router
 from auth_utils import require_auth, require_role
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-manager = ConnectionManager()
 
 
 _DEFAULT_TENANT = os.getenv("DEFAULT_TENANT", "public")
@@ -65,7 +64,20 @@ class TenantMiddleware(BaseHTTPMiddleware):
 async def lifespan(app: FastAPI):
     logger.info("Starting Emotion Detection System...")
     await init_pool(app)
+    # Always init public schema first (holds tenants registry)
     await init_tenant_schema(app.state.pool, "public")
+    # Then init every active tenant schema so new tables are created
+    async with app.state.pool.acquire() as conn:
+        try:
+            tenant_rows = await conn.fetch(
+                "SELECT schema_name FROM public.tenants WHERE active = TRUE"
+            )
+            for row in tenant_rows:
+                schema = row["schema_name"]
+                if schema != "public":
+                    await init_tenant_schema(app.state.pool, schema)
+        except Exception as e:
+            logger.warning(f"Could not auto-init tenant schemas: {e}")
     yield
     await app.state.pool.close()
     logger.info("Shutting down...")
@@ -126,8 +138,10 @@ app.include_router(at_risk.router,       prefix="/api/at-risk",        tags=["At
 app.include_router(office_hours.router,  prefix="/api/office-hours",   tags=["OfficeHours"])
 app.include_router(payment.router,       prefix="/api/payment",         tags=["Payment"])
 app.include_router(r_router)
-app.include_router(calendar.router, prefix="/api/calendar",  tags=["Calendar"])
-app.include_router(polls.router,    prefix="/api/polls",     tags=["Polls"])
+app.include_router(calendar.router,              prefix="/api/calendar",              tags=["Calendar"])
+app.include_router(polls.router,                 prefix="/api/polls",                 tags=["Polls"])
+app.include_router(dm.router,                    prefix="/api/dm",                    tags=["DirectMessages"])
+app.include_router(enrollment_requests.router,   prefix="/api/enrollment-requests",   tags=["EnrollmentRequests"])
 # ── Superadmin-only: tenant (university) management ───────────────────────────
 # Prefix is intentionally obscure. Not listed in public docs.
 app.include_router(tenants.router, prefix="/api/super/tenants", include_in_schema=False)

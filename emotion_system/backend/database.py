@@ -72,6 +72,9 @@ async def init_tenant_schema(pool, schema: str):
         # Add new columns to users table for existing installs (safe — ignored if already present)
         for _col in [
             f"ALTER TABLE \"{schema}\".users ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'en'",
+            f"ALTER TABLE \"{schema}\".users ADD COLUMN IF NOT EXISTS photo TEXT",
+            f"ALTER TABLE \"{schema}\".users ADD COLUMN IF NOT EXISTS bio TEXT",
+            f"ALTER TABLE \"{schema}\".users ADD COLUMN IF NOT EXISTS phone TEXT",
         ]:
             await conn.execute(_col)
 
@@ -90,14 +93,25 @@ async def init_tenant_schema(pool, schema: str):
 
         await conn.execute(f"""
             CREATE TABLE IF NOT EXISTS "{schema}".doctors (
-                id          SERIAL PRIMARY KEY,
-                doctor_id   TEXT UNIQUE NOT NULL,
-                user_id     INTEGER REFERENCES "{schema}".users(id),
-                department  TEXT,
-                title       TEXT,
-                created_at  TIMESTAMPTZ DEFAULT NOW()
+                id                  SERIAL PRIMARY KEY,
+                doctor_id           TEXT UNIQUE NOT NULL,
+                user_id             INTEGER REFERENCES "{schema}".users(id),
+                department          TEXT,
+                title               TEXT,
+                bio                 TEXT,
+                research_interests  TEXT,
+                website             TEXT,
+                office_location     TEXT,
+                created_at          TIMESTAMPTZ DEFAULT NOW()
             )
         """)
+        for _col in [
+            f"ALTER TABLE \"{schema}\".doctors ADD COLUMN IF NOT EXISTS bio TEXT",
+            f"ALTER TABLE \"{schema}\".doctors ADD COLUMN IF NOT EXISTS research_interests TEXT",
+            f"ALTER TABLE \"{schema}\".doctors ADD COLUMN IF NOT EXISTS website TEXT",
+            f"ALTER TABLE \"{schema}\".doctors ADD COLUMN IF NOT EXISTS office_location TEXT",
+        ]:
+            await conn.execute(_col)
 
         # ── Face encodings ───────────────────────────────────────────────────
         await conn.execute(f"""
@@ -543,6 +557,51 @@ async def init_tenant_schema(pool, schema: str):
                 note         TEXT,
                 status       TEXT DEFAULT 'confirmed',
                 created_at   TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+
+        # ── Parent ↔ Student linking ──────────────────────────────────────────
+        await conn.execute(f"""
+            CREATE TABLE IF NOT EXISTS "{schema}".parent_students (
+                parent_id   INTEGER NOT NULL REFERENCES "{schema}".users(id),
+                student_id  TEXT NOT NULL REFERENCES "{schema}".students(student_id),
+                created_at  TIMESTAMPTZ DEFAULT NOW(),
+                PRIMARY KEY (parent_id, student_id)
+            )
+        """)
+
+        # ── Course enrollment requests (student-initiated, admin approves) ────
+        await conn.execute(f"""
+            CREATE TABLE IF NOT EXISTS "{schema}".enrollment_requests (
+                id          SERIAL PRIMARY KEY,
+                student_id  TEXT NOT NULL,
+                course_id   TEXT NOT NULL,
+                status      TEXT DEFAULT 'pending',
+                note        TEXT,
+                admin_note  TEXT,
+                created_at  TIMESTAMPTZ DEFAULT NOW(),
+                updated_at  TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(student_id, course_id)
+            )
+        """)
+
+        # ── Direct messages (Doctor ↔ Student private chat) ───────────────────
+        await conn.execute(f"""
+            CREATE TABLE IF NOT EXISTS "{schema}".direct_messages (
+                id          SERIAL PRIMARY KEY,
+                sender_id   TEXT NOT NULL,
+                receiver_id TEXT NOT NULL,
+                text        TEXT NOT NULL,
+                is_read     BOOLEAN DEFAULT FALSE,
+                created_at  TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        await conn.execute(f"""
+            CREATE INDEX IF NOT EXISTS dm_conversation_idx
+            ON "{schema}".direct_messages (
+                LEAST(sender_id, receiver_id),
+                GREATEST(sender_id, receiver_id),
+                created_at
             )
         """)
 

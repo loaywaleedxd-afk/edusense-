@@ -29,7 +29,12 @@ async function req(method, path, body) {
   });
   if (!res.ok) {
     const detail = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(detail?.detail || `${method} ${path} → ${res.status}`);
+    const d = detail?.detail;
+    // FastAPI validation errors come back as an array of {loc, msg, type} objects
+    const msg = Array.isArray(d)
+      ? d.map(e => e.msg || JSON.stringify(e)).join('; ')
+      : (d || `${method} ${path} → ${res.status}`);
+    throw new Error(msg);
   }
   return res.json();
 }
@@ -128,10 +133,11 @@ export const api = {
   useQR:    (data) => post('/api/qr/use', data),
 
   // Enrollments
-  getEnrollments:   ()     => get('/api/enrollments/'),
-  bulkEnrollments:  (data) => post('/api/enrollments/bulk', data),
-  enroll:   (cid, sid)     => post(`/api/enrollments/${cid}/${sid}`),
-  unenroll: (cid, sid)     => del(`/api/enrollments/${cid}/${sid}`),
+  getEnrollments:       ()          => get('/api/enrollments/'),
+  getCourseStudents:    (code)      => get(`/api/enrollments/students/${encodeURIComponent(code)}`),
+  bulkEnrollments:      (data)      => post('/api/enrollments/bulk', data),
+  enroll:   (cid, sid)              => post(`/api/enrollments/${cid}/${sid}`),
+  unenroll: (cid, sid)              => del(`/api/enrollments/${cid}/${sid}`),
 
   // ── Exam Proctoring ────────────────────────────────────────────────────────
   proctoringStart:      (data)       => post('/api/proctor/start', data),
@@ -176,6 +182,38 @@ export const api = {
   deletePoll:      (id)        => del(`/api/polls/${id}`),
   castVote:        (id, data)  => post(`/api/polls/${id}/vote`, data),
   getMyVote:       (id)        => get(`/api/polls/${id}/my-vote`),
+
+  // ── User Profile ───────────────────────────────────────────────────────────
+  getMyProfile:    ()     => get('/api/users/me'),
+  updateMyProfile: (data) => put('/api/users/me', data),
+
+  // ── Parent–Student Linking (admin) ─────────────────────────────────────────
+  listParentStudents:   ()                         => get('/api/users/parent-students'),
+  linkParentStudent:    (parent_id, student_id)    => post('/api/users/parent-students', { parent_id, student_id }),
+  unlinkParentStudent:  (parent_id, student_id)    => del(`/api/users/parent-students/${parent_id}/${student_id}`),
+
+  // ── Direct Messages ────────────────────────────────────────────────────────
+  getDMConversations: ()           => get('/api/dm/conversations'),
+  getDMMessages:      (other_id)   => get(`/api/dm/with/${other_id}`),
+  sendDM:             (data)       => post('/api/dm/send', data),
+  getDMContacts:      ()           => get('/api/dm/contacts'),
+
+  // ── Lectures (admin course management) ────────────────────────────────────
+  getLectures:       ()          => get('/api/lectures/'),
+  getLectureDoctors: ()          => get('/api/lectures/doctors'),
+  getLectureAttendance: (lectureId) => get(`/api/attendance/lecture/${encodeURIComponent(lectureId)}`),
+  getExcuses:        ()          => get('/api/excuses/'),
+  createLecture:     (data)      => post('/api/lectures/', data),
+  deleteCourseByCode:(code)      => del(`/api/lectures/by-course/${encodeURIComponent(code)}`),
+  createDoctor:      (data)      => post('/api/lectures/doctors', data),
+  deleteDoctor:      (doctorId)  => del(`/api/lectures/doctors/${doctorId}`),
+
+  // ── Course Registration / Enrollment Requests ──────────────────────────────
+  getAvailableCourses:    ()          => get('/api/enrollment-requests/available-courses'),
+  getEnrollmentRequests:  ()          => get('/api/enrollment-requests/'),
+  requestEnrollment:      (data)      => post('/api/enrollment-requests/', data),
+  processEnrollmentRequest:(id, data) => put(`/api/enrollment-requests/${id}`, data),
+  cancelEnrollmentRequest: (id)       => del(`/api/enrollment-requests/${id}`),
 };
 
 export default api;
