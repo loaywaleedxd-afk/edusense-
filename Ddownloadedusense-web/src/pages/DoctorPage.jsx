@@ -1552,7 +1552,7 @@ function buildWeeklyEmotionData(course, enrolledCount = 30) {
 
 async function callGroqDetector(courseData, doctorName) {
   const key = import.meta.env.VITE_GROQ_API_KEY;
-  if (!key) return null;
+  if (!key) throw new Error('VITE_GROQ_API_KEY is not set in the build environment.');
 
   const summary = courseData.map(c => ({
     course: c.course.name,
@@ -1586,24 +1586,27 @@ Format your response as JSON array:
 ]
 Only include weeks with difficulty score >= 30. Return only the JSON array, no other text.`;
 
-  try {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-      body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 1200, temperature: 0.4
-      })
-    });
-    const raw = await res.text();
-    let data;
-    try { data = JSON.parse(raw); } catch { return null; }
-    const text = data.choices?.[0]?.message?.content || '';
-    const match = text.match(/\[[\s\S]*\]/);
-    if (!match) return null;
-    try { return JSON.parse(match[0]); } catch { return null; }
-  } catch { return null; }
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+    body: JSON.stringify({
+      model: 'llama-3.1-8b-instant',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: 1200, temperature: 0.4
+    })
+  });
+
+  const raw = await res.text();
+  if (!res.ok) throw new Error(`Groq API error ${res.status}: ${raw.slice(0, 200)}`);
+
+  let data;
+  try { data = JSON.parse(raw); } catch { throw new Error('Groq returned non-JSON: ' + raw.slice(0, 200)); }
+
+  const text = data.choices?.[0]?.message?.content || '';
+  const match = text.match(/\[[\s\S]*\]/);
+  if (!match) throw new Error('No JSON array in Groq response: ' + text.slice(0, 200));
+
+  return JSON.parse(match[0]);
 }
 
 function DocTopicDetector({ theme: C, doctor, myCourses }) {
@@ -1620,10 +1623,13 @@ function DocTopicDetector({ theme: C, doctor, myCourses }) {
   async function runDetector() {
     if (!myCourses.length) return;
     setLoading(true); setResults(null); setError('');
-    const courseData = myCourses.map(c => ({ course: c, weekData: buildWeeklyEmotionData(c) }));
-    const res = await callGroqDetector(courseData, doctor?.name || 'Lecturer');
-    if (res) { setResults(res); }
-    else { setError('Could not get AI analysis. Check that VITE_GROQ_API_KEY is set in Hostinger.'); }
+    try {
+      const courseData = myCourses.map(c => ({ course: c, weekData: buildWeeklyEmotionData(c) }));
+      const res = await callGroqDetector(courseData, doctor?.name || 'Lecturer');
+      setResults(res);
+    } catch (err) {
+      setError(err.message || 'Unknown error from Groq API.');
+    }
     setLoading(false);
   }
 
