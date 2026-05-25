@@ -5,19 +5,11 @@ Provides 15-minute slot management for doctors and booking for students.
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
-import os
-import json
 from datetime import datetime
 
 from database import get_db
 
 router = APIRouter()
-
-
-# ── DB init (called inline for new tables) ────────────────────────────────────
-async def _ensure_tables(db):
-    """Office hours tables are created in init_tenant_schema; this is a no-op safety guard."""
-    pass
 
 
 # ── Pydantic models ────────────────────────────────────────────────────────────
@@ -37,7 +29,7 @@ class SlotModel(BaseModel):
 class BookingModel(BaseModel):
     id: Optional[str] = None
     slotId: str
-    doctorId: str
+    doctorId: Optional[str] = None   # made Optional — will be resolved from slot if missing
     doctorName: Optional[str] = ''
     studentId: str
     studentName: Optional[str] = ''
@@ -56,8 +48,11 @@ async def get_slots(doctor_id: str, db=Depends(get_db)):
             "SELECT * FROM office_hours_slots WHERE doctor_id = $1 ORDER BY day, time",
             doctor_id
         )
+        # Mark slots booked by ANY student (match by slot_id, not doctor_id)
         booked = await db.fetch(
-            "SELECT slot_id FROM office_hours_bookings WHERE doctor_id = $1 AND status = 'confirmed'",
+            """SELECT slot_id FROM office_hours_bookings
+               WHERE slot_id IN (SELECT id FROM office_hours_slots WHERE doctor_id = $1)
+               AND status = 'confirmed'""",
             doctor_id
         )
         booked_ids = {r["slot_id"] for r in booked}
@@ -120,12 +115,12 @@ async def toggle_slot(slot_id: str, body: dict, db=Depends(get_db)):
             "UPDATE office_hours_slots SET available = $1 WHERE id = $2",
             available, slot_id
         )
-        # If row not found, insert it (slot was generated locally but not yet in DB)
         if result == "UPDATE 0":
             doctor_id = body.get("doctorId") or body.get("doctor_id", "")
             await db.execute(
                 """INSERT INTO office_hours_slots (id,doctor_id,day,time,duration,available)
-                   VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO UPDATE SET available=EXCLUDED.available""",
+                   VALUES ($1,$2,$3,$4,$5,$6)
+                   ON CONFLICT (id) DO UPDATE SET available=EXCLUDED.available""",
                 slot_id, doctor_id, body.get("day",""), body.get("time",""),
                 int(body.get("duration", 15)), available
             )
@@ -138,6 +133,14 @@ async def toggle_slot(slot_id: str, body: dict, db=Depends(get_db)):
 @router.post("/book")
 async def book_slot(booking: BookingModel, db=Depends(get_db)):
     try:
+        # Resolve doctor_id from slot if not provided or empty
+        doctor_id = booking.doctorId or ''
+        if not doctor_id:
+            slot_row = await db.fetchrow(
+                "SELECT doctor_id FROM office_hours_slots WHERE id = $1", booking.slotId
+            )
+            doctor_id = slot_row["doctor_id"] if slot_row else ''
+
         existing = await db.fetchrow(
             "SELECT id FROM office_hours_bookings WHERE slot_id = $1 AND status = 'confirmed'",
             booking.slotId
@@ -149,12 +152,14 @@ async def book_slot(booking: BookingModel, db=Depends(get_db)):
         await db.execute(
             """INSERT INTO office_hours_bookings
                (id,slot_id,doctor_id,student_id,student_name,doctor_name,day,time,duration,note,status)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)""",
-            booking_id, booking.slotId, booking.doctorId, booking.studentId,
-            booking.studentName, booking.doctorName, booking.day, booking.time,
-            booking.duration, booking.note or '', booking.status
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+               ON CONFLICT (id) DO NOTHING""",
+            booking_id, booking.slotId, doctor_id, booking.studentId,
+            booking.studentName or '', booking.doctorName or '',
+            booking.day, booking.time, booking.duration,
+            booking.note or '', booking.status
         )
-        return {"ok": True, "booking": {"id": booking_id, **booking.dict()}}
+        return {"ok": True, "booking": {"id": booking_id, "doctorId": doctor_id, **booking.dict()}}
     except HTTPException:
         raise
     except Exception as e:
@@ -178,10 +183,22 @@ async def get_student_bookings(student_id: str, db=Depends(get_db)):
 @router.get("/bookings/doctor/{doctor_id}")
 async def get_doctor_bookings(doctor_id: str, db=Depends(get_db)):
     try:
+        # Match by doctor_id column OR by slot ownership (catches bookings with wrong stored doctor_id)
         rows = await db.fetch(
-            "SELECT * FROM office_hours_bookings WHERE doctor_id = $1 ORDER BY day, time",
+            """SELECT DISTINCT b.* FROM office_hours_bookings b
+               LEFT JOIN office_hours_slots s ON s.id = b.slot_id
+               WHERE b.doctor_id = $1
+                  OR s.doctor_id = $1
+               ORDER BY b.day, b.time""",
             doctor_id
         )
+        # Fix any bookings that have wrong doctor_id stored
+        for r in rows:
+            if r["doctor_id"] != doctor_id:
+                await db.execute(
+                    "UPDATE office_hours_bookings SET doctor_id = $1 WHERE id = $2",
+                    doctor_id, r["id"]
+                )
         return {"bookings": [dict(r) for r in rows]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
