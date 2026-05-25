@@ -279,9 +279,18 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
   const [page, setPage] = useState('dashboard');
   const [menuOpen, setMenuOpen] = useState(false);
   const { t, isRTL } = useLang();
-  const sid = user.studentId || user.id || '';
-  const stu = store.getStudent(sid) || store.students[0];
+  const sid = user.studentId || user.student_id || user.id || '';
+  const [stu, setStu] = useState(() => {
+    const base = store.getStudent(sid);
+    if (base) return base;
+    return { id: sid, name: user.full_name || user.name || user.username || '', email: user.email || '', dept: user.department || '', year: user.year || 1, gpa: 0, attendanceRate: 0, engagement: 0 };
+  });
   const stuId = stu?.id || sid;
+
+  useEffect(() => {
+    if (!sid) return;
+    api.getStudent(sid).then(s => { if (s) setStu(prev => ({ ...prev, ...s, id: s.student_id || s.id || prev.id, name: s.full_name || s.name || prev.name, dept: s.department || s.dept || prev.dept })); }).catch(() => {});
+  }, [sid]);
 
   const [lastSeen, setLastSeen] = useState(() => loadLastSeen(stuId));
   const nav = buildNav(stuId, lastSeen);
@@ -500,7 +509,7 @@ function StudentDashboard({ theme: C, user, stu }) {
           <div style={{ padding:'0 12px 12px', display:'flex', flexDirection:'column', gap:6 }}>
             {(() => {
               const today = new Date().getDay();
-              const todayLecs = store.lectures.filter(l => l.days && l.days.includes(today));
+              const todayLecs = myCoursesEnrolled.filter(l => l.days && l.days.includes(today));
               if (todayLecs.length === 0)
                 return <div style={{ padding:'16px 0', textAlign:'center', color:C.text3, fontSize:12 }}>No lectures scheduled for today.</div>;
               return todayLecs.map((lec,i) => <ScheduleItem key={i} theme={C} lecture={lec}/>);

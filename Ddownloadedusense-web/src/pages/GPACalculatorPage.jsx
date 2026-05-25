@@ -1,6 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import store from '../dataStore';
+import api from '../api';
 import { useLang } from '../context/LanguageContext';
 
 /* ── GPA scale ── */
@@ -59,27 +60,51 @@ function GPARing({ value, max = 4, size = 140, stroke = 11, color = '#3b82f6' })
 export default function GPACalculatorPage({ theme: C, stu }) {
   const { t } = useLang();
 
-  // Get student's enrolled courses
-  const courses = store.getStudentCourses(stu.id);
-  const results = store.getStudentResults(stu.id); // { [courseId]: { grade, courseName } }
+  const [courses, setCourses] = useState([]);
+  const [grades,  setGrades]  = useState([]);
+  const [sliders, setSliders] = useState({});
 
-  // For each course, start slider at existing grade or 75
-  const [sliders, setSliders] = useState(() => {
-    const init = {};
-    courses.forEach(c => {
-      const existing = results[c.id]?.grade;
-      init[c.id] = existing != null ? existing : 75;
+  useEffect(() => {
+    if (!stu?.id) return;
+    Promise.allSettled([
+      api.getLectures(),
+      api.getEnrollments(),
+      api.getStudentGrades(stu.id),
+    ]).then(([lecRes, enrollRes, gradesRes]) => {
+      const lecs   = lecRes.status    === 'fulfilled' ? lecRes.value    : [];
+      const enroll = enrollRes.status  === 'fulfilled' ? enrollRes.value  : [];
+      const gList  = gradesRes.status  === 'fulfilled' ? (Array.isArray(gradesRes.value) ? gradesRes.value : []) : [];
+      const myIds  = new Set(enroll.filter(e => String(e.student_id) === String(stu.id)).map(e => String(e.lecture_id || e.course_id)));
+      const myCourses = lecs.filter(l => myIds.has(String(l.id)));
+      setCourses(myCourses);
+      setGrades(gList);
+      setSliders(init => {
+        const s = { ...init };
+        myCourses.forEach(c => {
+          if (s[c.id] == null) {
+            const rec = gList.find(g => g.course_code === c.code || g.course_id === c.id);
+            s[c.id] = rec?.grade ?? rec?.score ?? 75;
+          }
+        });
+        return s;
+      });
     });
-    return init;
-  });
+  }, [stu?.id]);
+
+  // Build results map from API grades
+  const results = useMemo(() => {
+    const map = {};
+    grades.forEach(g => { map[g.course_code || g.course_id] = { grade: g.grade ?? g.score, courseName: g.course_name }; });
+    return map;
+  }, [grades]);
 
   // Current GPA from actual grades only (courses with grades)
   const currentGPA = useMemo(() => {
-    const graded = Object.values(results).filter(r => r.grade != null);
-    if (!graded.length) return stu.gpa || 0;
-    const sum = graded.reduce((a, r) => a + toGPA(r.grade), 0);
+    const graded = grades.filter(g => g.grade != null || g.score != null);
+    if (!graded.length) return stu?.gpa || 0;
+    const sum = graded.reduce((a, g) => a + toGPA(g.grade ?? g.score), 0);
     return +(sum / graded.length).toFixed(2);
-  }, [results, stu.gpa]);
+  }, [grades, stu?.gpa]);
 
   // Projected GPA using slider values for all courses
   const projectedGPA = useMemo(() => {

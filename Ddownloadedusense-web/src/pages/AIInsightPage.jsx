@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLang } from '../context/LanguageContext';
+import api from '../api';
 import store from '../dataStore';
 
 /* ─── helpers ─── */
@@ -53,14 +54,16 @@ function predictStudent(stu, results) {
 }
 
 /* ─── Emotion Insight Engine ─── */
-function generateInsights(doctor, myCourses) {
-  const insights = [];
+async function generateInsights(doctor, myCourses) {
   const weeks = [1, 2, 3, 4];
-  const SEED = doctor.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  const SEED = String(doctor.id).split('').reduce((a, c) => a + c.charCodeAt(0), 0);
 
-  // Which students are disengaging
-  const allStudents = myCourses.flatMap(c => store.getEnrolledStudents(c.id));
-  const unique = [...new Map(allStudents.map(s => [s.id, s])).values()];
+  // Fetch enrolled students for all courses via API
+  const allStudentsNested = await Promise.all(
+    myCourses.map(c => api.getCourseStudents(c.code || c.id).catch(() => []))
+  );
+  const allStudents = allStudentsNested.flat();
+  const unique = [...new Map(allStudents.map(s => [s.id || s.student_id, s])).values()];
   const disengaged = unique.filter(s => s.engagement < 50).slice(0, 5);
   const confused = unique.filter(s => ['confused', 'bored', 'sad'].includes(s.emotion)).slice(0, 4);
 
@@ -75,8 +78,8 @@ function generateInsights(doctor, myCourses) {
     };
   });
 
-  // Confusing topics (correlate lecture names with engagement dip)
-  const lectures = store.lectures.filter(l => myCourses.some(c => c.id === l.courseId));
+  // Confusing topics (use myCourses directly as lectures)
+  const lectures = myCourses;
   const hardTopics = lectures.map((l, i) => ({
     name: l.topic || l.name,
     code: l.code,
@@ -102,27 +105,31 @@ export default function AIInsightPage({ theme: C, doctor, myCourses }) {
   function runEmotionInsight() {
     setGenerating(true);
     setGenerated(false);
-    setTimeout(() => {
-      setInsights(generateInsights(doctor, myCourses));
+    generateInsights(doctor, myCourses).then(result => {
+      setInsights(result);
       setGenerating(false);
       setGenerated(true);
-    }, 1800);
+    }).catch(() => { setGenerating(false); });
   }
 
-  function runGradePredictor() {
+  async function runGradePredictor() {
     setPredicting(true);
     setPredictions(null);
-    setTimeout(() => {
-      const allStudents = myCourses.flatMap(c => store.getEnrolledStudents(c.id));
-      const unique = [...new Map(allStudents.map(s => [s.id, s])).values()];
+    try {
+      const allStudentsNested = await Promise.all(
+        myCourses.map(c => api.getCourseStudents(c.code || c.id).catch(() => []))
+      );
+      const allStudents = allStudentsNested.flat();
+      const unique = [...new Map(allStudents.map(s => [s.id || s.student_id, s])).values()];
       const results = unique.map(stu => {
-        const stuResults = store.getStudentResults(stu.id);
-        const pred = predictStudent(stu, stuResults);
+        const pred = predictStudent(stu, {});
         return { stu, ...pred };
       }).sort((a, b) => a.predicted - b.predicted);
       setPredictions(results);
-      setPredicting(false);
-    }, 1400);
+    } catch {
+      setPredictions([]);
+    }
+    setPredicting(false);
   }
 
   return (

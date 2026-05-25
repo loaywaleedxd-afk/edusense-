@@ -178,7 +178,8 @@ function AdminDashboard({ theme: C, onNav }) {
   const deptShort  = ['CS','Engineering','Math','Physics','Data Sci'];
   const deptColors = [C.blue,C.purple,C.green,C.amber,C.cyan];
 
-  const [counts, setCounts] = useState({ students: 0, doctors: 0, lectures: 0, atRisk: 0 });
+  const [counts,   setCounts]   = useState({ students: 0, doctors: 0, lectures: 0, atRisk: 0 });
+  const [lectures, setLectures] = useState([]);
   useEffect(() => {
     Promise.allSettled([
       api.getStudents(),
@@ -188,12 +189,13 @@ function AdminDashboard({ theme: C, onNav }) {
     ]).then(([stuRes, docRes, lecRes, riskRes]) => {
       const students = stuRes.status === 'fulfilled' ? stuRes.value : [];
       const doctors  = docRes.status === 'fulfilled' ? docRes.value : [];
-      const lectures = lecRes.status === 'fulfilled' ? lecRes.value : [];
+      const lecs     = lecRes.status === 'fulfilled' ? lecRes.value : [];
       const atRisk   = riskRes.status === 'fulfilled' ? riskRes.value : [];
+      setLectures(lecs);
       setCounts({
         students: students.length,
         doctors:  doctors.length,
-        lectures: lectures.filter(l => l.status === 'active').length,
+        lectures: lecs.filter(l => l.status === 'active').length,
         atRisk:   atRisk.length,
       });
     });
@@ -265,18 +267,23 @@ function AdminDashboard({ theme: C, onNav }) {
         </Card>
         <Card theme={C} title={t('lectures_now')}>
           <div style={{padding:'4px 12px 12px',display:'flex',flexDirection:'column',gap:6}}>
-            {store.lectures.slice(0,3).map((lec,i)=>(
+            {lectures.length === 0
+              ? <div style={{color:C.text3,fontSize:12,padding:'8px 0'}}>Loading…</div>
+              : lectures.slice(0,3).map((lec,i)=>{
+              const colors=[C.blue,C.purple,C.green,C.amber,C.cyan];
+              return (
               <div key={i} style={{background:C.bg3,borderRadius:8,display:'flex',overflow:'hidden'}}>
-                <div style={{width:4,background:lec.color,flexShrink:0}}/>
+                <div style={{width:4,background:lec.color||colors[i%colors.length],flexShrink:0}}/>
                 <div style={{padding:'8px 12px',flex:1}}>
                   <div style={{fontSize:11,fontWeight:700,color:C.text}}>{lec.name}</div>
-                  <div style={{fontSize:10,color:C.text3}}>{lec.room} · {lec.time}</div>
+                  <div style={{fontSize:10,color:C.text3}}>{lec.room||'—'} · {lec.time||'—'}</div>
                 </div>
                 <div style={{padding:'8px 12px',display:'flex',alignItems:'center'}}>
-                  <Badge text={lec.status === 'active' ? t('session_active') : lec.status === 'scheduled' ? t('confirmed') : lec.status} color={{active:'green',scheduled:'amber',ended:'gray'}[lec.status]||'gray'}/>
+                  <Badge text={lec.status === 'active' ? t('session_active') : lec.status === 'scheduled' ? t('confirmed') : (lec.status||'—')} color={{active:'green',scheduled:'amber',ended:'gray'}[lec.status]||'gray'}/>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
       </div>
@@ -1386,14 +1393,19 @@ function AdminEnrollments({ theme: C }) {
 /* ── ADMIN APPEALS ── */
 function AdminAppeals({ theme: C }) {
   const { t } = useLang();
-  const [complaints, setComplaints] = useState(store.getAllComplaints());
+  const [complaints, setComplaints] = useState([]);
   const [filter, setFilter] = useState('all');
   const [response, setResponse] = useState({});
 
-  function resolve(id) {
+  const reloadComplaints = () => api.getComplaints().then(setComplaints).catch(() => {});
+  useEffect(() => { reloadComplaints(); }, []);
+
+  async function resolve(id) {
     const text = response[id]?.trim();
-    store.updateComplaint(id, { status:'resolved', adminResponse: text||'Reviewed and resolved by admin.' });
-    setComplaints(store.getAllComplaints());
+    try {
+      await api.updateComplaint(id, { status:'resolved', adminResponse: text||'Reviewed and resolved by admin.' });
+    } catch(e) { alert('Failed to resolve: ' + e.message); return; }
+    reloadComplaints();
     setResponse(r=>({...r,[id]:''}));
   }
 
@@ -1451,22 +1463,42 @@ function AdminAppeals({ theme: C }) {
 /* ── ADMIN REGISTRATION & FEES ── */
 function AdminRegistration({ theme: C }) {
   const { t } = useLang();
-  const [reg, setReg] = useState(store.getRegistrationStatus());
-  const [search, setSearch]   = useState('');
+  const [reg, setReg]             = useState({ open: false, semester: '', deadline: '' });
+  const [search, setSearch]       = useState('');
   const [allStudents, setAllStudents] = useState([]);
-  const [, forceUpdate] = useState(0);
+  const [feeMap, setFeeMap]       = useState({});
 
-  useEffect(() => { api.getStudents().then(setAllStudents).catch(() => {}); }, []);
+  useEffect(() => {
+    api.getRegistration().then(setReg).catch(() => {});
+    api.getStudents().then(stus => {
+      setAllStudents(stus);
+      // Load fee status for each student
+      Promise.allSettled(stus.map(s => api.getFeeStatus(s.id || s.student_id).then(f => [s.id || s.student_id, f]))).then(results => {
+        const map = {};
+        results.forEach(r => { if (r.status === 'fulfilled' && r.value) map[r.value[0]] = r.value[1]; });
+        setFeeMap(map);
+      });
+    }).catch(() => {});
+  }, []);
 
-  function toggleReg() {
-    store.setRegistrationStatus({ open: !reg.open });
-    setReg({ ...store.getRegistrationStatus() });
+  async function toggleReg() {
+    const updated = { ...reg, open: !reg.open };
+    try { await api.setRegistration(updated); setReg(updated); } catch(e) { alert('Failed: ' + e.message); }
   }
 
-  function toggleFee(studentId) {
-    const current = store.getStudentFeeStatus(studentId);
-    store.setStudentFeeStatus(studentId, { paid: !current.paid });
-    forceUpdate(n=>n+1);
+  async function saveSemester(field, value) {
+    const updated = { ...reg, [field]: value };
+    setReg(updated);
+    try { await api.setRegistration(updated); } catch {}
+  }
+
+  async function toggleFee(studentId) {
+    const current = feeMap[studentId] || {};
+    const updated = { ...current, paid: !current.paid };
+    try {
+      await api.setFeeStatus(studentId, updated);
+      setFeeMap(m => ({ ...m, [studentId]: updated }));
+    } catch(e) { alert('Failed: ' + e.message); }
   }
 
   const q = search.toLowerCase();
@@ -1493,12 +1525,12 @@ function AdminRegistration({ theme: C }) {
         <div style={{padding:'0 16px 16px',display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
           <div>
             <div style={{fontSize:10,color:C.text3,textTransform:'uppercase',fontWeight:700,marginBottom:4}}>Semester Name</div>
-            <input value={reg.semester} onChange={e=>{store.setRegistrationStatus({semester:e.target.value});setReg({...store.getRegistrationStatus()});}}
+            <input value={reg.semester||''} onChange={e=>saveSemester('semester',e.target.value)}
               style={{width:'100%',height:34,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}/>
           </div>
           <div>
             <div style={{fontSize:10,color:C.text3,textTransform:'uppercase',fontWeight:700,marginBottom:4}}>Deadline</div>
-            <input type="date" value={reg.deadline} onChange={e=>{store.setRegistrationStatus({deadline:e.target.value});setReg({...store.getRegistrationStatus()});}}
+            <input type="date" value={reg.deadline||''} onChange={e=>saveSemester('deadline',e.target.value)}
               style={{width:'100%',height:34,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}/>
           </div>
         </div>
@@ -1512,16 +1544,19 @@ function AdminRegistration({ theme: C }) {
         </div>
         <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:500,overflowY:'auto'}}>
           {students.map((s,i)=>{
-            const fee = store.getStudentFeeStatus(s.id);
+            const sid = s.id || s.student_id || '';
+            const fee = feeMap[sid] || {};
+            const name = s.name || s.full_name || sid;
+            const dept = s.dept || s.department || '';
             return (
               <div key={i} style={{display:'flex',alignItems:'center',background:C.card,borderRadius:10,border:`1px solid ${C.border}`,padding:'10px 14px',gap:10}}>
-                <div style={{width:32,height:32,borderRadius:'50%',background:s.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,flexShrink:0}}>{s.emoji}</div>
+                <div style={{width:32,height:32,borderRadius:'50%',background:s.color||C.blue_dim,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,flexShrink:0}}>{s.emoji||'👤'}</div>
                 <div style={{flex:1}}>
-                  <div style={{fontSize:12,fontWeight:700,color:C.text}}>{s.name}</div>
-                  <div style={{fontSize:10,color:C.text3}}>{s.id} · {s.dept}</div>
+                  <div style={{fontSize:12,fontWeight:700,color:C.text}}>{name}</div>
+                  <div style={{fontSize:10,color:C.text3}}>{sid}{dept ? ` · ${dept}` : ''}</div>
                 </div>
                 <Badge text={fee.paid?'Paid':'Unpaid'} color={fee.paid?'green':'red'} isDark/>
-                <button onClick={()=>toggleFee(s.id)}
+                <button onClick={()=>toggleFee(sid)}
                   style={{background:fee.paid?C.red_dim:C.green_dim,border:`1px solid ${fee.paid?C.red:C.green}`,borderRadius:6,padding:'5px 12px',fontSize:11,fontWeight:700,color:fee.paid?C.red2:C.green2,cursor:'pointer'}}>
                   {fee.paid?'Mark Unpaid':'Mark Paid'}
                 </button>
@@ -1539,15 +1574,18 @@ function AdminParents({ theme: C }) {
   const { t } = useLang();
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({name:'',username:'',password:'demo123',email:'',studentId:''});
-  const [parents, setParents] = useState(store.users.filter(u=>u.role==='parent'));
+  const [parents, setParents] = useState([]);
   const [createdAccount, setCreatedAccount] = useState(null);
   const [, forceUpdate] = useState(0);
+
+  const reloadParents = () => api.init().then(d => setParents(d.parents || [])).catch(() => {});
+  useEffect(() => { reloadParents(); }, []);
 
   function addParent() {
     if(!form.name.trim()||!form.username.trim()) { alert('Name and username required'); return; }
     store.addUser({...form, role:'parent'});
     setCreatedAccount({ name: form.name, role: 'Parent', username: form.username, password: form.password, email: form.email, id: form.studentId||null });
-    setParents(store.users.filter(u=>u.role==='parent'));
+    reloadParents();
     setShowAdd(false); setForm({name:'',username:'',password:'demo123',email:'',studentId:''});
   }
 
@@ -1841,14 +1879,28 @@ function CredentialsModal({ theme: C, account, onClose }) {
 
 /* ── STUDENT PORTFOLIO MODAL ── */
 function StudentPortfolioModal({ theme: C, student, onClose }) {
-  const [enrolledCourses, setEnrolledCourses] = useState(store.getStudentCourses(student.id));
+  const [enrolledCourses, setEnrolledCourses] = useState([]);
+  const [grades, setGrades] = useState([]);
   const courses = enrolledCourses;
   const idHash  = student.id.split('').reduce((a,c)=>a+c.charCodeAt(0),0);
 
-  function withdrawCourse(courseId) {
+  useEffect(() => {
+    Promise.allSettled([api.getLectures(), api.getEnrollments(), api.getStudentGrades(student.id)]).then(([lecRes, enrollRes, gradesRes]) => {
+      const lecs   = lecRes.status    === 'fulfilled' ? lecRes.value    : [];
+      const enroll = enrollRes.status  === 'fulfilled' ? enrollRes.value  : [];
+      const g      = gradesRes.status  === 'fulfilled' ? gradesRes.value  : [];
+      const myIds  = new Set(enroll.filter(e => String(e.student_id) === String(student.id)).map(e => String(e.lecture_id || e.course_id)));
+      setEnrolledCourses(lecs.filter(l => myIds.has(String(l.id))));
+      setGrades(Array.isArray(g) ? g : []);
+    });
+  }, [student.id]);
+
+  async function withdrawCourse(courseId) {
     if (!window.confirm(`Withdraw ${student.name} from this course?`)) return;
-    store.unenrollStudent(courseId, student.id);
-    setEnrolledCourses(store.getStudentCourses(student.id));
+    try {
+      await api.unenroll(courseId, student.id);
+    } catch(e) { alert('Failed to unenroll: ' + e.message); return; }
+    setEnrolledCourses(prev => prev.filter(c => String(c.id) !== String(courseId)));
   }
 
   async function printPortfolio() {
@@ -1919,8 +1971,8 @@ function StudentPortfolioModal({ theme: C, student, onClose }) {
             {courses.length===0
               ? <tr><td colSpan={6} style={{padding:16,textAlign:'center',color:C.text3}}>No courses enrolled</td></tr>
               : courses.map((c,i)=>{
-                  const rec = store.getCourseResults(c.id)[student.id];
-                  const g   = rec?.grade;
+                  const rec = grades.find(g => g.course_code === c.code || g.course_id === c.id);
+                  const g   = rec?.grade ?? rec?.score;
                   const att = ((idHash + i*17) % 30) + 70;
                   const gc  = g!=null ? gradeColor(g,C) : C.text3;
                   return (
@@ -1955,16 +2007,17 @@ function StudentPortfolioModal({ theme: C, student, onClose }) {
 function AdminExamSchedule({ theme: C }) {
   const { t } = useLang();
   const [courses, setCourses] = useState([]);
+  const [exams,   setExams]   = useState([]);
   const [form, setForm] = useState({ courseId: '', type:'midterm', date:'', time:'', room:'', duration:120, notes:'' });
-  const [, refresh] = useState(0);
-  const exams = store.getAllExams();
   const today = new Date().toISOString().slice(0,10);
 
+  const reloadExams = () => api.getExams().then(setExams).catch(() => {});
   useEffect(() => {
     api.getLectures().then(lecs => {
       setCourses(lecs);
       if (lecs.length) setForm(f => ({ ...f, courseId: f.courseId || lecs[0].id }));
     }).catch(() => {});
+    reloadExams();
   }, []);
 
   const TYPE_CFG = {
@@ -1973,14 +2026,20 @@ function AdminExamSchedule({ theme: C }) {
     quiz:    { label:'Quiz',    color:'#10b981', bg:'#10b98122' },
   };
 
-  function add() {
+  async function add() {
     if (!form.courseId || !form.date) { alert('Select a course and date.'); return; }
-    store.addExam(form);
+    const course = courses.find(c => String(c.id) === String(form.courseId));
+    try {
+      await api.addExam({ ...form, courseName: course?.name || '', courseCode: course?.code || '' });
+    } catch(e) { alert('Failed to add exam: ' + e.message); return; }
     setForm({ courseId: courses[0]?.id||'', type:'midterm', date:'', time:'', room:'', duration:120, notes:'' });
-    refresh(n => n+1);
+    reloadExams();
   }
 
-  function del(id) { store.deleteExam(id); refresh(n => n+1); }
+  async function del(id) {
+    try { await api.deleteExam(id); } catch(e) { alert('Failed to delete: ' + e.message); return; }
+    reloadExams();
+  }
 
   const upcoming = exams.filter(e => e.date >= today);
   const past = exams.filter(e => e.date < today);

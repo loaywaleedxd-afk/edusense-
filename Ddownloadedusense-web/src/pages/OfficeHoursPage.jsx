@@ -44,13 +44,19 @@ export function StudentOfficeHours({ theme: C, stu }) {
   const { t } = useLang();
   const [slots, setSlots]       = useState([]);
   const [bookings, setBookings] = useState(() => loadLS(LS_BOOKINGS, []));
-  const [selDoc, setSelDoc]     = useState(store.doctors[0]?.id || '');
+  const [doctors,  setDoctors]  = useState([]);
+  const [selDoc, setSelDoc]     = useState('');
   const [note, setNote]         = useState('');
   const [busy, setBusy]         = useState(false);
   const [msg, setMsg]           = useState('');
   const [tab, setTab]           = useState('book'); // 'book' | 'mine'
 
-  const doctors = store.doctors;
+  useEffect(() => {
+    get('/api/lectures/doctors').then(docs => {
+      setDoctors(docs || []);
+      if (docs?.length) setSelDoc(d => d || docs[0].id);
+    }).catch(() => {});
+  }, []);
 
   // Load bookings from backend, fall back to localStorage
   useEffect(() => {

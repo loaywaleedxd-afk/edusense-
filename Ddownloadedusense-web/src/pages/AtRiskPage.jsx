@@ -273,17 +273,17 @@ function buildLocalRiskList() {
 
 // ── Doctor/Admin dashboard ────────────────────────────────────────────────────
 function AdminAtRisk({ theme: C }) {
-  const [allStudents, setAllStudents] = useState(() => buildLocalRiskList());
+  const [allStudents, setAllStudents] = useState([]);
   const [filter,      setFilter]      = useState('medium');
   const [assessing,   setAssessing]   = useState(false);
   const [fromAPI,     setFromAPI]     = useState(false);
   const [lastRun,     setLastRun]     = useState(null);
 
-  // Try to load from backend silently on mount
+  // Load from backend on mount
   useEffect(() => {
     get('/api/at-risk/students?min_level=low')
       .then(data => {
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           data.forEach(s => {
             if (typeof s.details === 'string') {
               try { s.details = JSON.parse(s.details); } catch { s.details = {}; }
@@ -293,7 +293,10 @@ function AdminAtRisk({ theme: C }) {
           setFromAPI(true);
         }
       })
-      .catch(() => {}); // keep local data silently
+      .catch(() => {
+        // Fall back to local calculation only if API fails
+        setAllStudents(buildLocalRiskList());
+      });
   }, []);
 
   async function runAssessment() {

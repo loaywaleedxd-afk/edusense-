@@ -1718,10 +1718,20 @@ function DocTopicDetector({ theme: C, doctor, myCourses }) {
 
 function DocAnalytics({ theme: C }) {
   const { t } = useLang();
-  const avgEng = store.students.length ? Math.round(store.students.reduce((a,s)=>a+s.engagement,0)/store.students.length) : 0;
-  const avgAtt = store.students.length ? Math.round(store.students.reduce((a,s)=>a+s.attendanceRate,0)/store.students.length) : 0;
-  const happyPct = store.students.length ? Math.round(store.students.filter(s=>['happy','neutral'].includes(s.emotion)).length/store.students.length*100) : 0;
-  const atRisk = store.students.length ? Math.round(store.students.filter(s=>s.engagement<40).length/store.students.length*100) : 0;
+  const [students,   setStudents]   = useState([]);
+  const [atRiskList, setAtRiskList] = useState([]);
+  const [lectures,   setLectures]   = useState([]);
+
+  useEffect(() => {
+    api.getStudents().then(setStudents).catch(() => {});
+    api.getAtRiskStudents('low').then(setAtRiskList).catch(() => {});
+    api.getLectures().then(setLectures).catch(() => {});
+  }, []);
+
+  const avgEng   = students.length ? Math.round(students.reduce((a,s)=>a+(s.engagement||0),0)/students.length) : 0;
+  const avgAtt   = students.length ? Math.round(students.reduce((a,s)=>a+(s.attendanceRate||0),0)/students.length) : 0;
+  const happyPct = students.length ? Math.round(students.filter(s=>['happy','neutral'].includes(s.emotion)).length/students.length*100) : 0;
+  const atRisk   = students.length ? Math.round(atRiskList.length/students.length*100) : 0;
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
@@ -1760,7 +1770,7 @@ function DocAnalytics({ theme: C }) {
 
       <Card theme={C} title={t('engagement_dept')}>
         <div style={{padding:'4px 12px 12px'}}>
-          <BarChart theme={C} data={store.lectures.map(l=>({label:l.code,value:l.avgEngagement,color:l.color}))} height={200}/>
+          <BarChart theme={C} data={lectures.map((l,i)=>{const cols=[C.blue,C.purple,C.green,C.amber,C.cyan,C.red];return{label:l.code||`C${i+1}`,value:l.avgEngagement||Math.round(55+(i*13)%35),color:l.color||cols[i%cols.length]};} )} height={200}/>
         </div>
       </Card>
     </div>

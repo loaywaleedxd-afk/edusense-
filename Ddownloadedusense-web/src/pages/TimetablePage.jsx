@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import store from '../dataStore';
+import api from '../api';
 import { useLang } from '../context/LanguageContext';
 
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu'];
@@ -17,20 +18,31 @@ function minutesToPx(min, startHour = 8) {
 
 export default function TimetablePage({ theme: C, stu, role = 'student', doctorId }) {
   const { t } = useLang();
-  const [selected, setSelected] = useState(null);
+  const [selected,  setSelected]  = useState(null);
+  const [lectures,  setLectures]  = useState([]);
 
-  // Get lectures for this user
-  let lectures = [];
-  if (role === 'student' && stu) {
-    lectures = store.getStudentCourses(stu.id).map(c => {
-      const lec = store.lectures.find(l => l.code === c.code || l.id === c.id) || c;
-      return { ...c, ...lec };
+  useEffect(() => {
+    Promise.allSettled([
+      api.getLectures(),
+      api.getEnrollments(),
+    ]).then(([lecRes, enrollRes]) => {
+      const allLecs   = lecRes.status === 'fulfilled'   ? lecRes.value   : [];
+      const allEnroll = enrollRes.status === 'fulfilled' ? enrollRes.value : [];
+
+      if (role === 'student' && stu) {
+        const myIds = new Set(
+          allEnroll
+            .filter(e => String(e.student_id) === String(stu.id) || String(e.student_id) === String(stu.student_id))
+            .map(e => String(e.lecture_id || e.course_id))
+        );
+        setLectures(allLecs.filter(l => myIds.has(String(l.id))));
+      } else if (role === 'doctor') {
+        setLectures(allLecs.filter(l => String(l.doctor_id || l.doctorId) === String(doctorId)));
+      } else {
+        setLectures(allLecs);
+      }
     });
-  } else if (role === 'doctor') {
-    lectures = store.lectures.filter(l => l.doctorId === doctorId);
-  } else {
-    lectures = store.lectures;
-  }
+  }, [role, stu?.id, doctorId]);
 
   // Map JS getDay() to our day keys (0=Sun,1=Mon,2=Tue,3=Wed,4=Thu)
   const DAY_MAP = [0, 1, 2, 3, 4]; // index in DAYS array

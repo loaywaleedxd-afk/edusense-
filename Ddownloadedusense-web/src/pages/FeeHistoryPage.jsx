@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import store from '../dataStore';
-import { get } from '../api.js';
+import api, { get } from '../api.js';
 import { useLang } from '../context/LanguageContext';
 import { initiatePaymobPayment } from '../utils/paymob';
 
@@ -112,13 +112,21 @@ export default function FeeHistoryPage({ theme: C, stu, user, role }) {
   const { t, isRTL } = useLang();
   const isAdmin = role === 'admin';
 
+  const [allStudents, setAllStudents] = useState([]);
+  useEffect(() => {
+    if (isAdmin) api.getStudents().then(setAllStudents).catch(() => {});
+  }, [isAdmin]);
+
   // Admin student picker
-  const [selectedStuId, setSelectedStuId] = useState(
-    isAdmin ? (store.students[0]?.id || '') : (stu?.id || '')
-  );
+  const [selectedStuId, setSelectedStuId] = useState(isAdmin ? '' : (stu?.id || ''));
   const [stuSearch, setStuSearch] = useState('');
+
+  useEffect(() => {
+    if (isAdmin && allStudents.length && !selectedStuId) setSelectedStuId(allStudents[0]?.id || allStudents[0]?.student_id || '');
+  }, [isAdmin, allStudents, selectedStuId]);
+
   const activeStu = isAdmin
-    ? store.students.find(s => s.id === selectedStuId) || store.students[0]
+    ? allStudents.find(s => (s.id || s.student_id) === selectedStuId) || allStudents[0]
     : (stu || user);
 
   const [feeOverrides, setFeeOverrides] = useState(() =>
@@ -262,11 +270,13 @@ export default function FeeHistoryPage({ theme: C, stu, user, role }) {
               onChange={e => { setSelectedStuId(e.target.value); setStuSearch(''); }}
               style={{ padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: C.card, color: C.text, border: `1px solid ${C.border}`, cursor: 'pointer', outline: 'none', maxWidth: 260 }}
             >
-              {store.students
-                .filter(s => !stuSearch || s.name.toLowerCase().includes(stuSearch.toLowerCase()) || s.id.toLowerCase().includes(stuSearch.toLowerCase()))
-                .map(s => (
-                  <option key={s.id} value={s.id}>{s.name} — {s.id}</option>
-                ))}
+              {allStudents
+                .filter(s => !stuSearch || (s.name||s.full_name||'').toLowerCase().includes(stuSearch.toLowerCase()) || (s.id||s.student_id||'').toLowerCase().includes(stuSearch.toLowerCase()))
+                .map(s => {
+                  const id = s.id || s.student_id || '';
+                  const name = s.name || s.full_name || id;
+                  return <option key={id} value={id}>{name} — {id}</option>;
+                })}
             </select>
           </div>
         )}

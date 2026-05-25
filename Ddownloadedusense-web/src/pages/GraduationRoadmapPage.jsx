@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLang } from '../context/LanguageContext';
 import store from '../dataStore';
+import api from '../api';
 
 const LS_PREFIX = 'es_roadmap_';
 
@@ -107,9 +108,19 @@ export default function GraduationRoadmapPage({ theme: C, stu, role = 'student' 
   const { t, isRTL } = useLang();
   const isAdmin = role === 'admin';
 
-  // Admin: student picker
-  const [selectedStuId, setSelectedStuId] = useState(stu?.id || store.students[0]?.id || '');
-  const activeStu = isAdmin ? store.getStudent(selectedStuId) || store.students[0] : stu;
+  const [allStudents, setAllStudents] = useState([]);
+  useEffect(() => {
+    if (isAdmin) api.getStudents().then(setAllStudents).catch(() => {});
+  }, [isAdmin]);
+
+  const [selectedStuId, setSelectedStuId] = useState(stu?.id || '');
+  useEffect(() => {
+    if (isAdmin && allStudents.length && !selectedStuId) setSelectedStuId(allStudents[0]?.id || allStudents[0]?.student_id || '');
+  }, [isAdmin, allStudents, selectedStuId]);
+
+  const activeStu = isAdmin
+    ? allStudents.find(s => (s.id || s.student_id) === selectedStuId) || allStudents[0]
+    : stu;
 
   // Overrides: { [code]: 'completed'|'in_progress'|'not_started' }
   const [overrides, setOverrides] = useState(() => loadOverrides(activeStu?.id || ''));
@@ -142,11 +153,11 @@ export default function GraduationRoadmapPage({ theme: C, stu, role = 'student' 
 
   // Filtered student list for admin picker
   const filteredStudents = stuSearch
-    ? store.students.filter(s =>
-        s.name.toLowerCase().includes(stuSearch.toLowerCase()) ||
-        s.id.toLowerCase().includes(stuSearch.toLowerCase())
+    ? allStudents.filter(s =>
+        (s.name||s.full_name||'').toLowerCase().includes(stuSearch.toLowerCase()) ||
+        (s.id||s.student_id||'').toLowerCase().includes(stuSearch.toLowerCase())
       )
-    : store.students;
+    : allStudents;
 
   function addCourseToRoadmap() {
     const { semIdx, code, name, credits, cat } = addCourseForm;
@@ -167,20 +178,22 @@ export default function GraduationRoadmapPage({ theme: C, stu, role = 'student' 
     setCurriculum(buildCurriculum());
   }
 
-  // Sync store courses into roadmap (match by code)
+  // Sync API lectures into roadmap (match by code)
   function syncStoreCoursesToRoadmap() {
     const existing = loadCustomSemesters();
     const existingCodes = new Set([
       ...curriculum.flatMap(s => s.courses.map(c => c.code)),
       ...existing.map(e => e.code),
     ]);
-    const newEntries = store.courses
-      .filter(c => !existingCodes.has(c.code))
-      .map(c => ({ semIdx: 7, code: c.code, name: c.name, credits: 3, cat: 'elective' }));
-    if (!newEntries.length) return alert('All store courses are already in the roadmap');
-    saveCustomSemesters([...existing, ...newEntries]);
-    setCurriculum(buildCurriculum());
-    alert(`Added ${newEntries.length} course(s) from the Courses page to Semester 8`);
+    api.getLectures().then(lecs => {
+      const newEntries = (lecs || [])
+        .filter(c => c.code && !existingCodes.has(c.code))
+        .map(c => ({ semIdx: 7, code: c.code, name: c.name, credits: 3, cat: 'elective' }));
+      if (!newEntries.length) return alert('All courses are already in the roadmap');
+      saveCustomSemesters([...existing, ...newEntries]);
+      setCurriculum(buildCurriculum());
+      alert(`Added ${newEntries.length} course(s) from the database to Semester 8`);
+    }).catch(() => alert('Could not load courses from database'));
   }
 
   function toggle(sem) {
@@ -230,9 +243,13 @@ export default function GraduationRoadmapPage({ theme: C, stu, role = 'student' 
               onChange={e => loadStu(e.target.value)}
               style={{ flex: 1, minWidth: 220, height: 38, background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0 12px', fontSize: 13, color: C.text }}
             >
-              {filteredStudents.map(s => (
-                <option key={s.id} value={s.id}>{s.name} — {s.id} — {s.dept} (Y{s.year})</option>
-              ))}
+              {filteredStudents.map(s => {
+                const id   = s.id || s.student_id || '';
+                const name = s.name || s.full_name || id;
+                const dept = s.dept || s.department || '';
+                const yr   = s.year || '';
+                return <option key={id} value={id}>{name} — {id}{dept ? ` — ${dept}` : ''}{yr ? ` (Y${yr})` : ''}</option>;
+              })}
             </select>
             <div style={{ fontSize: 11, color: C.text3 }}>Click a course card to toggle status</div>
           </div>
