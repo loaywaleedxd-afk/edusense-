@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@emailjs/browser": "^4.4.1",
+    "face-api.js": "^0.22.2",
     "framer-motion": "^12.39.0",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",

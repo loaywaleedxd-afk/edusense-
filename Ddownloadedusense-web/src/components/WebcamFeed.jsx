@@ -1,6 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-
-const PYTHON_URL = 'http://localhost:8765';
+import * as faceapi from 'face-api.js';
 
 const EMOTION_COLORS = {
   happy:    '#10b981',
@@ -23,6 +22,32 @@ const EMOTION_EMOJI = {
   fearful:'😨', fear:'😨', confused:'🤔', bored:'😑',
 };
 
+// Load models once globally
+let modelsLoaded = false;
+let modelsLoading = false;
+const MODEL_URL = '/models';
+
+async function ensureModels() {
+  if (modelsLoaded) return true;
+  if (modelsLoading) {
+    // Wait for ongoing load
+    while (modelsLoading) await new Promise(r => setTimeout(r, 100));
+    return modelsLoaded;
+  }
+  modelsLoading = true;
+  try {
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
+    ]);
+    modelsLoaded = true;
+  } catch (e) {
+    console.error('face-api models failed to load', e);
+  }
+  modelsLoading = false;
+  return modelsLoaded;
+}
+
 export default function WebcamFeed({
   theme: C,
   onCapture,
@@ -35,89 +60,98 @@ export default function WebcamFeed({
   const videoRef  = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
-  const loopRef     = useRef(null);
-  const busyRef     = useRef(false);   // prevent overlapping requests
+  const loopRef   = useRef(null);
+  const busyRef   = useRef(false);
 
-  const [active,      setActive]      = useState(false);
-  const [ready,       setReady]       = useState(false);
-  const [captured,    setCaptured]    = useState(null);
-  const [error,       setError]       = useState('');
-  const [serverOk,    setServerOk]    = useState(null); // null=unknown, true, false
-  const [faces,       setFaces]       = useState([]);
-  const [analyzing,   setAnalyzing]   = useState(false);
+  const [active,    setActive]    = useState(false);
+  const [ready,     setReady]     = useState(false);
+  const [captured,  setCaptured]  = useState(null);
+  const [error,     setError]     = useState('');
+  const [modelReady,setModelReady]= useState(false);
+  const [faces,     setFaces]     = useState([]);
+  const [analyzing, setAnalyzing] = useState(false);
 
-  // ── Check Python server every 10 s ───────────────────────────────────────
+  // Load face-api models on mount
   useEffect(() => {
-    let alive = true;
-    function check() {
-      const ctrl = new AbortController();
-      const tid  = setTimeout(() => ctrl.abort(), 2000);
-      fetch(`${PYTHON_URL}/health`, { signal: ctrl.signal })
-        .then(r => r.json())
-        .then(d => { clearTimeout(tid); if (alive) setServerOk(d.status === 'ok'); })
-        .catch(() => { if (alive) setServerOk(false); });
-    }
-    check();
-    const id = setInterval(check, 10000);
-    return () => { alive = false; clearInterval(id); };
+    ensureModels().then(ok => setModelReady(ok));
   }, []);
 
-  // ── Capture frame to base64 (natural orientation) ────────────────────────
+  // ── Capture frame to canvas ─────────────────────────────────────────────
   function grabFrame() {
     const vid    = videoRef.current;
     const canvas = canvasRef.current;
-    if (!vid || !canvas || !ready) return null;
+    if (!vid || !canvas || !ready) return false;
     canvas.width  = vid.videoWidth  || 640;
     canvas.height = vid.videoHeight || 480;
     canvas.getContext('2d').drawImage(vid, 0, 0);
-    return canvas.toDataURL('image/jpeg', 0.7);
+    return true;
   }
 
-  // ── Detection loop ───────────────────────────────────────────────────────
+  // ── Detection loop using face-api.js ────────────────────────────────────
   const runLoop = useCallback(async () => {
-    if (!active || !ready || busyRef.current) {
+    if (!active || !ready || !modelReady || busyRef.current) {
       loopRef.current = setTimeout(runLoop, 800);
       return;
     }
-    const frame = grabFrame();
-    if (!frame) { loopRef.current = setTimeout(runLoop, 800); return; }
+    const vid = videoRef.current;
+    if (!vid) { loopRef.current = setTimeout(runLoop, 800); return; }
 
     busyRef.current = true;
     setAnalyzing(true);
     try {
-      const ctrl = new AbortController();
-      const tid  = setTimeout(() => ctrl.abort(), 4000);
-      const res  = await fetch(`${PYTHON_URL}/analyze`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json', 'Connection': 'keep-alive' },
-        body:    JSON.stringify({ frame, course_id: courseId }),
-        signal:  ctrl.signal,
-      });
-      clearTimeout(tid);
-      const data = await res.json();
-      if (data.detections?.length > 0) {
-        setFaces(data.detections);
-        setServerOk(true);
+      const detections = await faceapi
+        .detectAllFaces(vid, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+        .withFaceExpressions();
+
+      if (detections.length > 0) {
+        const vidW = vid.videoWidth  || 640;
+        const vidH = vid.videoHeight || 480;
+
+        const mapped = detections.map((d, i) => {
+          const box = d.detection.box;
+          // Get top emotion
+          const exps   = d.expressions;
+          const topEmo = Object.entries(exps).sort((a, b) => b[1] - a[1])[0];
+          const emotion    = topEmo[0];
+          const confidence = topEmo[1];
+          // Simple engagement score: average of happy+neutral (positive emotions)
+          const engScore = Math.min(1, (exps.happy || 0) * 1.5 + (exps.neutral || 0) * 0.8 + (exps.surprised || 0) * 0.6);
+          return {
+            emotion,
+            confidence,
+            engagement_score: engScore,
+            student_id:   null,
+            student_name: null,
+            box: {
+              x: (box.x / vidW) * 100,
+              y: (box.y / vidH) * 100,
+              w: (box.width  / vidW) * 100,
+              h: (box.height / vidH) * 100,
+            },
+          };
+        });
+
+        setFaces(mapped);
         onFaceDetected?.();
-        const top = data.detections[0];
-        onEmotionDetected?.(top.emotion, top.student_id, data.detections);
+        const top = mapped[0];
+        onEmotionDetected?.(top.emotion, top.student_id, mapped);
       } else {
         setFaces([]);
       }
-    } catch {
-      setServerOk(false);
+    } catch (e) {
+      console.warn('face-api detection error', e);
       setFaces([]);
     }
     busyRef.current = false;
     setAnalyzing(false);
     if (active) loopRef.current = setTimeout(runLoop, 800);
-  }, [active, ready, courseId, onFaceDetected, onEmotionDetected]);
+  }, [active, ready, modelReady, onFaceDetected, onEmotionDetected]);
 
   useEffect(() => {
     if (!active || !ready) { clearTimeout(loopRef.current); setFaces([]); return; }
     runLoop();
     return () => clearTimeout(loopRef.current);
-  }, [active, ready]);
+  }, [active, ready, modelReady]);
 
   // ── Camera control ───────────────────────────────────────────────────────
   async function startCamera() {
@@ -152,24 +186,10 @@ export default function WebcamFeed({
   }
 
   async function captureFrame() {
-    const frame = grabFrame();
-    if (!frame) return;
+    if (!grabFrame()) return;
+    const frame = canvasRef.current.toDataURL('image/jpeg', 0.7);
     setCaptured(frame);
-
-    // Also register face with Python server
-    let studentRegistered = false;
-    try {
-      const res = await fetch(`${PYTHON_URL}/analyze`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ frame, course_id: courseId }),
-        signal:  AbortSignal.timeout(4000),
-      });
-      const data = await res.json();
-      studentRegistered = data.total_faces > 0;
-    } catch {}
-
-    onCapture?.(frame, studentRegistered);
+    onCapture?.(frame, false);
   }
 
   useEffect(() => () => stopCamera(), []);
@@ -178,26 +198,23 @@ export default function WebcamFeed({
 
   return (
     <div>
-      {/* Server status bar */}
-      {serverOk === false && (
+      {/* Model status bar */}
+      {!modelReady && (
         <div style={{
           fontSize: 11, color: '#fbbf24', background: '#2d1a00',
           border: '1px solid #f59e0b', borderRadius: 8,
           padding: '6px 12px', marginBottom: 6, lineHeight: 1.5,
         }}>
-          ⚠️ Python server not running — start it with:<br/>
-          <code style={{ fontSize: 10 }}>
-            cd emotion_system &amp;&amp; .venv\Scripts\python.exe face_server.py
-          </code>
+          ⏳ Loading AI emotion models…
         </div>
       )}
-      {serverOk === true && (
+      {modelReady && (
         <div style={{
           fontSize: 10, color: '#10b981', background: 'rgba(16,185,129,0.1)',
           border: '1px solid #10b981', borderRadius: 6,
           padding: '3px 10px', marginBottom: 6, display: 'inline-block',
         }}>
-          🐍 Python AI Server Connected
+          🧠 Browser AI Ready
         </div>
       )}
 
@@ -230,13 +247,12 @@ export default function WebcamFeed({
           </div>
         )}
 
-        {/* Face detection boxes (real, from Python) */}
+        {/* Face detection boxes (browser AI) */}
         {active && ready && faces.map((f, i) => {
-          const col  = EMOTION_COLORS[f.emotion] || '#3b82f6';
+          const col   = EMOTION_COLORS[f.emotion] || '#3b82f6';
           const emoji = EMOTION_EMOJI[f.emotion]  || '😐';
           const conf  = Math.round(f.confidence * 100);
           const eng   = Math.round((f.engagement_score || 0) * 100);
-          const label = f.student_name || f.student_id || 'Unknown';
           return (
             <div key={i} style={{
               position: 'absolute',
@@ -255,14 +271,11 @@ export default function WebcamFeed({
                   transform: `translate(${l==='100%'?'-100%':'0'},${t==='100%'?'-100%':'0'})`,
                 }}/>
               ))}
-              {/* Top: student ID */}
-              <div style={{ position: 'absolute', top: -22, left: 0, fontSize: 9, color: '#fff', background: label !== 'Unknown' ? `${col}ee` : 'rgba(0,0,0,0.8)', padding: '2px 8px', borderRadius: 4, whiteSpace: 'nowrap', fontWeight: 700 }}>
-                {label !== 'Unknown' ? `✓ ${label}` : '? Unknown'}
-                {f.student_id && f.student_name && (
-                  <span style={{ opacity: 0.75, fontWeight: 400, marginLeft: 4 }}>({f.student_id})</span>
-                )}
+              {/* Top label */}
+              <div style={{ position: 'absolute', top: -22, left: 0, fontSize: 9, color: '#fff', background: 'rgba(0,0,0,0.8)', padding: '2px 8px', borderRadius: 4, whiteSpace: 'nowrap', fontWeight: 700 }}>
+                👤 Face {i + 1}
               </div>
-              {/* Bottom: emotion + confidence */}
+              {/* Bottom: emotion */}
               <div style={{ position: 'absolute', bottom: -22, left: 0, fontSize: 9, color: '#fff', background: `${col}dd`, padding: '2px 8px', borderRadius: 4, whiteSpace: 'nowrap', fontWeight: 700 }}>
                 {emoji} {f.emotion} {conf}% · eng {eng}%
               </div>
@@ -270,7 +283,7 @@ export default function WebcamFeed({
           );
         })}
 
-        {/* LIVE badge + mode + analyzing dot */}
+        {/* LIVE badge */}
         {active && (
           <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ background: 'rgba(0,0,0,0.65)', borderRadius: 20, padding: '3px 10px', display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -288,7 +301,7 @@ export default function WebcamFeed({
         {/* Analyzing indicator */}
         {active && ready && analyzing && (
           <div style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(16,185,129,0.9)', borderRadius: 6, padding: '2px 8px', fontSize: 9, color: '#fff', fontWeight: 700 }}>
-            🐍 Analyzing…
+            🧠 Analyzing…
           </div>
         )}
       </div>
