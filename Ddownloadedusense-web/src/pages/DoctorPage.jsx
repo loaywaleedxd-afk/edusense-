@@ -1592,7 +1592,7 @@ Only include weeks with difficulty score >= 30. Return only the JSON array, no o
     body: JSON.stringify({
       model: 'llama-3.1-8b-instant',
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 1200, temperature: 0.4
+      max_tokens: 4000, temperature: 0.4
     })
   });
 
@@ -1603,10 +1603,22 @@ Only include weeks with difficulty score >= 30. Return only the JSON array, no o
   try { data = JSON.parse(raw); } catch { throw new Error('Groq returned non-JSON: ' + raw.slice(0, 200)); }
 
   const text = data.choices?.[0]?.message?.content || '';
-  const match = text.match(/\[[\s\S]*\]/);
-  if (!match) throw new Error('No JSON array in Groq response: ' + text.slice(0, 200));
 
-  return JSON.parse(match[0]);
+  // Try exact match first
+  const match = text.match(/\[[\s\S]*\]/);
+  if (match) {
+    try { return JSON.parse(match[0]); } catch { /* fall through to repair */ }
+  }
+
+  // Response was truncated — salvage complete objects from the partial array
+  const objMatches = [...text.matchAll(/\{[\s\S]*?\}(?=\s*[,\]]|\s*$)/g)];
+  const salvaged = [];
+  for (const m of objMatches) {
+    try { salvaged.push(JSON.parse(m[0])); } catch { /* skip malformed */ }
+  }
+  if (salvaged.length) return salvaged;
+
+  throw new Error('Could not parse Groq response: ' + text.slice(0, 300));
 }
 
 function DocTopicDetector({ theme: C, doctor, myCourses }) {
