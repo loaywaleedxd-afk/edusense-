@@ -1289,9 +1289,12 @@ function AdminEnrollments({ theme: C }) {
     ]).then(([courseList, studentList, enrollData]) => {
       setCourses(courseList);
       setAllStudents(studentList);
-      // enrollData = { course_code: [student_id, ...] }
+      // enrollData = [{course_id, student_id}, ...]
       const map = {};
-      Object.entries(enrollData).forEach(([cid, sids]) => { map[cid] = new Set(sids); });
+      (Array.isArray(enrollData) ? enrollData : []).forEach(({course_id, student_id}) => {
+        if (!map[course_id]) map[course_id] = new Set();
+        map[course_id].add(student_id);
+      });
       setEnrollMap(map);
       if (courseList.length > 0 && !selCourse) setSelCourse(courseList[0].course_code);
     }).catch(() => {}).finally(() => setLoading(false));
