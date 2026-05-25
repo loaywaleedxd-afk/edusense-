@@ -807,21 +807,35 @@ function DocAttendance({ theme: C, myCourses }) {
 /* ── LECTURES ── */
 function DocLectures({ theme: C, myCourses }) {
   const { t } = useLang();
+  const [enrolledCounts, setEnrolledCounts] = useState({});
+
+  useEffect(() => {
+    if (!myCourses.length) return;
+    Promise.all(
+      myCourses.map(c =>
+        api.getCourseStudents(c.id)
+          .then(r => ({ id: c.id, count: (r.enrolled || []).length }))
+          .catch(() => ({ id: c.id, count: 0 }))
+      )
+    ).then(results => {
+      const map = {};
+      results.forEach(({ id, count }) => { map[id] = count; });
+      setEnrolledCounts(map);
+    });
+  }, [myCourses]);
+
+  const totalStudents = Object.values(enrolledCounts).reduce((a, b) => a + b, 0);
+
   return (
     <div style={{padding:'8px 20px 20px'}}>
       <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('lectures')}</div>
 
-      {(() => {
-        const [totStu, setTotStu] = [0, ()=>{}]; // loaded async — see DocDashboard
-        return (
       <div style={{display:'flex',gap:12,marginBottom:12,flexWrap:'wrap'}}>
-        <StatCard theme={C} label="Courses"        value={myCourses.length}   sub="This semester"    icon="📚" accent="blue"/>
-        <StatCard theme={C} label="Total Students" value={myCourses.reduce((a,c)=>a+c.enrolledCount,0)||'—'} sub="Across all courses" icon="👥" accent="green"/>
-        <StatCard theme={C} label="Avg Engagement" value="—"       sub="Across courses"   icon="🧠" accent="amber"/>
-        <StatCard theme={C} label="Courses Active" value={myCourses.length} sub="This semester" icon="🎤" accent="purple"/>
+        <StatCard theme={C} label="Courses"        value={myCourses.length}       sub="This semester"       icon="📚" accent="blue"/>
+        <StatCard theme={C} label="Total Students" value={totalStudents || '…'}   sub="Across all courses"  icon="👥" accent="green"/>
+        <StatCard theme={C} label="Avg Engagement" value="—"                      sub="Across courses"      icon="🧠" accent="amber"/>
+        <StatCard theme={C} label="Courses Active" value={myCourses.length}       sub="This semester"       icon="🎤" accent="purple"/>
       </div>
-        );
-      })()}
 
       <div style={{display:'flex',flexDirection:'column',gap:10}}>
         {myCourses.map((c,i)=>(
@@ -835,7 +849,9 @@ function DocLectures({ theme: C, myCourses }) {
                   <div style={{fontSize:11,color:C.text3}}>Semester: {c.semester}</div>
                 </div>
                 <div style={{textAlign:'center'}}>
-                  <div style={{fontSize:24,fontWeight:700,color:c.color}}>{c.enrolledCount}</div>
+                  <div style={{fontSize:24,fontWeight:700,color:c.color}}>
+                    {enrolledCounts[c.id] !== undefined ? enrolledCounts[c.id] : '…'}
+                  </div>
                   <div style={{fontSize:10,color:C.text3}}>Students</div>
                 </div>
                 <Badge text="Active" color="green"/>
