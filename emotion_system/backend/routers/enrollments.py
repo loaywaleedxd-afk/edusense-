@@ -20,10 +20,7 @@ async def get_enrollments(payload: dict = Depends(require_auth), db=Depends(get_
         )
     else:
         rows = await db.fetch("SELECT course_id, student_id FROM course_enrollments")
-    result = {}
-    for r in rows:
-        result.setdefault(r["course_id"], []).append(r["student_id"])
-    return result
+    return [{"course_id": r["course_id"], "student_id": r["student_id"]} for r in rows]
 
 
 @router.get("/students/{course_code}")
