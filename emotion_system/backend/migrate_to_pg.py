@@ -88,15 +88,23 @@ async def run():
 
     # ── ATTENDANCE ───────────────────────────────────────────────────────────
     att = await load("attendance")
+    valid_lids = {r["lecture_id"] for r in await conn.fetch("SELECT lecture_id FROM lectures")}
+    valid_sids = {r["student_id"] for r in await conn.fetch("SELECT student_id FROM students")}
+    ok = skipped = 0
     for a in att:
-        await conn.execute("""
-            INSERT INTO attendance (student_id, lecture_id, week, method, status, date)
-            VALUES ($1,$2,$3,$4,$5,$6)
-            ON CONFLICT DO NOTHING
-        """, a.get("student_id"), a.get("lecture_id"),
-             a.get("week",1), a.get("method","face_recognition"),
-             a.get("status","present"), a.get("date"))
-    print(f"✓ attendance: {len(att)}")
+        if a.get("lecture_id") not in valid_lids: skipped += 1; continue
+        if a.get("student_id") not in valid_sids: skipped += 1; continue
+        try:
+            await conn.execute("""
+                INSERT INTO attendance (student_id, lecture_id, week, method, status, date)
+                VALUES ($1,$2,$3,$4,$5,$6)
+                ON CONFLICT DO NOTHING
+            """, a.get("student_id"), a.get("lecture_id"),
+                 a.get("week",1), a.get("method","face_recognition"),
+                 a.get("status","present"), a.get("date"))
+            ok += 1
+        except Exception: skipped += 1
+    print(f"✓ attendance: {ok} imported, {skipped} skipped (missing FK)")
 
     # ── GRADES ───────────────────────────────────────────────────────────────
     grades = await load("grades")
