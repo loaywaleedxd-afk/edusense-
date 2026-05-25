@@ -23,11 +23,15 @@ async def _ensure_tables(db):
 # ── Pydantic models ────────────────────────────────────────────────────────────
 class SlotModel(BaseModel):
     id: str
-    doctor_id: str
+    doctorId: Optional[str] = None   # camelCase from frontend
+    doctor_id: Optional[str] = None  # snake_case fallback
     day: str
     time: str
     duration: int = 15
     available: bool = True
+
+    def get_doctor_id(self) -> str:
+        return self.doctorId or self.doctor_id or ''
 
 
 class BookingModel(BaseModel):
@@ -73,15 +77,36 @@ async def get_slots(doctor_id: str, db=Depends(get_db)):
 @router.post("/slots")
 async def create_slot(slot: SlotModel, db=Depends(get_db)):
     try:
+        doctor_id = slot.get_doctor_id()
         await db.execute(
             """INSERT INTO office_hours_slots (id,doctor_id,day,time,duration,available)
                VALUES ($1,$2,$3,$4,$5,$6)
                ON CONFLICT (id) DO UPDATE SET
                  doctor_id=EXCLUDED.doctor_id, day=EXCLUDED.day, time=EXCLUDED.time,
                  duration=EXCLUDED.duration, available=EXCLUDED.available""",
-            slot.id, slot.doctor_id, slot.day, slot.time, slot.duration, slot.available
+            slot.id, doctor_id, slot.day, slot.time, slot.duration, slot.available
         )
-        return {"ok": True, "slot": slot.dict()}
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── POST /slots/bulk — seed all slots at once ──────────────────────────────────
+@router.post("/slots/bulk")
+async def bulk_create_slots(body: dict, db=Depends(get_db)):
+    slots = body.get("slots", [])
+    try:
+        async with db.transaction():
+            for s in slots:
+                doctor_id = s.get("doctorId") or s.get("doctor_id", "")
+                await db.execute(
+                    """INSERT INTO office_hours_slots (id,doctor_id,day,time,duration,available)
+                       VALUES ($1,$2,$3,$4,$5,$6)
+                       ON CONFLICT (id) DO NOTHING""",
+                    s["id"], doctor_id, s["day"], s["time"],
+                    int(s.get("duration", 15)), bool(s.get("available", True))
+                )
+        return {"ok": True, "count": len(slots)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -91,10 +116,19 @@ async def create_slot(slot: SlotModel, db=Depends(get_db)):
 async def toggle_slot(slot_id: str, body: dict, db=Depends(get_db)):
     try:
         available = bool(body.get("available", True))
-        await db.execute(
+        result = await db.execute(
             "UPDATE office_hours_slots SET available = $1 WHERE id = $2",
             available, slot_id
         )
+        # If row not found, insert it (slot was generated locally but not yet in DB)
+        if result == "UPDATE 0":
+            doctor_id = body.get("doctorId") or body.get("doctor_id", "")
+            await db.execute(
+                """INSERT INTO office_hours_slots (id,doctor_id,day,time,duration,available)
+                   VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO UPDATE SET available=EXCLUDED.available""",
+                slot_id, doctor_id, body.get("day",""), body.get("time",""),
+                int(body.get("duration", 15)), available
+            )
         return {"ok": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

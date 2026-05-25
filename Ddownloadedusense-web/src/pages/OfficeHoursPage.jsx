@@ -313,15 +313,29 @@ export function DoctorOfficeHours({ theme: C, doctor }) {
   });
   const [tab, setTab] = useState('schedule');
 
-  // Load bookings from backend on mount
+  // Load slots + bookings from backend on mount; seed DB if empty
   useEffect(() => {
     if (!doctor?.id) return;
     (async () => {
       try {
-        const res = await get(`/api/office-hours/bookings/doctor/${doctor.id}`);
-        if (res?.bookings?.length > 0) {
-          setBookings(res.bookings);
-          saveLS(LS_BOOKINGS, res.bookings);
+        // Load slots
+        const sRes = await get(`/api/office-hours/slots/${doctor.id}`);
+        if (sRes?.slots?.length > 0) {
+          setSlots(sRes.slots);
+          saveLS(`${LS_SLOTS}_${doctor.id}`, sRes.slots);
+        } else {
+          // DB is empty — seed with default slots
+          const defaults = loadLS(`${LS_SLOTS}_${doctor.id}`, null) || buildDefaultSlots(doctor.id);
+          await post('/api/office-hours/slots/bulk', { slots: defaults }).catch(() => {});
+          setSlots(defaults);
+        }
+      } catch {}
+      try {
+        // Load bookings
+        const bRes = await get(`/api/office-hours/bookings/doctor/${doctor.id}`);
+        if (bRes?.bookings?.length > 0) {
+          setBookings(bRes.bookings);
+          saveLS(LS_BOOKINGS, bRes.bookings);
         }
       } catch {}
     })();
@@ -333,8 +347,15 @@ export function DoctorOfficeHours({ theme: C, doctor }) {
     const updated = slots.map(s => s.id === slotId ? { ...s, available: newVal } : s);
     setSlots(updated);
     saveLS(`${LS_SLOTS}_${doctor?.id}`, updated);
-    // Persist to backend
-    try { await post(`/api/office-hours/slots`, { ...slot, available: newVal }); } catch {}
+    // PATCH just the availability (send full slot so backend can upsert if missing)
+    try {
+      await fetch(`/api/office-hours/slots/${slotId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('es_token')}` },
+        body: JSON.stringify({ available: newVal, ...slot }),
+      });
+    } catch {}
   }
 
   const byDay = {};
