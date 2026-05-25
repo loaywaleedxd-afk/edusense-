@@ -118,8 +118,19 @@ function fileIcon(name=''){
 }
 function openFile(fileData, fileName){
   const ext=(fileName.split('.').pop()||'').toLowerCase();
-  if(['pdf','jpg','jpeg','png','gif','webp'].includes(ext)){ window.open(fileData,'_blank'); }
-  else { const a=document.createElement('a'); a.href=fileData; a.download=fileName; a.click(); }
+  try {
+    const [header, b64] = fileData.split(',');
+    const mime = header.match(/:(.*?);/)?.[1] || 'application/octet-stream';
+    const bytes = atob(b64);
+    const arr = new Uint8Array(bytes.length);
+    for(let i=0;i<bytes.length;i++) arr[i]=bytes.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([arr],{type:mime}));
+    if(['pdf','jpg','jpeg','png','gif','webp'].includes(ext)){ window.open(url,'_blank'); }
+    else { const a=document.createElement('a'); a.href=url; a.download=fileName; a.click(); }
+    setTimeout(()=>URL.revokeObjectURL(url), 10000);
+  } catch {
+    const a=document.createElement('a'); a.href=fileData; a.download=fileName; a.click();
+  }
 }
 async function readFile(file){
   if(file.size>MAX_FILE_BYTES) throw new Error(`File too large — max 3 MB (got ${(file.size/1048576).toFixed(1)} MB)`);
