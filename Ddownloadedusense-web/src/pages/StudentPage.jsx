@@ -610,9 +610,15 @@ function StudentAttendance({ theme: C, stu, pendingQR, onClearPendingQR }) {
       course: rec.course_name || rec.course_code || rec.lecture_id,
       date: rec.date || (rec.check_in_time ? rec.check_in_time.slice(0,10) : ''),
       week: `Week ${rec.week}`, time: rec.time || '',
-      method: rec.method,
+      method: rec.method === 'face_recognition' ? '🤖 Face Recognition'
+            : rec.method === 'qr'               ? '📱 QR Code'
+            : rec.method === 'manual'            ? '✍️ Manual'
+            : rec.method || '—',
       status: rec.status === 'excused' ? '📄 Excused' : '✅ Present',
     }));
+
+  const presentCount  = attRecs.filter(r => r.status === 'present' || r.status === 'excused').length;
+  const qrManualCount = attRecs.filter(r => r.method === 'qr' || r.method === 'manual').length;
 
   async function checkIn() {
     const code = qrCode.trim().toUpperCase();
@@ -664,8 +670,8 @@ function StudentAttendance({ theme: C, stu, pendingQR, onClearPendingQR }) {
 
       <div style={{ display:'flex', gap:12, marginBottom:12, flexWrap:'wrap' }}>
         <StatCard theme={C} label={t('attendance_rate')} value={`${rate}%`} sub={t('semester')} icon="✅" accent="green"/>
-        <StatCard theme={C} label={t('course')} value={myCourses.length} sub={t('enrolled_students')} icon="📚" accent="blue"/>
-        <StatCard theme={C} label={t('tab_records')} value={Math.round(rate/100*16)*myCourses.length} sub={`${attRecs.length} QR/manual`} icon="📊" accent="purple"/>
+        <StatCard theme={C} label={t('course')} value={myCourses.length} sub="Enrolled Courses" icon="📚" accent="blue"/>
+        <StatCard theme={C} label={t('tab_records')} value={presentCount} sub={`${qrManualCount} QR/manual`} icon="📊" accent="purple"/>
         <StatCard theme={C} label={t('academic_standing')} value={rate>=75?t('good_standing'):t('at_risk')} sub={rate>=75?'✅':'⚠️'} icon={rate>=75?'👍':'⚠️'} accent={rate>=75?'green':'red'}/>
       </div>
 
@@ -687,7 +693,7 @@ function StudentAttendance({ theme: C, stu, pendingQR, onClearPendingQR }) {
             </div>
           </Card>
           {recRows.length > 0 && (
-            <Card theme={C} title={`QR / Manual Check-ins (${recRows.length})`} style={{marginTop:12}}>
+            <Card theme={C} title={`Recent Attendance Records (${recRows.length})`} style={{marginTop:12}}>
               <div style={{ padding:'4px 12px 12px' }}>
                 <DataTable theme={C} columns={[
                   {key:'course',label:'Course',width:200},{key:'date',label:'Date',width:100},
