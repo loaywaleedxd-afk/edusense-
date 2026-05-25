@@ -87,14 +87,17 @@ class BrandingUpdate(BaseModel):
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def _validate_schema(schema: str):
+def _validate_schema(schema: str, allow_public: bool = False):
     import re
     if not re.match(r'^[a-z][a-z0-9_]{1,62}$', schema):
         raise HTTPException(
             status_code=400,
             detail="schema_name must be lowercase letters/numbers/underscores, 2-63 chars, start with a letter",
         )
-    if schema in ("public", "pg_catalog", "information_schema", "superadmin"):
+    reserved = {"pg_catalog", "information_schema", "superadmin"}
+    if not allow_public:
+        reserved.add("public")
+    if schema in reserved:
         raise HTTPException(status_code=400, detail=f"'{schema}' is a reserved schema name")
 
 
@@ -181,9 +184,7 @@ async def tenant_stats(
     db=Depends(get_db),
 ):
     """Return student/user/course counts for a tenant schema."""
-    _validate_schema(schema)
-
-    # Check schema exists
+    # Check schema exists (skip _validate_schema — "public" is a valid existing schema)
     exists = await db.fetchrow(
         "SELECT id FROM public.tenants WHERE schema_name=$1", schema
     )
@@ -284,7 +285,7 @@ async def import_students_csv(
       - year     defaults to 1
       - password defaults to {student_id}@EduSense2025
     """
-    _validate_schema(schema)
+    _validate_schema(schema, allow_public=True)
 
     raw     = await file.read()
     content = raw.decode('utf-8-sig')   # strip BOM if present
@@ -365,7 +366,7 @@ async def import_student_photos(
     Face encoding uses DeepFace Facenet512 if available on this server.
     Photos are saved regardless so the face engine can process them later.
     """
-    _validate_schema(schema)
+    _validate_schema(schema, allow_public=True)
 
     content   = await file.read()
     photo_dir = os.path.join(PHOTOS_BASE, schema)
@@ -443,7 +444,7 @@ async def create_admin_user(
     db=Depends(get_db),
 ):
     """Create an admin user inside the tenant's schema."""
-    _validate_schema(schema)
+    _validate_schema(schema, allow_public=True)
 
     if len(body.password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
@@ -527,7 +528,7 @@ async def export_tenant_data(
     db=Depends(get_db),
 ):
     """Download all university data as a ZIP of CSV files."""
-    _validate_schema(schema)
+    _validate_schema(schema, allow_public=True)
 
     EXPORTS = {
         "students": f"""
@@ -590,7 +591,7 @@ async def tenant_storage(
     db=Depends(get_db),
 ):
     """Return DB row counts and photo disk usage for a tenant."""
-    _validate_schema(schema)
+    _validate_schema(schema, allow_public=True)
 
     tables = [
         "users", "students", "emotion_records", "attendance",
@@ -637,7 +638,7 @@ async def tenant_onboarding(
     db=Depends(get_db),
 ):
     """Return onboarding progress for a tenant."""
-    _validate_schema(schema)
+    _validate_schema(schema, allow_public=True)
 
     try:
         admin_count    = await db.fetchval(
@@ -684,7 +685,7 @@ async def get_tenant_branding(
     db=Depends(get_db),
 ):
     """Return branding settings for a tenant."""
-    _validate_schema(schema)
+    _validate_schema(schema, allow_public=True)
     row = await db.fetchrow(
         "SELECT primary_color, logo_data FROM public.tenants WHERE schema_name=$1", schema
     )
@@ -701,7 +702,7 @@ async def update_tenant_branding(
     db=Depends(get_db),
 ):
     """Update logo and/or primary color for a tenant."""
-    _validate_schema(schema)
+    _validate_schema(schema, allow_public=True)
 
     updates, vals = [], []
     idx = 1
