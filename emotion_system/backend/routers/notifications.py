@@ -2,8 +2,21 @@
 from fastapi import APIRouter, Depends
 from database import get_db
 from auth_utils import require_auth, require_role
+from datetime import datetime, timezone
 
 router = APIRouter()
+
+
+def _parse_dt(val):
+    """Convert ISO string or None to datetime; fall back to now."""
+    if val is None:
+        return datetime.now(timezone.utc)
+    if isinstance(val, datetime):
+        return val
+    try:
+        return datetime.fromisoformat(str(val).replace("Z", "+00:00"))
+    except Exception:
+        return datetime.now(timezone.utc)
 
 
 @router.get("/")
@@ -46,7 +59,7 @@ async def add_notification(data: dict, payload: dict = Depends(require_auth), db
         data["id"], data.get("type","info"), data.get("title",""),
         data.get("message",""), data.get("studentId"),
         data.get("doctorId"), data.get("courseId"),
-        data.get("alertKind"), False, data.get("createdAt","")
+        data.get("alertKind"), False, _parse_dt(data.get("createdAt"))
     )
     return {"ok": True}
 
@@ -69,7 +82,7 @@ async def bulk_upsert_notifications(items: list[dict], payload: dict = Depends(r
                 data.get("message",""), data.get("studentId"),
                 data.get("doctorId"), data.get("courseId"),
                 data.get("alertKind"), bool(data.get("read")),
-                data.get("createdAt","")
+                _parse_dt(data.get("createdAt"))
             )
     return {"ok": True, "count": len(items)}
 
