@@ -178,7 +178,7 @@ function AdminDashboard({ theme: C, onNav }) {
   const deptShort  = ['CS','Engineering','Math','Physics','Data Sci'];
   const deptColors = [C.blue,C.purple,C.green,C.amber,C.cyan];
 
-  const [counts,   setCounts]   = useState({ students: 0, doctors: 0, lectures: 0, atRisk: 0 });
+  const [counts,   setCounts]   = useState({ students: 0, doctors: 0, lectures: 0, atRisk: 0, avgEng: 0 });
   const [lectures, setLectures] = useState([]);
   useEffect(() => {
     Promise.allSettled([
@@ -192,11 +192,13 @@ function AdminDashboard({ theme: C, onNav }) {
       const lecs     = lecRes.status === 'fulfilled' ? lecRes.value : [];
       const atRisk   = riskRes.status === 'fulfilled' ? riskRes.value : [];
       setLectures(lecs);
+      const avgEng = students.length ? Math.round(students.reduce((a,s) => a + (s.engagement || 0), 0) / students.length) : 0;
       setCounts({
         students: students.length,
         doctors:  doctors.length,
         lectures: lecs.filter(l => l.status === 'active').length,
         atRisk:   atRisk.length,
+        avgEng,
       });
     });
   }, []);
@@ -216,7 +218,7 @@ function AdminDashboard({ theme: C, onNav }) {
         <StatCard theme={C} label={t('students')}      value={counts.students} sub={t('enrolled_students')}  icon="🎓" accent="blue"/>
         <StatCard theme={C} label={t('doctors')}        value={counts.doctors}  sub={t('live_session')}       icon="👨‍🏫" accent="purple"/>
         <StatCard theme={C} label={t('live_session')}   value={counts.lectures} sub={t('analytics')}          icon="📚" accent="green"/>
-        <StatCard theme={C} label={t('avg_engagement')} value={`${avgEng}%`}    sub={t('analytics')}          icon="🧠" accent="amber"/>
+        <StatCard theme={C} label={t('avg_engagement')} value={`${counts.avgEng}%`} sub={t('analytics')}       icon="🧠" accent="amber"/>
         <StatCard theme={C} label={t('at_risk')}        value={counts.atRisk}   sub={t('academic_standing')}  icon="🚨" accent="red"/>
       </div>
 
