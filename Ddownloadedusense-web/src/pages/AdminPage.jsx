@@ -177,17 +177,33 @@ function AdminDashboard({ theme: C, onNav }) {
   const depts      = ['Computer Science','Engineering','Mathematics','Physics','Data Science'];
   const deptShort  = ['CS','Engineering','Math','Physics','Data Sci'];
   const deptColors = [C.blue,C.purple,C.green,C.amber,C.cyan];
-  const activeLectures = store.lectures.filter(l=>l.status==='active').length;
-  const avgEng = store.students.length ? Math.round(store.students.reduce((a,s)=>a+s.engagement,0)/store.students.length) : 0;
 
-  // Compute avg engagement per dept from real student data (seeded — deterministic)
-  const deptEngData = depts.map((dept, i) => {
-    const deptStudents = store.students.filter(s => s.dept === dept);
-    const val = deptStudents.length
-      ? Math.round(deptStudents.reduce((a,s)=>a+s.engagement,0)/deptStudents.length)
-      : 55 + (i * 7) % 30;
-    return { label: deptShort[i], value: val, color: deptColors[i] };
-  });
+  const [counts, setCounts] = useState({ students: 0, doctors: 0, lectures: 0, atRisk: 0 });
+  useEffect(() => {
+    Promise.allSettled([
+      api.getStudents(),
+      api.getLectureDoctors(),
+      api.getLectures(),
+      api.getAtRiskStudents('low'),
+    ]).then(([stuRes, docRes, lecRes, riskRes]) => {
+      const students = stuRes.status === 'fulfilled' ? stuRes.value : [];
+      const doctors  = docRes.status === 'fulfilled' ? docRes.value : [];
+      const lectures = lecRes.status === 'fulfilled' ? lecRes.value : [];
+      const atRisk   = riskRes.status === 'fulfilled' ? riskRes.value : [];
+      setCounts({
+        students: students.length,
+        doctors:  doctors.length,
+        lectures: lectures.filter(l => l.status === 'active').length,
+        atRisk:   atRisk.length,
+      });
+    });
+  }, []);
+
+  const deptEngData = depts.map((dept, i) => ({
+    label: deptShort[i],
+    value: 55 + (i * 7) % 30,
+    color: deptColors[i],
+  }));
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
@@ -195,11 +211,11 @@ function AdminDashboard({ theme: C, onNav }) {
       <div style={{fontSize:12,color:C.text2,marginBottom:12}}>{t('doc_overview')}</div>
 
       <div style={{display:'flex',gap:12,marginBottom:12,flexWrap:'wrap'}}>
-        <StatCard theme={C} label={t('students')}      value={store.students.length} sub={t('enrolled_students')}  icon="🎓" accent="blue"/>
-        <StatCard theme={C} label={t('doctors')}        value={store.doctors.length}  sub={t('live_session')}       icon="👨‍🏫" accent="purple"/>
-        <StatCard theme={C} label={t('live_session')}   value={activeLectures}        sub={t('analytics')}          icon="📚" accent="green"/>
-        <StatCard theme={C} label={t('avg_engagement')} value={`${avgEng}%`}          sub={t('analytics')}          icon="🧠" accent="amber"/>
-        <StatCard theme={C} label={t('at_risk')}        value={store.getStudentsOnProbation().length} sub={t('academic_standing')} icon="🚨" accent="red"/>
+        <StatCard theme={C} label={t('students')}      value={counts.students} sub={t('enrolled_students')}  icon="🎓" accent="blue"/>
+        <StatCard theme={C} label={t('doctors')}        value={counts.doctors}  sub={t('live_session')}       icon="👨‍🏫" accent="purple"/>
+        <StatCard theme={C} label={t('live_session')}   value={counts.lectures} sub={t('analytics')}          icon="📚" accent="green"/>
+        <StatCard theme={C} label={t('avg_engagement')} value={`${avgEng}%`}    sub={t('analytics')}          icon="🧠" accent="amber"/>
+        <StatCard theme={C} label={t('at_risk')}        value={counts.atRisk}   sub={t('academic_standing')}  icon="🚨" accent="red"/>
       </div>
 
       {/* Quick Actions */}
@@ -285,21 +301,41 @@ function AdminDashboard({ theme: C, onNav }) {
 function AdminAnalytics({ theme: C }) {
   const { t } = useLang();
   const isMobile = useMobile();
-  const totalEnrolled = store.courses.reduce((a,c)=>a+(store.courseEnrollments[c.id]||[]).length,0);
-  const atRisk        = store.students.filter(s=>(s.attendanceRate||100)<65||(s.engagement||100)<40).length;
-  const avgAtt        = store.students.length
-    ? Math.round(store.students.reduce((a,s)=>a+(s.attendanceRate||0),0)/store.students.length)
+  const [students,    setStudents]    = useState([]);
+  const [lectures,    setLectures]    = useState([]);
+  const [enrollments, setEnrollments] = useState([]);
+  const [atRiskList,  setAtRiskList]  = useState([]);
+
+  useEffect(() => {
+    Promise.allSettled([
+      api.getStudents(),
+      api.getLectures(),
+      api.getEnrollments(),
+      api.getAtRiskStudents('low'),
+    ]).then(([s, l, e, r]) => {
+      if (s.status === 'fulfilled') setStudents(s.value);
+      if (l.status === 'fulfilled') setLectures(l.value);
+      if (e.status === 'fulfilled') setEnrollments(e.value);
+      if (r.status === 'fulfilled') setAtRiskList(r.value);
+    });
+  }, []);
+
+  const totalEnrolled = enrollments.length;
+  const atRisk        = atRiskList.length;
+  const avgAtt        = students.length
+    ? Math.round(students.reduce((a,s)=>a+(s.attendanceRate||0),0)/students.length)
     : 0;
+  const activeLectures = lectures.filter(l=>l.status==='active').length;
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
       <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('system_analytics')}</div>
 
       <div style={{display:'flex',gap:12,marginBottom:12,flexWrap:'wrap'}}>
-        <StatCard theme={C} label="Avg Attendance"   value={`${avgAtt}%`}           sub="Across all students"   icon="✅" accent="green"/>
-        <StatCard theme={C} label="Total Enrollments" value={totalEnrolled.toLocaleString()} sub="Across all courses" icon="📋" accent="blue"/>
-        <StatCard theme={C} label="At-Risk Students"  value={atRisk}                 sub="Attendance<65% or Eng<40%" icon="⚠️" accent="purple"/>
-        <StatCard theme={C} label="Courses Running"   value={store.courses.length}   sub="This semester"        icon="📚" accent="amber"/>
+        <StatCard theme={C} label="Avg Attendance"    value={`${avgAtt}%`}                sub="Across all students"       icon="✅" accent="green"/>
+        <StatCard theme={C} label="Total Enrollments" value={totalEnrolled.toLocaleString()} sub="Across all courses"      icon="📋" accent="blue"/>
+        <StatCard theme={C} label="At-Risk Students"  value={atRisk}                      sub="Flagged by AI monitoring"  icon="⚠️" accent="purple"/>
+        <StatCard theme={C} label="Active Courses"    value={activeLectures}              sub="This semester"             icon="📚" accent="amber"/>
       </div>
 
       <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',gap:12,marginBottom:12}}>
@@ -326,30 +362,31 @@ function AdminAnalytics({ theme: C }) {
         </Card>
       </div>
 
-      <Card theme={C} title="Attendance by Course">
+      <Card theme={C} title="Courses Overview">
         <div style={{padding:'4px 12px 12px'}}>
-          <BarChart theme={C} data={store.courses.map((c,i)=>{
-            const enrolled = store.getEnrolledStudents(c.id);
-            const val = enrolled.length ? Math.round(enrolled.reduce((a,s)=>a+s.attendanceRate,0)/enrolled.length) : 70 + (i*11)%25;
-            return {label:c.code,value:val,color:c.color};
+          <BarChart theme={C} data={lectures.slice(0,12).map((l,i)=>{
+            const enrolled = enrollments.filter(e=>e.lecture_id===l.id||e.course_id===l.id).length;
+            const colors = [C.blue,C.purple,C.green,C.amber,C.cyan,C.red];
+            return {label:l.code||l.name?.slice(0,8)||`C${i+1}`, value:enrolled||0, color:colors[i%colors.length]};
           })} height={200}/>
         </div>
       </Card>
 
       {/* ── Department Comparison ── */}
-      <DeptComparisonSection theme={C}/>
+      <DeptComparisonSection theme={C} students={students}/>
     </div>
   );
 }
 
-function DeptComparisonSection({ theme: C }) {
+function DeptComparisonSection({ theme: C, students: propStudents }) {
   const { t } = useLang();
   const depts      = ['Computer Science','Engineering','Mathematics','Physics','Data Science'];
   const deptShort  = ['CS','Eng','Math','Phys','Data Sci'];
   const deptColors = [C.blue,C.purple,C.green,C.amber,C.cyan];
+  const allStudents = propStudents || [];
 
   const metrics = depts.map((dept, i) => {
-    const ds = store.students.filter(s => s.dept === dept);
+    const ds = allStudents.filter(s => s.dept === dept);
     const att = ds.length ? Math.round(ds.reduce((a,s)=>a+(s.attendanceRate||0),0)/ds.length) : 65+(i*7)%25;
     const eng = ds.length ? Math.round(ds.reduce((a,s)=>a+(s.engagement||0),0)/ds.length)     : 55+(i*9)%30;
     const gpa = ds.length ? parseFloat((ds.reduce((a,s)=>a+(parseFloat(s.gpa)||3.0),0)/ds.length).toFixed(2)) : 3.0+(i*0.1)%0.8;
@@ -600,7 +637,7 @@ function exportDataAsCSV(data, filename) {
 
 function AdminStudents({ theme: C }) {
   const { t } = useLang();
-  const [students, setStudents] = useState(store.students);
+  const [students, setStudents] = useState([]);
   const [search, setSearch] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -609,6 +646,9 @@ function AdminStudents({ theme: C }) {
   const [portfolioStudent, setPortfolioStudent] = useState(null);
   const [createdAccount, setCreatedAccount] = useState(null);
   const [, forceUpdate] = useState(0);
+
+  const reloadStudents = () => api.getStudents().then(setStudents).catch(() => {});
+  useEffect(() => { reloadStudents(); }, []);
 
   const filtered = students.filter(s=>
     s.name.toLowerCase().includes(search.toLowerCase())||s.id.toLowerCase().includes(search.toLowerCase())
@@ -637,11 +677,8 @@ function AdminStudents({ theme: C }) {
       return;
     }
 
-    // Only update local store after DB succeeds
-    const s = store.addStudent({ ...form, id: sid, email });
-    store.addUser({ name: form.name, username, password, email, role: 'student', studentId: s.id });
-    setCreatedAccount({ name: form.name, role: 'Student', username, password, email, id: s.id });
-    setStudents([...store.students]);
+    setCreatedAccount({ name: form.name, role: 'Student', username, password, email, id: sid });
+    reloadStudents();
     setShowAdd(false); setForm({name:'',dept:DEPARTMENTS[0],year:1,email:'',phone:''});
   }
 
@@ -656,17 +693,16 @@ function AdminStudents({ theme: C }) {
       return;
     }
 
-    store.deleteStudent(selected.id);
-    setStudents([...store.students]); setSelected(null);
+    reloadStudents(); setSelected(null);
   }
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
       {portfolioStudent && <StudentPortfolioModal theme={C} student={portfolioStudent} onClose={()=>setPortfolioStudent(null)}/>}
       {createdAccount && <CredentialsModal theme={C} account={createdAccount} onClose={()=>setCreatedAccount(null)}/>}
-      {showImport && <BulkImportModal theme={C} onClose={()=>setShowImport(false)} onImported={()=>setStudents([...store.students])}/>}
+      {showImport && <BulkImportModal theme={C} onClose={()=>setShowImport(false)} onImported={reloadStudents}/>}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
-        <div style={{ fontSize: 22, fontWeight: 700, color: C.text }}>{t('students')} <span style={{ fontSize: 14, fontWeight: 400, color: C.text3 }}>({filtered.length} / {store.students.length})</span></div>
+        <div style={{ fontSize: 22, fontWeight: 700, color: C.text }}>{t('students')} <span style={{ fontSize: 14, fontWeight: 400, color: C.text3 }}>({filtered.length} / {students.length})</span></div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={deleteSelected} style={{ background: C.red_dim, border: `1px solid ${C.red}`, borderRadius: 8, padding: '8px 14px', fontSize: 11, color: C.red2, cursor: 'pointer' }}>🗑️ Delete</button>
           <button onClick={() => exportDataAsCSV(filtered.map(s => ({ ID: s.id, Name: s.name, Department: s.dept, Year: s.year, Email: s.email || '', Attendance: `${s.attendanceRate}%`, Engagement: `${s.engagement}%`, GPA: s.gpa || 'N/A' })), 'students_export.csv')} style={{ background: C.green_dim || 'rgba(16,185,129,0.15)', border: `1px solid ${C.green}`, borderRadius: 8, padding: '8px 14px', fontSize: 11, fontWeight: 700, color: C.green, cursor: 'pointer' }}>📤 Export</button>
@@ -714,7 +750,7 @@ function AdminStudents({ theme: C }) {
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder={`Search ${store.students.length} students by name or ID…`}
+          placeholder={`Search ${students.length} students by name or ID…`}
           style={{
             width: '100%', height: 44, background: C.card, border: `1.5px solid ${search ? C.blue : C.border}`,
             borderRadius: 12, paddingLeft: 40, paddingRight: search ? 40 : 16, fontSize: 13, color: C.text,
@@ -1417,7 +1453,10 @@ function AdminRegistration({ theme: C }) {
   const { t } = useLang();
   const [reg, setReg] = useState(store.getRegistrationStatus());
   const [search, setSearch]   = useState('');
+  const [allStudents, setAllStudents] = useState([]);
   const [, forceUpdate] = useState(0);
+
+  useEffect(() => { api.getStudents().then(setAllStudents).catch(() => {}); }, []);
 
   function toggleReg() {
     store.setRegistrationStatus({ open: !reg.open });
@@ -1431,7 +1470,7 @@ function AdminRegistration({ theme: C }) {
   }
 
   const q = search.toLowerCase();
-  const students = q ? store.students.filter(s=>(s.name||'').toLowerCase().includes(q)||(s.id||'').toLowerCase().includes(q)) : store.students;
+  const students = q ? allStudents.filter(s=>(s.name||'').toLowerCase().includes(q)||(s.id||'').toLowerCase().includes(q)) : allStudents;
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
@@ -1915,10 +1954,18 @@ function StudentPortfolioModal({ theme: C, student, onClose }) {
 /* ── EXAM SCHEDULE ── */
 function AdminExamSchedule({ theme: C }) {
   const { t } = useLang();
-  const [form, setForm] = useState({ courseId: store.courses[0]?.id||'', type:'midterm', date:'', time:'', room:'', duration:120, notes:'' });
+  const [courses, setCourses] = useState([]);
+  const [form, setForm] = useState({ courseId: '', type:'midterm', date:'', time:'', room:'', duration:120, notes:'' });
   const [, refresh] = useState(0);
   const exams = store.getAllExams();
   const today = new Date().toISOString().slice(0,10);
+
+  useEffect(() => {
+    api.getLectures().then(lecs => {
+      setCourses(lecs);
+      if (lecs.length) setForm(f => ({ ...f, courseId: f.courseId || lecs[0].id }));
+    }).catch(() => {});
+  }, []);
 
   const TYPE_CFG = {
     midterm: { label:'Midterm', color:'#8b5cf6', bg:'#8b5cf622' },
@@ -1929,7 +1976,7 @@ function AdminExamSchedule({ theme: C }) {
   function add() {
     if (!form.courseId || !form.date) { alert('Select a course and date.'); return; }
     store.addExam(form);
-    setForm({ courseId: store.courses[0]?.id||'', type:'midterm', date:'', time:'', room:'', duration:120, notes:'' });
+    setForm({ courseId: courses[0]?.id||'', type:'midterm', date:'', time:'', room:'', duration:120, notes:'' });
     refresh(n => n+1);
   }
 
@@ -1949,7 +1996,7 @@ function AdminExamSchedule({ theme: C }) {
           <div style={{ fontSize:13, fontWeight:700, color:C.text, marginBottom:14 }}>Add New Exam</div>
           {[
             ['Course', <select value={form.courseId} onChange={e=>setForm({...form,courseId:e.target.value})} style={{ width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text }}>
-              {store.courses.map(c=><option key={c.id} value={c.id}>{c.name} ({c.code})</option>)}
+              {courses.map(c=><option key={c.id} value={c.id}>{c.name} ({c.code})</option>)}
             </select>],
             ['Exam Type', <select value={form.type} onChange={e=>setForm({...form,type:e.target.value})} style={{ width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text }}>
               <option value="midterm">Midterm</option><option value="final">Final</option><option value="quiz">Quiz</option>
@@ -2267,12 +2314,14 @@ function AdminParentLinking({ theme: C }) {
 
   useEffect(() => {
     api.listParentStudents().then(setLinks).catch(() => {});
-    api.init().then(d => {
-      setParents(d.parents || store.users.filter(u => u.role === 'parent'));
-      setStudents(d.students || store.students);
-    }).catch(() => {
-      setParents(store.users.filter(u => u.role === 'parent'));
-      setStudents(store.students);
+    Promise.allSettled([
+      api.init(),
+      api.getStudents(),
+    ]).then(([initRes, stuRes]) => {
+      const d = initRes.status === 'fulfilled' ? initRes.value : {};
+      setParents(d.parents || []);
+      const stuFromAPI = stuRes.status === 'fulfilled' ? stuRes.value : [];
+      setStudents(stuFromAPI.length ? stuFromAPI : (d.students || []));
     });
   }, []);
 
