@@ -349,7 +349,7 @@ class DataStore {
   // Returns the full URL to display a student's photo, or null if not available.
   // Priority: photo_path from DB → student_id fallback
   getPhotoUrl(student){
-    const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const API = import.meta.env.VITE_API_URL || '';
     if (student?.photo_path) return `${API}${student.photo_path}`;
     const sid = student?.student_id || student?.id;
     if (sid && String(sid).length >= 3) return `${API}/photos/${sid}.jpg`;
@@ -602,7 +602,7 @@ class DataStore {
       // Use photo_path returned directly by the login endpoint (fastest, no extra lookup)
       let photoUrl = null;
       if (u.photo_path) {
-        const API = import.meta?.env?.VITE_API_URL || 'http://localhost:8000';
+        const API = import.meta?.env?.VITE_API_URL || '';
         photoUrl = `${API}${u.photo_path}`;
       } else if (u.role === 'student') {
         // Fallback: look up from the loaded students list
