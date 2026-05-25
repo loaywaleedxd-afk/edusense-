@@ -53,9 +53,19 @@ export function StudentOfficeHours({ theme: C, stu }) {
   const [tab, setTab]           = useState('book'); // 'book' | 'mine'
 
   useEffect(() => {
-    get('/api/lectures/doctors').then(docs => {
-      setDoctors(docs || []);
-      if (docs?.length) setSelDoc(d => d || docs[0].id);
+    get('/api/lectures/doctors').then(raw => {
+      // API returns doctor_id not id — normalize to a consistent shape
+      const COLORS = ['#3b82f6','#10b981','#f59e0b','#8b5cf6','#ef4444','#06b6d4'];
+      const EMOJIS = ['👨‍🏫','👩‍🏫','🧑‍🏫','👨‍💼','👩‍💼','🧑‍💼'];
+      const docs = (raw || []).map((d, i) => ({
+        ...d,
+        id:    d.doctor_id || d.id,          // normalize id
+        color: d.color  || COLORS[i % COLORS.length],
+        emoji: d.emoji  || EMOJIS[i % EMOJIS.length],
+        dept:  d.department || d.dept || '',
+      }));
+      setDoctors(docs);
+      if (docs.length) setSelDoc(prev => prev || docs[0].id);
     }).catch(() => {});
   }, []);
 
