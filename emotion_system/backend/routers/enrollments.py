@@ -7,9 +7,19 @@ router = APIRouter()
 
 
 @router.get("/")
-async def get_enrollments(payload: dict = Depends(require_role("doctor","admin")), db=Depends(get_db)):
-    """Return full enrollment map: { courseId: [studentId, ...] }"""
-    rows = await db.fetch("SELECT course_id, student_id FROM course_enrollments")
+async def get_enrollments(payload: dict = Depends(require_auth), db=Depends(get_db)):
+    """Return enrollment map. Students see only their own; doctors/admins see all."""
+    role = payload.get("role")
+    uid  = payload.get("sub")
+    if role == "student":
+        rows = await db.fetch(
+            """SELECT ce.course_id, ce.student_id FROM course_enrollments ce
+               JOIN students s ON s.student_id = ce.student_id
+               WHERE s.user_id = $1""",
+            int(uid)
+        )
+    else:
+        rows = await db.fetch("SELECT course_id, student_id FROM course_enrollments")
     result = {}
     for r in rows:
         result.setdefault(r["course_id"], []).append(r["student_id"])
