@@ -418,7 +418,11 @@ function StudentDashboard({ theme: C, user, stu }) {
   const streak = calcStreakFromRecs(attRecs);
   const streakMsg = streak >= 10 ? 'Incredible! Keep it up! 🏆' : streak >= 5 ? 'Great consistency!' : streak >= 2 ? 'Keep going!' : 'Start your streak today!';
   const presentCount = attRecs.filter(r => r.status === 'present' || r.status === 'excused').length;
-  const attendanceRate = attRecs.length > 0 ? Math.round(presentCount / attRecs.length * 100) : (stu.attendanceRate || 0);
+  const _maxWeekDash = attRecs.length > 0 ? Math.max(...attRecs.map(r => Number(r.week) || 1)) : 1;
+  const _totalPossibleDash = myCoursesEnrolled.length * _maxWeekDash || 1;
+  const attendanceRate = myCoursesEnrolled.length > 0
+    ? Math.round(presentCount / _totalPossibleDash * 100)
+    : (stu.attendanceRate || 0);
 
   const gradeVals = gradeRows.map(r => r.grade);
   const avgGrade = gradeVals.length ? +(gradeVals.reduce((a,b)=>a+b,0)/gradeVals.length).toFixed(1) : null;
@@ -569,12 +573,16 @@ function StudentAttendance({ theme: C, stu, pendingQR, onClearPendingQR }) {
       .catch(() => {});
   }, [stu.id]);
 
-  // Compute attendance rate from real DB records
+  // Compute attendance rate: present / (courses × weeks elapsed)
   const rate = (() => {
-    if (!attRecs.length) return stu.attendanceRate || 0;
+    if (!myCourses.length) return stu.attendanceRate || 0;
     const present = attRecs.filter(r => r.status === 'present' || r.status === 'excused').length;
-    const total   = attRecs.length;
-    return total > 0 ? Math.round(present / total * 100) : (stu.attendanceRate || 0);
+    // Use the highest week number seen so we don't penalise early in the semester
+    const maxWeek = attRecs.length > 0
+      ? Math.max(...attRecs.map(r => Number(r.week) || 1))
+      : 1;
+    const totalPossible = myCourses.length * maxWeek;
+    return totalPossible > 0 ? Math.round(present / totalPossible * 100) : 0;
   })();
 
   // Auto-check-in from QR scan URL (cross-device)
@@ -593,12 +601,22 @@ function StudentAttendance({ theme: C, stu, pendingQR, onClearPendingQR }) {
   // Build per-course attendance summary from DB records
   const courseRows = myCourses.map((course) => {
     const courseRecs = attRecs.filter(r => r.course_code === course.code || r.lecture_id === course.code);
-    const weeks = courseRecs.filter(r => r.status === 'present' || r.status === 'excused').length;
+    const presentRecs = courseRecs.filter(r => r.status === 'present' || r.status === 'excused');
+    const weeks = presentRecs.length;
+    // Most recent present record for time + method
+    const latest = presentRecs.sort((a,b) => new Date(b.check_in_time||0) - new Date(a.check_in_time||0))[0];
+    const methodLabel = latest?.method === 'qr'               ? '📱 QR Code'
+                      : latest?.method === 'face_recognition' ? '🤖 Face Recognition'
+                      : latest?.method === 'manual'           ? '✍️ Manual'
+                      : latest?.method ? latest.method : '—';
+    const timeLabel = latest?.check_in_time
+      ? new Date(latest.check_in_time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})
+      : '—';
     return {
       course: `${course.name} (${course.code})`,
       weeks: `${weeks} / 16`,
-      time: '',
-      method: weeks > 0 ? '👤 Face Recognition' : '—',
+      time: timeLabel,
+      method: methodLabel,
       status: weeks >= 12 ? '✅ Good Standing' : weeks >= 8 ? '⚠️ At Risk' : '❌ Low Attendance',
     };
   });
@@ -609,7 +627,8 @@ function StudentAttendance({ theme: C, stu, pendingQR, onClearPendingQR }) {
     .map(rec => ({
       course: rec.course_name || rec.course_code || rec.lecture_id,
       date: rec.date || (rec.check_in_time ? rec.check_in_time.slice(0,10) : ''),
-      week: `Week ${rec.week}`, time: rec.time || '',
+      week: `Week ${rec.week}`,
+      time: rec.check_in_time ? new Date(rec.check_in_time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : '—',
       method: rec.method === 'face_recognition' ? '🤖 Face Recognition'
             : rec.method === 'qr'               ? '📱 QR Code'
             : rec.method === 'manual'            ? '✍️ Manual'
@@ -1318,29 +1337,46 @@ function StudentAppeals({ theme: C, user, stu }) {
       }))))
       .catch(() => {});
 
+  const [courseDocMap, setCourseDocMap] = useState({}); // courseCode → doctorId
+
   useEffect(() => {
     api.getAvailableCourses()
       .then(courses => {
         const enrolled = courses
           .filter(c => c.my_status === 'enrolled')
-          .map(c => ({ id: c.course_code, name: c.course_name, code: c.course_code }));
+          .map(c => ({ id: c.course_code, name: c.course_name, code: c.course_code, doctorId: c.doctor_id || '' }));
         setMyCourses(enrolled);
+        // Build course→doctor map for auto-routing
+        const map = {};
+        enrolled.forEach(c => { if (c.doctorId) map[c.id] = c.doctorId; });
+        setCourseDocMap(map);
         if (enrolled.length > 0) setForm(f => ({...f, courseId: enrolled[0].id}));
       })
       .catch(() => {});
+    // Also fetch lectures to get doctor_id per course
+    api.getLectures?.()
+      .then(lectures => {
+        setCourseDocMap(prev => {
+          const map = { ...prev };
+          (lectures || []).forEach(l => { if (l.course_code && l.doctor_id) map[l.course_code] = l.doctor_id; });
+          return map;
+        });
+      }).catch(() => {});
     loadComplaints();
   }, []);
 
   async function submit() {
     if (!form.description.trim()) return;
-    const courseName = myCourses.find(c => c.id === form.courseId)?.name || '';
+    const course = myCourses.find(c => c.id === form.courseId);
+    const courseName = course?.name || '';
+    const doctorId = courseDocMap[form.courseId] || '';
     try {
       await api.upsertComplaint({
         id: Date.now().toString(),
         studentId: stu.id, studentName: stu.name,
         type: form.type, courseId: form.courseId,
         courseName, description: form.description,
-        status: 'pending', doctorId: '',
+        status: 'pending', doctorId,
         doctorResponse: '', adminResponse: '',
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       });
