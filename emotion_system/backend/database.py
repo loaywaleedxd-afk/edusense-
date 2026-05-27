@@ -389,6 +389,15 @@ async def init_tenant_schema(pool, schema: str):
                 used_by     TEXT DEFAULT '[]'
             )
         """)
+        # Ensure columns exist for older deployments that predate these fields
+        for _qr_col in [
+            f'ALTER TABLE "{schema}".qr_sessions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()',
+            f'ALTER TABLE "{schema}".qr_sessions ADD COLUMN IF NOT EXISTS used_by TEXT DEFAULT \'[]\'',
+        ]:
+            try:
+                await conn.execute(_qr_col)
+            except Exception:
+                pass
 
         # ── Registration status ──────────────────────────────────────────────
         await conn.execute(f"""
