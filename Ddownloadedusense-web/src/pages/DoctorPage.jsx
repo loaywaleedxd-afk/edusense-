@@ -571,8 +571,13 @@ function DocAttendance({ theme: C, myCourses }) {
   }
 
   async function generateQR() {
-    const result = await api.createQR({ courseId: selCourse, week }).catch(() => ({ token: Math.random().toString(36).slice(2,8).toUpperCase() }));
-    setQrMeta({ token: result.token, courseId: selCourse, week, createdAt: Date.now() });
+    try {
+      const result = await api.createQR({ courseId: selCourse, week });
+      setQrMeta({ token: result.token, courseId: selCourse, week, createdAt: Date.now() });
+    } catch(e) {
+      alert(`Failed to generate QR: ${e.message}`);
+      return;
+    }
     setActiveTab('qr');
   }
 

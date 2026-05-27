@@ -1,7 +1,7 @@
 """QR attendance sessions router."""
 from fastapi import APIRouter, Depends, HTTPException
 import os, json, random, string
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date as date_type
 from database import get_db
 from auth_utils import require_auth, require_role
 
@@ -14,7 +14,7 @@ async def create_qr(data: dict, payload: dict = Depends(require_role("doctor","a
     await db.execute(
         "INSERT INTO qr_sessions (token, course_id, week, created_at, used_by) VALUES ($1,$2,$3,$4,$5)",
         token, data.get("courseId",""), int(data.get("week",1)),
-        datetime.now(timezone.utc).isoformat(), "[]"
+        datetime.now(timezone.utc), "[]"   # asyncpg needs datetime object, not isoformat string
     )
     return {"token": token}
 
@@ -27,9 +27,11 @@ async def use_qr(data: dict, payload: dict = Depends(require_auth), db=Depends(g
     if not row:
         raise HTTPException(400, "Invalid code")
     row = dict(row)
-    age = (datetime.now(timezone.utc) - datetime.fromisoformat(
-        str(row["created_at"]).replace("Z","").split("+")[0]
-    ).replace(tzinfo=timezone.utc)).total_seconds() / 60
+    # created_at is a timezone-aware datetime from asyncpg — compute age directly
+    created = row["created_at"]
+    if hasattr(created, 'tzinfo') and created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+    age = (datetime.now(timezone.utc) - created).total_seconds() / 60
     if age > 90:
         raise HTTPException(400, "Code expired (valid 90 min)")
     used = json.loads(row["used_by"] or "[]")
@@ -58,6 +60,6 @@ async def use_qr(data: dict, payload: dict = Depends(require_auth), db=Depends(g
                (student_id, lecture_id, week, status, method, confidence, date)
                VALUES ($1,$2,$3,$4,$5,$6,$7)""",
             student_id, lecture_id, row["week"],
-            "present", "qr", 1.0, datetime.now().strftime("%Y-%m-%d")
+            "present", "qr", 1.0, date_type.today()
         )
     return {"ok": True, "courseId": row["course_id"], "week": row["week"]}
