@@ -630,23 +630,34 @@ function StudentAttendance({ theme: C, stu, pendingQR, onClearPendingQR }) {
     };
   });
 
-  // Only show present/excused records — absent entries are internal marks, not visible to student
-  const recRows = attRecs
-    .filter(rec => rec.status !== 'absent')
-    .map(rec => ({
-      course: rec.course_name || rec.course_code || rec.lecture_id,
-      date: rec.date || (rec.check_in_time ? rec.check_in_time.slice(0,10) : ''),
-      week: `Week ${rec.week}`,
-      time: rec.check_in_time ? new Date(rec.check_in_time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : '—',
-      method: rec.method === 'face_recognition' ? '🤖 Face Recognition'
-            : rec.method === 'qr'               ? '📱 QR Code'
-            : rec.method === 'manual'            ? '✍️ Manual'
-            : rec.method || '—',
-      status: rec.status === 'excused' ? '📄 Excused' : '✅ Present',
-    }));
+  // Deduplicate records: keep one per (course, week) — the most recent check-in
+  const _dedupMap = new Map();
+  for (const rec of attRecs) {
+    if (rec.status === 'absent') continue;
+    const key = `${rec.course_code || rec.lecture_id}_${rec.week}`;
+    const existing = _dedupMap.get(key);
+    if (!existing || new Date(rec.check_in_time||0) > new Date(existing.check_in_time||0)) {
+      _dedupMap.set(key, rec);
+    }
+  }
+  const uniquePresentRecs = Array.from(_dedupMap.values())
+    .sort((a,b) => new Date(b.check_in_time||0) - new Date(a.check_in_time||0));
 
-  const presentCount  = attRecs.filter(r => r.status === 'present' || r.status === 'excused').length;
-  const qrManualCount = attRecs.filter(r => r.method === 'qr' || r.method === 'manual').length;
+  const recRows = uniquePresentRecs.map(rec => ({
+    course: rec.course_name || rec.course_code || rec.lecture_id,
+    date: rec.date || (rec.check_in_time ? rec.check_in_time.slice(0,10) : ''),
+    week: `Week ${rec.week}`,
+    time: rec.check_in_time ? new Date(rec.check_in_time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : '—',
+    method: rec.method === 'face_recognition' ? '🤖 Face Recognition'
+          : rec.method === 'qr'               ? '📱 QR Code'
+          : rec.method === 'manual'            ? '✍️ Manual'
+          : rec.method || '—',
+    status: rec.status === 'excused' ? '📄 Excused' : '✅ Present',
+  }));
+
+  // Stats use deduplicated counts
+  const presentCount  = uniquePresentRecs.length;
+  const qrManualCount = uniquePresentRecs.filter(r => r.method === 'qr' || r.method === 'manual').length;
 
   async function checkIn() {
     const code = qrCode.trim().toUpperCase();
