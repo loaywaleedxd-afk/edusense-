@@ -1179,9 +1179,15 @@ function StudentPortfolio({ theme: C, user, stu }) {
           <WebcamFeed
             theme={C}
             compact
-            onCapture={dataUrl => {
+            onCapture={async dataUrl => {
               setCapturedSelfie(dataUrl);
               store.updateStudent(stu.id, { capturedPhoto: dataUrl });
+              // Persist to DB so doctor's face recognition can see this photo
+              try {
+                await api.updateMyProfile({ photo: dataUrl });
+              } catch(e) {
+                console.warn('Failed to save photo to DB:', e);
+              }
             }}
           />
           <div>
@@ -1190,7 +1196,7 @@ function StudentPortfolio({ theme: C, user, stu }) {
             </div>
             {capturedSelfie && (
               <div>
-                <div style={{ fontSize:10, color:C.green2, marginBottom:6 }}>✅ Photo captured and saved!</div>
+                <div style={{ fontSize:10, color:C.green2, marginBottom:6 }}>✅ Photo saved to your profile!</div>
                 <img src={capturedSelfie} alt="selfie" style={{ width:'100%', borderRadius:10, border:`2px solid ${C.green}` }}/>
               </div>
             )}
