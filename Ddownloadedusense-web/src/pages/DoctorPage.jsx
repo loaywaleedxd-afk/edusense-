@@ -22,7 +22,7 @@ import EmotionBarsWidget from '../components/EmotionBars';
 import StudentFaceCard from '../components/StudentFaceCard';
 import AlertItem from '../components/AlertItem';
 import ScheduleItem from '../components/ScheduleItem';
-import WebcamFeed, { buildFaceMatcher } from '../components/WebcamFeed';
+import WebcamFeed, { buildFaceMatcher, prewarmRecognitionModels } from '../components/WebcamFeed';
 import QRCodeComp from '../components/QRCode';
 import store from '../dataStore';
 import api, { get } from '../api';
@@ -356,10 +356,15 @@ function DocLive({ theme: C, myCourses }) {
       setFaceMatcher(matcher);
       setMatcherTimedOut(false);
     } else {
-      // null means either no faces found or 50-second timeout fired
+      // null means either no faces found or 150-second timeout fired
       setMatcherTimedOut(withPhotos.length > 0);
     }
   }
+
+  // Kick off recognition model download as soon as DocLive mounts.
+  // This runs once (empty deps) so the 6 MB weights start loading in the
+  // background before the student list even arrives.
+  useEffect(() => { prewarmRecognitionModels(); }, []);
 
   useEffect(() => {
     if (!selCourse) return;

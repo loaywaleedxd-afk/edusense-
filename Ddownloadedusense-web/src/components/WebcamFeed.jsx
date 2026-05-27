@@ -85,11 +85,17 @@ function loadImg(src) {
 // Resolves to null (never throws) so callers can always await safely.
 // Hard limit of 50 s — if model download or photo scanning takes longer,
 // returns null so the camera still works without recognition.
+// Call this as early as possible (e.g. when DocLive panel opens) so the
+// 6 MB recognition weights start downloading in the background.
+export function prewarmRecognitionModels() {
+  ensureFullModels().catch(() => {});
+}
+
 export async function buildFaceMatcher(students, onProgress) {
-  // Race against a 50-second hard timeout
+  // Race against a 150-second hard timeout (recognition model is ~6 MB)
   return Promise.race([
     _buildFaceMatcherCore(students, onProgress),
-    new Promise(resolve => setTimeout(() => resolve(null), 50_000)),
+    new Promise(resolve => setTimeout(() => resolve(null), 150_000)),
   ]);
 }
 
@@ -97,7 +103,7 @@ async function _buildFaceMatcherCore(students, onProgress) {
   try {
     const ok = await Promise.race([
       ensureFullModels(),
-      new Promise(resolve => setTimeout(() => resolve(false), 40_000)),
+      new Promise(resolve => setTimeout(() => resolve(false), 120_000)),
     ]);
     if (!ok) return null; // recognition models failed/timed-out
 
