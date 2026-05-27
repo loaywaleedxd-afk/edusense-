@@ -59,17 +59,26 @@ async def use_qr(data: dict, payload: dict = Depends(require_auth), db=Depends(g
         )
         lecture_id = lec_row["lecture_id"] if lec_row else row["course_id"]
 
-    # Check for duplicate attendance record first
+    # Upsert attendance: update to present if record exists, insert if not
     existing_att = await db.fetchrow(
         "SELECT id FROM attendance WHERE student_id=$1 AND lecture_id=$2 AND week=$3",
         student_id, lecture_id, row["week"]
     )
-    if not existing_att:
-        await db.execute(
-            """INSERT INTO attendance
-               (student_id, lecture_id, week, status, method, confidence, date)
-               VALUES ($1,$2,$3,$4,$5,$6,$7)""",
-            student_id, lecture_id, row["week"],
-            "present", "qr", 1.0, date_type.today()
-        )
+    try:
+        if existing_att:
+            # Student may have been pre-marked absent — override to present via QR
+            await db.execute(
+                "UPDATE attendance SET status='present', method='qr', confidence=1.0, check_in_time=NOW() WHERE id=$1",
+                existing_att["id"]
+            )
+        else:
+            await db.execute(
+                """INSERT INTO attendance
+                   (student_id, lecture_id, week, status, method, confidence, date)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7)""",
+                student_id, lecture_id, row["week"],
+                "present", "qr", 1.0, date_type.today()
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to save attendance: {str(e)}")
     return {"ok": True, "courseId": row["course_id"], "week": row["week"]}
