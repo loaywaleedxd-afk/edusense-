@@ -70,8 +70,11 @@ export default function TimetablePage({ theme: C, stu, role = 'student', doctorI
 
     days.forEach(dayIdx => {
       const idx = Number(dayIdx);
-      if (idx < 0 || idx > 4) return;
-      events[DAYS[idx]].push({ ...lec, startMin, endMin, duration });
+      // Guard: NaN passes (< 0) and (> 4) both as false, causing events[undefined].push crash
+      if (!Number.isFinite(idx) || idx < 0 || idx > 4) return;
+      const dayKey = DAYS[Math.round(idx)];
+      if (!dayKey || !events[dayKey]) return;
+      events[dayKey].push({ ...lec, startMin, endMin, duration });
     });
   });
 

@@ -1,4 +1,31 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, lazy, Suspense, Component } from 'react';
+
+/* ── Global error boundary — prevents any single-page crash from blanking the whole app ── */
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{
+          padding: 40, textAlign: 'center', color: '#ef4444',
+          fontFamily: 'monospace', fontSize: 13, background: '#0f172a', minHeight: '100vh',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12,
+        }}>
+          <div style={{ fontSize: 36 }}>⚠️</div>
+          <div style={{ fontWeight: 700, fontSize: 16, color: '#f1f5f9' }}>Something went wrong</div>
+          <div style={{ color: '#94a3b8', maxWidth: 500 }}>{this.state.error?.message}</div>
+          <button
+            onClick={() => { this.setState({ error: null }); window.location.reload(); }}
+            style={{ marginTop: 12, background: '#3b82f6', color: '#fff', border: 'none',
+              borderRadius: 8, padding: '10px 24px', cursor: 'pointer', fontSize: 13, fontWeight: 700 }}
+          >Reload</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { AnimatePresence, motion } from 'framer-motion';
 import { DARK, LIGHT, buildTheme } from './theme';
 import { useLang } from './context/LanguageContext';
@@ -188,19 +215,21 @@ export default function App() {
       {!user ? (
         <LoginPage theme={C} onLogin={onLogin} branding={branding} />
       ) : (
-        <Suspense fallback={PageSpinner}>
-          {user.role === 'student' ? (
-            <StudentPage {...commonProps} pendingQR={pendingQR} onClearPendingQR={clearPendingQR} />
-          ) : user.role === 'doctor' ? (
-            <DoctorPage {...commonProps} />
-          ) : user.role === 'admin' ? (
-            <AdminPage {...commonProps} />
-          ) : user.role === 'parent' ? (
-            <ParentPage {...commonProps} />
-          ) : (
-            <AdminPage {...commonProps} />
-          )}
-        </Suspense>
+        <ErrorBoundary>
+          <Suspense fallback={PageSpinner}>
+            {user.role === 'student' ? (
+              <StudentPage {...commonProps} pendingQR={pendingQR} onClearPendingQR={clearPendingQR} />
+            ) : user.role === 'doctor' ? (
+              <DoctorPage {...commonProps} />
+            ) : user.role === 'admin' ? (
+              <AdminPage {...commonProps} />
+            ) : user.role === 'parent' ? (
+              <ParentPage {...commonProps} />
+            ) : (
+              <AdminPage {...commonProps} />
+            )}
+          </Suspense>
+        </ErrorBoundary>
       )}
       {user && <ChatWidget user={user} />}
       {user && <NotificationToast user={user} />}
