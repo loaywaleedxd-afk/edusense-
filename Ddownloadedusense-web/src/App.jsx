@@ -148,6 +148,15 @@ export default function App() {
     );
   }
 
+  // SuperAdmin gets its own scrollable container (no overflow:hidden)
+  if (user?.role === 'superadmin') {
+    return (
+      <div style={{ minHeight: '100vh', overflowY: 'auto', background: C.bg, fontFamily: "'Segoe UI', system-ui, sans-serif" }}>
+        <SuperAdminPage user={user} onLogout={onLogout} />
+      </div>
+    );
+  }
+
   return (
     <div style={{ height: '100vh', overflow: 'hidden', background: C.bg, fontFamily: "'Segoe UI', system-ui, sans-serif", direction: isRTL ? 'rtl' : 'ltr' }}>
       {!user ? (
@@ -160,8 +169,6 @@ export default function App() {
         <AdminPage {...commonProps} />
       ) : user.role === 'parent' ? (
         <ParentPage {...commonProps} />
-      ) : user.role === 'superadmin' ? (
-        <SuperAdminPage user={user} onLogout={onLogout} />
       ) : (
         <AdminPage {...commonProps} />
       )}
