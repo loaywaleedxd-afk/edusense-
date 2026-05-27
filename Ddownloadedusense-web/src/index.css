@@ -4,7 +4,7 @@ html, body, #root {
   height: 100%;
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
-  overflow: hidden;
+  /* overflow is managed per-page so SuperAdmin and other full-page views can scroll */
 }
 
 body { background: #0a0f1e; }
