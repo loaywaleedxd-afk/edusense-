@@ -22,7 +22,7 @@ const EMOTION_EMOJI = {
   fearful:'😨', fear:'😨', confused:'🤔', bored:'😑',
 };
 
-// Load models once globally
+// Load models once globally (detection + recognition)
 let modelsLoaded = false;
 let modelsLoading = false;
 const MODEL_URL = '/models';
@@ -30,7 +30,6 @@ const MODEL_URL = '/models';
 async function ensureModels() {
   if (modelsLoaded) return true;
   if (modelsLoading) {
-    // Wait for ongoing load
     while (modelsLoading) await new Promise(r => setTimeout(r, 100));
     return modelsLoaded;
   }
@@ -39,6 +38,8 @@ async function ensureModels() {
     await Promise.all([
       faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
       faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
     ]);
     modelsLoaded = true;
   } catch (e) {
@@ -46,6 +47,28 @@ async function ensureModels() {
   }
   modelsLoading = false;
   return modelsLoaded;
+}
+
+// Build a FaceMatcher from a list of {id, name, photo} student objects
+// Returns null if no student photos are loadable
+export async function buildFaceMatcher(students) {
+  const labeled = [];
+  for (const s of students) {
+    if (!s.photo) continue;
+    try {
+      const img  = await faceapi.fetchImage(s.photo);
+      const det  = await faceapi
+        .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 320 }))
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+      if (det) {
+        labeled.push(new faceapi.LabeledFaceDescriptors(s.id, [det.descriptor]));
+      }
+    } catch (e) {
+      // Skip students whose photos can't be loaded
+    }
+  }
+  return labeled.length > 0 ? new faceapi.FaceMatcher(labeled, 0.55) : null;
 }
 
 export default function WebcamFeed({
@@ -56,6 +79,7 @@ export default function WebcamFeed({
   mode = '',
   courseId = '',
   compact = false,
+  faceMatcher = null,   // FaceMatcher built from student photos
 }) {
   const videoRef  = useRef(null);
   const canvasRef = useRef(null);
@@ -99,29 +123,46 @@ export default function WebcamFeed({
     busyRef.current = true;
     setAnalyzing(true);
     try {
-      const detections = await faceapi
-        .detectAllFaces(vid, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
-        .withFaceExpressions();
+      // If faceMatcher provided, run full pipeline with landmarks + descriptor for recognition
+      const useRecognition = !!faceMatcher;
+      let detections;
+      if (useRecognition) {
+        detections = await faceapi
+          .detectAllFaces(vid, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+          .withFaceLandmarks()
+          .withFaceExpressions()
+          .withFaceDescriptors();
+      } else {
+        detections = await faceapi
+          .detectAllFaces(vid, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }))
+          .withFaceExpressions();
+      }
 
       if (detections.length > 0) {
         const vidW = vid.videoWidth  || 640;
         const vidH = vid.videoHeight || 480;
 
-        const mapped = detections.map((d, i) => {
-          const box = d.detection.box;
-          // Get top emotion
-          const exps   = d.expressions;
+        const mapped = detections.map((d) => {
+          const box  = d.detection.box;
+          const exps = d.expressions;
           const topEmo = Object.entries(exps).sort((a, b) => b[1] - a[1])[0];
           const emotion    = topEmo[0];
           const confidence = topEmo[1];
-          // Simple engagement score: average of happy+neutral (positive emotions)
-          const engScore = Math.min(1, (exps.happy || 0) * 1.5 + (exps.neutral || 0) * 0.8 + (exps.surprised || 0) * 0.6);
+          const engScore = Math.min(1, (exps.happy||0)*1.5 + (exps.neutral||0)*0.8 + (exps.surprised||0)*0.6);
+
+          // Face recognition: match descriptor against known students
+          let student_id   = null;
+          let student_name = null;
+          if (useRecognition && d.descriptor) {
+            const match = faceMatcher.findBestMatch(d.descriptor);
+            if (match.label !== 'unknown') {
+              student_id = match.label;
+            }
+          }
+
           return {
-            emotion,
-            confidence,
-            engagement_score: engScore,
-            student_id:   null,
-            student_name: null,
+            emotion, confidence, engagement_score: engScore,
+            student_id, student_name,
             box: {
               x: (box.x / vidW) * 100,
               y: (box.y / vidH) * 100,
@@ -133,8 +174,7 @@ export default function WebcamFeed({
 
         setFaces(mapped);
         onFaceDetected?.();
-        const top = mapped[0];
-        onEmotionDetected?.(top.emotion, top.student_id, mapped);
+        mapped.forEach(f => onEmotionDetected?.(f.emotion, f.student_id, mapped));
       } else {
         setFaces([]);
       }

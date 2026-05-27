@@ -22,7 +22,7 @@ import EmotionBarsWidget from '../components/EmotionBars';
 import StudentFaceCard from '../components/StudentFaceCard';
 import AlertItem from '../components/AlertItem';
 import ScheduleItem from '../components/ScheduleItem';
-import WebcamFeed from '../components/WebcamFeed';
+import WebcamFeed, { buildFaceMatcher } from '../components/WebcamFeed';
 import QRCodeComp from '../components/QRCode';
 import store from '../dataStore';
 import api from '../api';
@@ -330,6 +330,8 @@ function DocLive({ theme: C, myCourses }) {
   const [lastMarked, setLastMarked] = useState('');
   const [lastEmotion, setLastEmotion] = useState('');
   const [liveStudents, setLiveStudents] = useState([]);
+  const [faceMatcher, setFaceMatcher]   = useState(null);
+  const [buildingMatcher, setBuildingMatcher] = useState(false);
   const [, forceUpdate]             = useState(0);
 
   const alertCooldown = useRef({});
@@ -337,13 +339,30 @@ function DocLive({ theme: C, myCourses }) {
 
   useEffect(() => {
     if (!selCourse) return;
+    setFaceMatcher(null);
     api.getCourseStudents(selCourse)
-      .then(r => setLiveStudents((r.enrolled||[]).map(s => ({
-        id: s.student_id, name: s.name, photo: s.photo,
-        emoji: '👤', color: '#3b82f6', present: false,
-        attentionScore: Math.round(60 + Math.random()*40),
-        engagement: Math.round(60 + Math.random()*40),
-      }))))
+      .then(async r => {
+        const stuList = (r.enrolled||[]).map(s => ({
+          id: s.student_id, name: s.name, photo: s.photo,
+          emoji: '👤', color: '#3b82f6', present: false,
+          attentionScore: Math.round(60 + Math.random()*40),
+          engagement: Math.round(60 + Math.random()*40),
+        }));
+        setLiveStudents(stuList);
+        // Build face matcher from student photos so the camera can recognize them
+        const withPhotos = stuList.filter(s => s.photo);
+        if (withPhotos.length > 0) {
+          setBuildingMatcher(true);
+          try {
+            const matcher = await buildFaceMatcher(withPhotos);
+            setFaceMatcher(matcher);
+          } catch(e) {
+            console.warn('buildFaceMatcher failed:', e);
+          } finally {
+            setBuildingMatcher(false);
+          }
+        }
+      })
       .catch(() => {});
   }, [selCourse]);
 
@@ -409,7 +428,22 @@ function DocLive({ theme: C, myCourses }) {
         <div style={{display:'flex',flexDirection:'column',gap:12}}>
           <Card theme={C} title="📷 Camera Feed">
             <div style={{padding:'8px 12px 12px'}}>
-              <WebcamFeed theme={C} mode="📷 Live Session" courseId={selCourse} onFaceDetected={handleFaceDetected} onEmotionDetected={handleEmotionDetected} onCapture={()=>{}}/>
+              {buildingMatcher && (
+                <div style={{fontSize:11,color:'#fbbf24',background:'rgba(251,191,36,0.1)',border:'1px solid #f59e0b',borderRadius:8,padding:'5px 10px',marginBottom:6,textAlign:'center'}}>
+                  ⏳ Building face recognition model from student photos…
+                </div>
+              )}
+              {!buildingMatcher && faceMatcher && (
+                <div style={{fontSize:11,color:'#10b981',background:'rgba(16,185,129,0.1)',border:'1px solid #10b981',borderRadius:8,padding:'5px 10px',marginBottom:6,textAlign:'center'}}>
+                  🎯 Face recognition ready — {liveStudents.filter(s=>s.photo).length} students enrolled
+                </div>
+              )}
+              {!buildingMatcher && !faceMatcher && liveStudents.length > 0 && (
+                <div style={{fontSize:11,color:'#94a3b8',background:'rgba(148,163,184,0.1)',border:'1px solid #475569',borderRadius:8,padding:'5px 10px',marginBottom:6,textAlign:'center'}}>
+                  ⚠️ No student photos available — face recognition disabled
+                </div>
+              )}
+              <WebcamFeed theme={C} mode="📷 Live Session" courseId={selCourse} onFaceDetected={handleFaceDetected} onEmotionDetected={handleEmotionDetected} onCapture={()=>{}} faceMatcher={faceMatcher}/>
               {lastEmotion && (
                 <div style={{marginTop:6,fontSize:11,color:'#93c5fd',background:'rgba(59,130,246,0.15)',borderRadius:8,padding:'5px 10px',textAlign:'center'}}>
                   🧠 Last detected: <strong>{lastEmotion}</strong>
