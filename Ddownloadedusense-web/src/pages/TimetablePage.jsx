@@ -6,6 +6,21 @@ import { useLang } from '../context/LanguageContext';
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu'];
 const HOURS = Array.from({ length: 11 }, (_, i) => i + 8); // 8am–6pm
 
+// Map any day representation to 0–4 (Sun–Thu)
+const DAY_NAME_MAP = {
+  sun:0, sunday:0, 0:0,
+  mon:1, monday:1, 1:1,
+  tue:2, tuesday:2, 2:2,
+  wed:3, wednesday:3, 3:3,
+  thu:4, thursday:4, 4:4,
+};
+function dayToIdx(d) {
+  if (d === null || d === undefined) return NaN;
+  const n = Number(d);
+  if (Number.isFinite(n)) return n; // already a number
+  return DAY_NAME_MAP[String(d).toLowerCase().trim()] ?? NaN;
+}
+
 function timeToMinutes(t) {
   const [h, m] = (t || '09:00').split(':').map(Number);
   return h * 60 + (m || 0);
@@ -18,27 +33,11 @@ export default function TimetablePage({ theme: C, stu, role = 'student', doctorI
   const { t } = useLang();
   const [selected, setSelected] = useState(null);
   const [lectures, setLectures] = useState([]);
-  const [dbg, setDbg] = useState(null);
 
   useEffect(() => {
     const allCourses = store.courses || [];
     const enrollments = store.courseEnrollments || {};
     const stuId = String(stu?.id || stu?.student_id || '');
-
-    // Debug snapshot
-    const firstCourse = allCourses[0] || {};
-    const enrollKeys = Object.keys(enrollments).slice(0, 3);
-    const enrollSample = enrollKeys.map(k => `${k}:[${(enrollments[k]||[]).slice(0,2).join(',')}]`).join(' | ');
-    setDbg({
-      totalCourses: allCourses.length,
-      stuId,
-      enrollKeys: Object.keys(enrollments).length,
-      enrollSample,
-      firstCourseId: firstCourse.id,
-      firstCourseCode: firstCourse.code,
-      firstCourseDays: JSON.stringify(firstCourse.days),
-      firstCourseTime: firstCourse.time,
-    });
 
     if (role === 'student' && stu) {
       const myIds = new Set(
@@ -68,9 +67,8 @@ export default function TimetablePage({ theme: C, stu, role = 'student', doctorI
     const duration = lec.duration || 90;
     const endMin = startMin + duration;
 
-    days.forEach(dayIdx => {
-      const idx = Number(dayIdx);
-      // Guard: NaN passes (< 0) and (> 4) both as false, causing events[undefined].push crash
+    days.forEach(d => {
+      const idx = dayToIdx(d);
       if (!Number.isFinite(idx) || idx < 0 || idx > 4) return;
       const dayKey = DAYS[Math.round(idx)];
       if (!dayKey || !events[dayKey]) return;
@@ -88,29 +86,10 @@ export default function TimetablePage({ theme: C, stu, role = 'student', doctorI
       <div style={{ fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 4 }}>
         📅 {t('timetable_title')}
       </div>
-      <div style={{ fontSize: 12, color: C.text2, marginBottom: 8 }}>
+      <div style={{ fontSize: 12, color: C.text2, marginBottom: 20 }}>
         Your weekly class schedule — Sun to Thu, 8 AM – 6 PM
       </div>
 
-      {/* DEBUG PANEL — remove after fix */}
-      {dbg && (
-        <div style={{
-          background:'#1a1a2e', border:'1px solid #ff6b6b', borderRadius:8,
-          padding:'10px 14px', marginBottom:16, fontSize:11, color:'#ff6b6b',
-          fontFamily:'monospace', lineHeight:1.8,
-        }}>
-          <div style={{fontWeight:700, marginBottom:4, color:'#ffd700'}}>🔍 Timetable Debug</div>
-          <div>store.courses count: <b style={{color:'#fff'}}>{dbg.totalCourses}</b></div>
-          <div>stuId: <b style={{color:'#fff'}}>{dbg.stuId || '(empty)'}</b></div>
-          <div>courseEnrollments keys: <b style={{color:'#fff'}}>{dbg.enrollKeys}</b></div>
-          <div>sample: <b style={{color:'#fff'}}>{dbg.enrollSample || '(none)'}</b></div>
-          <div>first course id: <b style={{color:'#fff'}}>{String(dbg.firstCourseId)}</b></div>
-          <div>first course code: <b style={{color:'#fff'}}>{String(dbg.firstCourseCode)}</b></div>
-          <div>first course days: <b style={{color:'#fff'}}>{dbg.firstCourseDays}</b></div>
-          <div>first course time: <b style={{color:'#fff'}}>{dbg.firstCourseTime}</b></div>
-          <div>lectures shown: <b style={{color:'#fff'}}>{lectures.length}</b></div>
-        </div>
-      )}
 
       {lectures.length === 0 && (
         <div style={{
