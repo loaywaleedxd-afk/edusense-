@@ -18,17 +18,29 @@ export default function TimetablePage({ theme: C, stu, role = 'student', doctorI
   const { t } = useLang();
   const [selected, setSelected] = useState(null);
   const [lectures, setLectures] = useState([]);
+  const [dbg, setDbg] = useState(null);
 
   useEffect(() => {
-    // Use already-loaded store data — no extra API call needed.
-    // store.courses fields (mapped by dataStore): id, code, name, time, duration,
-    // days (array), daysLabel, doctorId, doctorName, room, color
     const allCourses = store.courses || [];
+    const enrollments = store.courseEnrollments || {};
+    const stuId = String(stu?.id || stu?.student_id || '');
+
+    // Debug snapshot
+    const firstCourse = allCourses[0] || {};
+    const enrollKeys = Object.keys(enrollments).slice(0, 3);
+    const enrollSample = enrollKeys.map(k => `${k}:[${(enrollments[k]||[]).slice(0,2).join(',')}]`).join(' | ');
+    setDbg({
+      totalCourses: allCourses.length,
+      stuId,
+      enrollKeys: Object.keys(enrollments).length,
+      enrollSample,
+      firstCourseId: firstCourse.id,
+      firstCourseCode: firstCourse.code,
+      firstCourseDays: JSON.stringify(firstCourse.days),
+      firstCourseTime: firstCourse.time,
+    });
 
     if (role === 'student' && stu) {
-      const stuId = String(stu.id || stu.student_id || '');
-      // courseEnrollments: { courseCode: [studentId, ...] }
-      const enrollments = store.courseEnrollments || {};
       const myIds = new Set(
         Object.entries(enrollments)
           .filter(([, ids]) => ids.some(id => String(id) === stuId))
@@ -73,9 +85,29 @@ export default function TimetablePage({ theme: C, stu, role = 'student', doctorI
       <div style={{ fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 4 }}>
         📅 {t('timetable_title')}
       </div>
-      <div style={{ fontSize: 12, color: C.text2, marginBottom: 20 }}>
+      <div style={{ fontSize: 12, color: C.text2, marginBottom: 8 }}>
         Your weekly class schedule — Sun to Thu, 8 AM – 6 PM
       </div>
+
+      {/* DEBUG PANEL — remove after fix */}
+      {dbg && (
+        <div style={{
+          background:'#1a1a2e', border:'1px solid #ff6b6b', borderRadius:8,
+          padding:'10px 14px', marginBottom:16, fontSize:11, color:'#ff6b6b',
+          fontFamily:'monospace', lineHeight:1.8,
+        }}>
+          <div style={{fontWeight:700, marginBottom:4, color:'#ffd700'}}>🔍 Timetable Debug</div>
+          <div>store.courses count: <b style={{color:'#fff'}}>{dbg.totalCourses}</b></div>
+          <div>stuId: <b style={{color:'#fff'}}>{dbg.stuId || '(empty)'}</b></div>
+          <div>courseEnrollments keys: <b style={{color:'#fff'}}>{dbg.enrollKeys}</b></div>
+          <div>sample: <b style={{color:'#fff'}}>{dbg.enrollSample || '(none)'}</b></div>
+          <div>first course id: <b style={{color:'#fff'}}>{String(dbg.firstCourseId)}</b></div>
+          <div>first course code: <b style={{color:'#fff'}}>{String(dbg.firstCourseCode)}</b></div>
+          <div>first course days: <b style={{color:'#fff'}}>{dbg.firstCourseDays}</b></div>
+          <div>first course time: <b style={{color:'#fff'}}>{dbg.firstCourseTime}</b></div>
+          <div>lectures shown: <b style={{color:'#fff'}}>{lectures.length}</b></div>
+        </div>
+      )}
 
       {lectures.length === 0 && (
         <div style={{
