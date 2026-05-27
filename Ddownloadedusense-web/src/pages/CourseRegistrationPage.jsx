@@ -103,6 +103,40 @@ export default function CourseRegistrationPage({ theme: C }) {
     }
   }
 
+  // ── Client-side conflict detection ────────────────────────────────────────
+  const DAY_MAP = {
+    sun:0,sunday:0,mon:1,monday:1,tue:2,tuesday:2,wed:3,wednesday:3,thu:4,thursday:4,
+  };
+  function parseDays(val) {
+    if (!val) return new Set();
+    let lst = val;
+    if (typeof val === 'string') { try { lst = JSON.parse(val); } catch { return new Set(); } }
+    if (!Array.isArray(lst)) return new Set();
+    const s = new Set();
+    lst.forEach(d => {
+      if (typeof d === 'number' && d >= 0 && d <= 4) s.add(d);
+      else if (typeof d === 'string') { const i = DAY_MAP[d.toLowerCase().trim()]; if (i !== undefined) s.add(i); }
+    });
+    return s;
+  }
+  function parseMinutes(scheduled_at) {
+    if (!scheduled_at) return null;
+    const s = String(scheduled_at);
+    const m = s.match(/[T ](\d{2}):(\d{2})/) || s.match(/^(\d{1,2}):(\d{2})/);
+    if (m) return parseInt(m[1]) * 60 + parseInt(m[2]);
+    return null;
+  }
+  function hasConflict(cA, cB) {
+    const shared = [...parseDays(cA.days)].some(d => parseDays(cB.days).has(d));
+    if (!shared) return false;
+    const s1 = parseMinutes(cA.scheduled_at), s2 = parseMinutes(cB.scheduled_at);
+    if (s1 === null || s2 === null) return false;
+    const e1 = s1 + (cA.duration_min || 90), e2 = s2 + (cB.duration_min || 90);
+    return s1 < e2 && s2 < e1;
+  }
+
+  const enrolledCourses = courses.filter(c => c.my_status === 'enrolled' || c.my_status === 'approved');
+
   const filtered = courses.filter(c => {
     const q = search.toLowerCase();
     return (
@@ -168,6 +202,10 @@ export default function CourseRegistrationPage({ theme: C }) {
             const pct      = capacity > 0 ? Math.min(100, Math.round(filled / capacity * 100)) : 0;
             const isFull   = capacity > 0 && filled >= capacity;
             const busy     = working[course.course_code];
+            // Conflict: only check for courses the student hasn't enrolled in yet
+            const conflictWith = status === 'none' || status === 'rejected'
+              ? enrolledCourses.find(ec => ec.course_code !== course.course_code && hasConflict(course, ec))
+              : null;
 
             return (
               <motion.div key={course.course_code}
@@ -185,6 +223,17 @@ export default function CourseRegistrationPage({ theme: C }) {
                     {course.course_code} · {course.doctor_name || 'TBA'}
                   </div>
                 </div>
+
+                {/* Conflict badge */}
+                {conflictWith && (
+                  <div style={{
+                    background: '#ef444418', border: '1px solid #ef444466',
+                    borderRadius: 8, padding: '6px 10px', fontSize: 11,
+                    color: '#ef4444', fontWeight: 600, display: 'flex', gap: 6, alignItems: 'center',
+                  }}>
+                    ⚠️ Time conflict with <strong>{conflictWith.course_name}</strong>
+                  </div>
+                )}
 
                 {/* Details */}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 16px', fontSize: 12, color: C.text2 }}>
@@ -216,10 +265,10 @@ export default function CourseRegistrationPage({ theme: C }) {
                   whileHover={status === 'none' && !isFull ? { scale: 1.02 } : {}}
                   whileTap={status === 'none' && !isFull ? { scale: 0.98 } : {}}
                   onClick={() => {
-                    if (status === 'none' && !isFull) handleRequest(course);
+                    if (status === 'none' && !isFull && !conflictWith) handleRequest(course);
                     if (status === 'pending') handleCancel(course);
                   }}
-                  disabled={busy || status === 'enrolled' || status === 'approved' || status === 'rejected' || (isFull && status === 'none')}
+                  disabled={busy || status === 'enrolled' || status === 'approved' || status === 'rejected' || (isFull && status === 'none') || Boolean(conflictWith)}
                   style={{
                     padding: '7px 14px', borderRadius: 8, border: 'none',
                     fontSize: 13, fontWeight: 600, cursor: busy ? 'wait'
@@ -243,6 +292,7 @@ export default function CourseRegistrationPage({ theme: C }) {
                   }}
                 >
                   {busy ? '⏳ Working…'
+                   : conflictWith && status === 'none' ? '⚠️ Schedule Conflict'
                    : isFull && status === 'none' ? '🈵 Full'
                    : status === 'pending' ? '⏳ Pending — Cancel'
                    : STATUS_LABELS[status] || '+ Request'
