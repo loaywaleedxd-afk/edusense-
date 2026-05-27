@@ -384,6 +384,7 @@ async def init_tenant_schema(pool, schema: str):
             CREATE TABLE IF NOT EXISTS "{schema}".qr_sessions (
                 token       TEXT PRIMARY KEY,
                 course_id   TEXT NOT NULL,
+                lecture_id  TEXT DEFAULT '',
                 week        INTEGER NOT NULL,
                 created_at  TIMESTAMPTZ DEFAULT NOW(),
                 used_by     TEXT DEFAULT '[]'
@@ -393,6 +394,7 @@ async def init_tenant_schema(pool, schema: str):
         for _qr_col in [
             f'ALTER TABLE "{schema}".qr_sessions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()',
             f'ALTER TABLE "{schema}".qr_sessions ADD COLUMN IF NOT EXISTS used_by TEXT DEFAULT \'[]\'',
+            f"ALTER TABLE \"{schema}\".qr_sessions ADD COLUMN IF NOT EXISTS lecture_id TEXT DEFAULT ''",
         ]:
             try:
                 await conn.execute(_qr_col)

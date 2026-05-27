@@ -12,11 +12,11 @@ router = APIRouter()
 async def create_qr(data: dict, payload: dict = Depends(require_role("doctor","admin")), db=Depends(get_db)):
     token = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
     try:
-        # Don't insert created_at — let the DB DEFAULT NOW() handle it to avoid type issues
+        # Don't insert created_at — let the DB DEFAULT NOW() handle it
         await db.execute(
-            "INSERT INTO qr_sessions (token, course_id, week) VALUES ($1,$2,$3)"
-            " ON CONFLICT (token) DO UPDATE SET course_id=EXCLUDED.course_id, week=EXCLUDED.week",
-            token, data.get("courseId",""), int(data.get("week",1))
+            "INSERT INTO qr_sessions (token, course_id, lecture_id, week) VALUES ($1,$2,$3,$4)"
+            " ON CONFLICT (token) DO UPDATE SET course_id=EXCLUDED.course_id, lecture_id=EXCLUDED.lecture_id, week=EXCLUDED.week",
+            token, data.get("courseId",""), data.get("lectureId",""), int(data.get("week",1))
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DB error creating QR: {str(e)}")
@@ -49,12 +49,15 @@ async def use_qr(data: dict, payload: dict = Depends(require_auth), db=Depends(g
         "UPDATE qr_sessions SET used_by=$1 WHERE token=$2",
         json.dumps(used), token
     )
-    # Resolve the actual lecture_id from course_code (QR stores course_code, attendance needs lecture_id)
-    lec_row = await db.fetchrow(
-        "SELECT lecture_id FROM lectures WHERE course_code=$1 ORDER BY created_at DESC LIMIT 1",
-        row["course_id"]
-    )
-    lecture_id = lec_row["lecture_id"] if lec_row else row["course_id"]
+    # Use the lecture_id baked into the QR session (same one the doctor's view queries)
+    lecture_id = row.get("lecture_id") or row.get("course_id") or ""
+    # Fallback: look up from course_code if lecture_id wasn't stored (old sessions)
+    if not lecture_id:
+        lec_row = await db.fetchrow(
+            "SELECT lecture_id FROM lectures WHERE course_code=$1 ORDER BY created_at DESC LIMIT 1",
+            row["course_id"]
+        )
+        lecture_id = lec_row["lecture_id"] if lec_row else row["course_id"]
 
     # Check for duplicate attendance record first
     existing_att = await db.fetchrow(
