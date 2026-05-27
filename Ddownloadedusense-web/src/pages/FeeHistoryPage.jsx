@@ -210,6 +210,8 @@ export default function FeeHistoryPage({ theme: C, stu, user, role }) {
     const updated = { ...feeOverrides, [recordId]: { status: 'paid', paidDate, method: 'Admin Override' } };
     saveFeeOverrides(selectedStuId, updated);
     setFeeOverrides(updated);
+    // Persist paid status to DB (best-effort)
+    api.setFeeStatus(selectedStuId, { paid: true }).catch(() => {});
   }
 
   function revertToPending(recordId) {

@@ -1,10 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLang } from '../context/LanguageContext';
 import store from '../dataStore';
 import api from '../api';
 
 const LS_PREFIX = 'es_roadmap_';
+
+/* ── Map DB category string → local cat key ─────────────────────────────── */
+function normalizeCategory(cat) {
+  const lower = (cat || '').toLowerCase().trim();
+  if (lower === 'general' || lower === 'gen') return 'gen';
+  if (lower === 'elective')                   return 'elective';
+  if (lower === 'capstone')                   return 'capstone';
+  return 'core';
+}
 
 /* ── Curriculum ─────────────────────────────────────────────────────────────── */
 const CURRICULUM = [
@@ -78,12 +87,15 @@ function loadCustomSemesters() {
 }
 function saveCustomSemesters(arr) { localStorage.setItem(ROADMAP_CUSTOM_KEY, JSON.stringify(arr)); }
 
-/* Build curriculum merged with store courses */
-function buildCurriculum() {
+/* Build curriculum merged with localStorage custom courses.
+   `base` defaults to the hardcoded CURRICULUM constant;
+   when DB data is loaded it is replaced with the DB-derived array. */
+function buildCurriculum(base) {
+  const src    = base || CURRICULUM;
   const custom = loadCustomSemesters(); // [{ semIdx (0-based), code, name, credits, cat }]
-  const result = CURRICULUM.map(s => ({ ...s, courses: [...s.courses] }));
+  const result = src.map(s => ({ ...s, courses: [...s.courses] }));
   custom.forEach(entry => {
-    const sem = result[entry.semIdx];
+    const sem = result[entry.semIdx] || result[result.length - 1];
     if (sem && !sem.courses.some(c => c.code === entry.code)) {
       sem.courses.push({ code: entry.code, name: entry.name, credits: entry.credits || 3, cat: entry.cat || 'elective', custom: true });
     }
@@ -108,10 +120,53 @@ export default function GraduationRoadmapPage({ theme: C, stu, role = 'student' 
   const { t, isRTL } = useLang();
   const isAdmin = role === 'admin';
 
+  // Ref holds the current base curriculum (DB-loaded or hardcoded fallback)
+  // Using a ref so helper functions (add/remove/sync) always see the latest value
+  const dbBaseRef = useRef(null);
+
   const [allStudents, setAllStudents] = useState([]);
   useEffect(() => {
     if (isAdmin) api.getStudents().then(setAllStudents).catch(() => {});
   }, [isAdmin]);
+
+  // Load degree requirements from DB; fall back to hardcoded CURRICULUM if empty
+  const [curriculum, setCurriculum] = useState(() => buildCurriculum());
+  useEffect(() => {
+    api.getDegreeRequirements()
+      .then(rows => {
+        if (!rows || rows.length === 0) return; // keep hardcoded fallback
+        // Group DB rows by semester_order → build same structure as CURRICULUM
+        const semMap = {};
+        rows.forEach(r => {
+          const s = r.semester_order || 1;
+          if (!semMap[s]) semMap[s] = [];
+          semMap[s].push({
+            code:    r.course_code,
+            name:    r.course_name,
+            credits: r.credits || 3,
+            cat:     normalizeCategory(r.category),
+          });
+        });
+        const dbBase = Object.keys(semMap)
+          .map(Number)
+          .sort((a, b) => a - b)
+          .map(s => {
+            const year       = Math.ceil(s / 2);
+            const semInYear  = ((s - 1) % 2) + 1;
+            return {
+              sem:    s,
+              year,
+              label:  `Year ${year} — Semester ${semInYear}`,
+              courses: semMap[s],
+            };
+          });
+        if (dbBase.length > 0) {
+          dbBaseRef.current = dbBase;
+          setCurriculum(buildCurriculum(dbBase));
+        }
+      })
+      .catch(() => {}); // silently keep hardcoded fallback
+  }, []);
 
   const [selectedStuId, setSelectedStuId] = useState(stu?.id || '');
   useEffect(() => {
@@ -146,7 +201,6 @@ export default function GraduationRoadmapPage({ theme: C, stu, role = 'student' 
 
   const [expanded, setExpanded] = useState(new Set([1, 2, 3]));
   const [filter,   setFilter]   = useState('all');
-  const [curriculum, setCurriculum] = useState(() => buildCurriculum());
   const [showAddCourse, setShowAddCourse] = useState(false);
   const [addCourseForm, setAddCourseForm] = useState({ semIdx: 0, code: '', name: '', credits: 3, cat: 'elective' });
   const [stuSearch, setStuSearch] = useState('');
@@ -167,7 +221,7 @@ export default function GraduationRoadmapPage({ theme: C, stu, role = 'student' 
     const entry = { semIdx: Number(semIdx), code: code.trim().toUpperCase(), name: name.trim(), credits: Number(credits), cat };
     const existing = loadCustomSemesters();
     saveCustomSemesters([...existing, entry]);
-    setCurriculum(buildCurriculum());
+    setCurriculum(buildCurriculum(dbBaseRef.current));
     setAddCourseForm({ semIdx: 0, code: '', name: '', credits: 3, cat: 'elective' });
     setShowAddCourse(false);
   }
@@ -175,7 +229,7 @@ export default function GraduationRoadmapPage({ theme: C, stu, role = 'student' 
   function removeCourseFromRoadmap(code) {
     const existing = loadCustomSemesters().filter(e => e.code !== code);
     saveCustomSemesters(existing);
-    setCurriculum(buildCurriculum());
+    setCurriculum(buildCurriculum(dbBaseRef.current));
   }
 
   // Sync API lectures into roadmap (match by code)
@@ -191,7 +245,7 @@ export default function GraduationRoadmapPage({ theme: C, stu, role = 'student' 
         .map(c => ({ semIdx: 7, code: c.code, name: c.name, credits: 3, cat: 'elective' }));
       if (!newEntries.length) return alert('All courses are already in the roadmap');
       saveCustomSemesters([...existing, ...newEntries]);
-      setCurriculum(buildCurriculum());
+      setCurriculum(buildCurriculum(dbBaseRef.current));
       alert(`Added ${newEntries.length} course(s) from the database to Semester 8`);
     }).catch(() => alert('Could not load courses from database'));
   }

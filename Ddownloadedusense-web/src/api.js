@@ -214,6 +214,16 @@ export const api = {
   requestEnrollment:      (data)      => post('/api/enrollment-requests/', data),
   processEnrollmentRequest:(id, data) => put(`/api/enrollment-requests/${id}`, data),
   cancelEnrollmentRequest: (id)       => del(`/api/enrollment-requests/${id}`),
+
+  // ── Audit Log ──────────────────────────────────────────────────────────────
+  getAuditLog:   ()     => get('/api/audit/'),
+  addAuditEntry: (data) => post('/api/audit/', data),
+
+  // ── Degree Requirements ────────────────────────────────────────────────────
+  getDegreeRequirements:     (dept)  => get(`/api/degree-requirements/${dept ? `?department=${encodeURIComponent(dept)}` : ''}`),
+  addDegreeRequirement:      (data)  => post('/api/degree-requirements/', data),
+  bulkAddDegreeRequirements: (data)  => post('/api/degree-requirements/bulk', data),
+  deleteDegreeRequirement:   (id)    => del(`/api/degree-requirements/${id}`),
 };
 
 export default api;

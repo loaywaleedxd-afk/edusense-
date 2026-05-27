@@ -287,10 +287,10 @@ async def notify_at_risk(
 
     parent = await db.fetchrow("""
         SELECT u.email FROM users u
-        WHERE u.role='parent'
-        AND u.username LIKE '%parent%'
+        JOIN parent_students ps ON ps.parent_user_id = u.id
+        WHERE ps.student_id = $1 AND u.role = 'parent'
         LIMIT 1
-    """)
+    """, student_id)
 
     advisor = await db.fetchrow("""
         SELECT u.email, u.full_name FROM lectures l

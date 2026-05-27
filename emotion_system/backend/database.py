@@ -616,6 +616,18 @@ async def init_tenant_schema(pool, schema: str):
             )
         """)
 
+        # ── Audit log ─────────────────────────────────────────────────────────
+        await conn.execute(f"""
+            CREATE TABLE IF NOT EXISTS "{schema}".audit_log (
+                id          SERIAL PRIMARY KEY,
+                action      TEXT NOT NULL,
+                actor_role  TEXT NOT NULL,
+                actor_name  TEXT NOT NULL,
+                details     TEXT,
+                created_at  TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+
     print(f"[OK] Schema '{schema}' initialized")
 
 

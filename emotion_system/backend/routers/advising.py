@@ -49,8 +49,8 @@ async def list_appointments(payload: dict = Depends(require_auth), db=Depends(ge
 
     if role == "student":
         s = await db.fetchrow(
-            "SELECT student_id FROM students WHERE user_id=(SELECT id FROM users WHERE username=$1)",
-            sub
+            "SELECT student_id FROM students WHERE user_id=$1",
+            int(sub)
         )
         if not s:
             return []
@@ -67,8 +67,8 @@ async def list_appointments(payload: dict = Depends(require_auth), db=Depends(ge
 
     elif role in ("doctor", "admin"):
         d = await db.fetchrow(
-            "SELECT doctor_id FROM doctors WHERE user_id=(SELECT id FROM users WHERE username=$1)",
-            sub
+            "SELECT doctor_id FROM doctors WHERE user_id=$1",
+            int(sub)
         )
         if role == "doctor" and not d:
             return []

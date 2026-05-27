@@ -8,6 +8,7 @@ from typing import Optional
 from datetime import datetime
 
 from database import get_db
+from auth_utils import require_auth, require_role
 
 router = APIRouter()
 
@@ -42,7 +43,7 @@ class BookingModel(BaseModel):
 
 # ── GET /slots/{doctor_id} ─────────────────────────────────────────────────────
 @router.get("/slots/{doctor_id}")
-async def get_slots(doctor_id: str, db=Depends(get_db)):
+async def get_slots(doctor_id: str, _: dict = Depends(require_auth), db=Depends(get_db)):
     try:
         rows = await db.fetch(
             "SELECT * FROM office_hours_slots WHERE doctor_id = $1 ORDER BY day, time",
@@ -70,7 +71,7 @@ async def get_slots(doctor_id: str, db=Depends(get_db)):
 
 # ── POST /slots ────────────────────────────────────────────────────────────────
 @router.post("/slots")
-async def create_slot(slot: SlotModel, db=Depends(get_db)):
+async def create_slot(slot: SlotModel, _: dict = Depends(require_role("doctor","admin")), db=Depends(get_db)):
     try:
         doctor_id = slot.get_doctor_id()
         await db.execute(
@@ -88,7 +89,7 @@ async def create_slot(slot: SlotModel, db=Depends(get_db)):
 
 # ── POST /slots/bulk — seed all slots at once ──────────────────────────────────
 @router.post("/slots/bulk")
-async def bulk_create_slots(body: dict, db=Depends(get_db)):
+async def bulk_create_slots(body: dict, _: dict = Depends(require_role("doctor","admin")), db=Depends(get_db)):
     slots = body.get("slots", [])
     try:
         async with db.transaction():
@@ -108,7 +109,7 @@ async def bulk_create_slots(body: dict, db=Depends(get_db)):
 
 # ── PATCH /slots/{slot_id} — toggle availability ───────────────────────────────
 @router.patch("/slots/{slot_id}")
-async def toggle_slot(slot_id: str, body: dict, db=Depends(get_db)):
+async def toggle_slot(slot_id: str, body: dict, _: dict = Depends(require_role("doctor","admin")), db=Depends(get_db)):
     try:
         available = bool(body.get("available", True))
         result = await db.execute(
@@ -131,7 +132,7 @@ async def toggle_slot(slot_id: str, body: dict, db=Depends(get_db)):
 
 # ── POST /book ─────────────────────────────────────────────────────────────────
 @router.post("/book")
-async def book_slot(booking: BookingModel, db=Depends(get_db)):
+async def book_slot(booking: BookingModel, _: dict = Depends(require_auth), db=Depends(get_db)):
     try:
         # Resolve doctor_id from slot if not provided or empty
         doctor_id = booking.doctorId or ''
@@ -168,7 +169,7 @@ async def book_slot(booking: BookingModel, db=Depends(get_db)):
 
 # ── GET /bookings/student/{student_id} ────────────────────────────────────────
 @router.get("/bookings/student/{student_id}")
-async def get_student_bookings(student_id: str, db=Depends(get_db)):
+async def get_student_bookings(student_id: str, _: dict = Depends(require_auth), db=Depends(get_db)):
     try:
         rows = await db.fetch(
             "SELECT * FROM office_hours_bookings WHERE student_id = $1 ORDER BY created_at DESC",
@@ -181,7 +182,7 @@ async def get_student_bookings(student_id: str, db=Depends(get_db)):
 
 # ── GET /bookings/doctor/{doctor_id} ──────────────────────────────────────────
 @router.get("/bookings/doctor/{doctor_id}")
-async def get_doctor_bookings(doctor_id: str, db=Depends(get_db)):
+async def get_doctor_bookings(doctor_id: str, _: dict = Depends(require_auth), db=Depends(get_db)):
     try:
         # Match by doctor_id column OR by slot ownership (catches bookings with wrong stored doctor_id)
         rows = await db.fetch(
@@ -206,7 +207,7 @@ async def get_doctor_bookings(doctor_id: str, db=Depends(get_db)):
 
 # ── DELETE /booking/{booking_id} ──────────────────────────────────────────────
 @router.delete("/booking/{booking_id}")
-async def cancel_booking(booking_id: str, db=Depends(get_db)):
+async def cancel_booking(booking_id: str, _: dict = Depends(require_auth), db=Depends(get_db)):
     try:
         await db.execute(
             "UPDATE office_hours_bookings SET status = 'cancelled' WHERE id = $1",

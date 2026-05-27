@@ -2182,21 +2182,27 @@ function AdminGradeAppeals({ theme: C }) {
   const [filter, setFilter] = useState('all');
   const [selected, setSelected] = useState(null);
   const [adminResp, setAdminResp] = useState('');
+  const [appeals, setAppeals] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const getAppeals = () => store.getGradeAppeals(filter === 'all' ? {} : { status: filter });
-  const [appeals, setAppeals] = useState(getAppeals);
+  useEffect(() => { loadAppeals(); }, []);
 
-  function refresh(f) {
-    setAppeals(store.getGradeAppeals(f === 'all' ? {} : { status: f }));
+  async function loadAppeals() {
+    setLoading(true);
+    try {
+      const all = await api.getComplaints();
+      setAppeals(all.filter(c => c.type === 'grade_appeal'));
+    } catch { setAppeals([]); }
+    setLoading(false);
   }
 
-  function handleDecide(id, dec) {
-    store.updateGradeAppeal(id, {
-      status: dec === 'approve' ? 'approved' : 'rejected',
-      adminDecision: dec, adminResponse: adminResp,
-    });
-    store._addAudit('grade_appeal_updated', 'admin', 'Admin', `Appeal ${id} — ${dec}`);
-    setSelected(null); setAdminResp(''); refresh(filter);
+  const filtered = filter === 'all' ? appeals : appeals.filter(a => a.status === filter);
+
+  async function handleDecide(id, dec) {
+    const newStatus = dec === 'approve' ? 'approved' : 'rejected';
+    await api.updateComplaint(id, { status: newStatus, doctorResponse: selected?.doctor_response||'', adminResponse: adminResp }).catch(()=>{});
+    api.addAuditEntry({ action: 'grade_appeal_updated', actor_role: 'admin', actor_name: 'Admin', details: `Appeal ${id} — ${dec}` }).catch(()=>{});
+    setSelected(null); setAdminResp(''); loadAppeals();
   }
 
   const STATUS_COLOR = { pending:'amber', under_review:'blue', approved:'green', rejected:'red' };
@@ -2209,35 +2215,38 @@ function AdminGradeAppeals({ theme: C }) {
   return (
     <div style={{ padding: '12px 20px 24px' }}>
       <div style={{ fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 12 }}>🏷️ Grade Appeals</div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap:'wrap', alignItems:'center' }}>
         {['all','pending','approved','rejected'].map(f => (
-          <button key={f} onClick={() => { setFilter(f); refresh(f); }}
+          <button key={f} onClick={() => setFilter(f)}
             style={{ padding: '5px 14px', borderRadius: 8, border: `1px solid ${C.border}`,
               background: filter === f ? C.blue2 : C.bg3, color: filter === f ? '#fff' : C.text,
               cursor: 'pointer', fontSize: 12 }}>
             {f.charAt(0).toUpperCase() + f.slice(1)}
           </button>
         ))}
+        <button onClick={loadAppeals} style={{ marginLeft:'auto', padding:'5px 12px', borderRadius:8, border:`1px solid ${C.border}`, background:C.bg3, color:C.text2, fontSize:11, cursor:'pointer' }}>🔄 Refresh</button>
       </div>
-      {appeals.length === 0 ? (
+      {loading ? (
+        <div style={{ textAlign:'center', color:C.text3, padding:48 }}>Loading…</div>
+      ) : filtered.length === 0 ? (
         <div style={{ textAlign: 'center', color: C.text3, padding: 48 }}>No grade appeals found.</div>
       ) : (
         <Card theme={C} title="">
-          {appeals.map(a => (
+          {filtered.map(a => (
             <div key={a.id} style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}` }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{a.studentName} — {a.courseName}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{a.student_name} — {a.course_name}</div>
                   <div style={{ fontSize: 11, color: C.text2, marginTop: 2 }}>
-                    {a.currentGrade}% → {a.requestedGrade}% | {(a.reason || '').slice(0, 80)}
+                    {(a.description || '').slice(0, 100)}
                   </div>
-                  {a.doctorResponse && <div style={{ fontSize: 11, color: C.text3, marginTop: 2 }}>Lecturer: {a.doctorResponse}</div>}
-                  {a.adminResponse  && <div style={{ fontSize: 11, color: C.text3, marginTop: 2 }}>Admin: {a.adminResponse}</div>}
+                  {a.doctor_response && <div style={{ fontSize: 11, color: C.text3, marginTop: 2 }}>Lecturer: {a.doctor_response}</div>}
+                  {a.admin_response  && <div style={{ fontSize: 11, color: C.text3, marginTop: 2 }}>Admin: {a.admin_response}</div>}
                 </div>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                   <Badge text={a.status} color={STATUS_COLOR[a.status] || 'gray'}/>
                   {(a.status === 'pending' || a.status === 'under_review') && (
-                    <button onClick={() => { setSelected(a); setAdminResp(a.adminResponse || ''); }}
+                    <button onClick={() => { setSelected(a); setAdminResp(a.admin_response || ''); }}
                       style={{ padding: '4px 10px', borderRadius: 7, border: `1px solid ${C.border}`,
                         background: C.bg3, color: C.text, fontSize: 11, cursor: 'pointer' }}>
                       Review
@@ -2256,11 +2265,10 @@ function AdminGradeAppeals({ theme: C }) {
           <div style={{ background: C.card, borderRadius: 14, padding: 28, width: 460, maxWidth: '92vw' }}
             onClick={e => e.stopPropagation()}>
             <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 12 }}>
-              Review Appeal — {selected.studentName}
+              Review Appeal — {selected.student_name}
             </div>
             <div style={{ fontSize: 12, color: C.text2, marginBottom: 16 }}>
-              {selected.courseName}: {selected.currentGrade}% → {selected.requestedGrade}%
-              <br/>{selected.reason}
+              {selected.course_name} ({selected.course_id})<br/>{selected.description}
             </div>
             <div style={{ fontSize: 11, color: C.text3, marginBottom: 6 }}>Admin Response</div>
             <textarea value={adminResp} onChange={e => setAdminResp(e.target.value)}

@@ -28,6 +28,7 @@ from routers import (
     qr_sessions, enrollments, init_data,
     proctoring, advising, at_risk, office_hours, payment,
     tenants, calendar, polls, dm, enrollment_requests,
+    audit_log, degree_requirements,
 )
 from database import init_pool, init_tenant_schema, get_db
 from notifier import manager
@@ -145,6 +146,8 @@ app.include_router(calendar.router,              prefix="/api/calendar",        
 app.include_router(polls.router,                 prefix="/api/polls",                 tags=["Polls"])
 app.include_router(dm.router,                    prefix="/api/dm",                    tags=["DirectMessages"])
 app.include_router(enrollment_requests.router,   prefix="/api/enrollment-requests",   tags=["EnrollmentRequests"])
+app.include_router(audit_log.router,            prefix="/api/audit",                 tags=["AuditLog"])
+app.include_router(degree_requirements.router,  prefix="/api/degree-requirements",   tags=["DegreeRequirements"])
 # ── Superadmin-only: tenant (university) management ───────────────────────────
 # Prefix is intentionally obscure. Not listed in public docs.
 app.include_router(tenants.router, prefix="/api/super/tenants", include_in_schema=False)

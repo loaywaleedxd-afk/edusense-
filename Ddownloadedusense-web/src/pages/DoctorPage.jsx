@@ -3047,21 +3047,27 @@ function DocGradeAppeals({ theme: C, doctor }) {
   const [filter, setFilter] = useState('all');
   const [selected, setSelected] = useState(null);
   const [docResp, setDocResp] = useState('');
+  const [appeals, setAppeals] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const getAppeals = (f) => store.getGradeAppeals(
-    f === 'all' ? { doctorId: doctor.id } : { doctorId: doctor.id, status: f }
-  );
-  const [appeals, setAppeals] = useState(() => getAppeals('all'));
+  useEffect(() => { loadAppeals(); }, []);
 
-  function refresh(f) { setAppeals(getAppeals(f)); }
+  async function loadAppeals() {
+    setLoading(true);
+    try {
+      const all = await api.getComplaints();
+      setAppeals(all.filter(c => c.type === 'grade_appeal'));
+    } catch { setAppeals([]); }
+    setLoading(false);
+  }
 
-  function respond(id, dec) {
-    store.updateGradeAppeal(id, {
-      status: dec === 'approve' ? 'approved' : dec === 'reject' ? 'rejected' : 'under_review',
-      doctorDecision: dec, doctorResponse: docResp,
-    });
-    store._addAudit('grade_appeal_updated', 'doctor', doctor.name, `Appeal ${id} — ${dec}`);
-    setSelected(null); setDocResp(''); refresh(filter);
+  const filtered = filter === 'all' ? appeals : appeals.filter(a => a.status === filter);
+
+  async function respond(id, dec) {
+    const newStatus = dec === 'approve' ? 'approved' : dec === 'reject' ? 'rejected' : 'under_review';
+    await api.updateComplaint(id, { status: newStatus, doctorResponse: docResp, adminResponse: '' }).catch(()=>{});
+    api.addAuditEntry({ action: 'grade_appeal_updated', actor_role: 'doctor', actor_name: doctor.name, details: `Appeal ${id} — ${dec}` }).catch(()=>{});
+    setSelected(null); setDocResp(''); loadAppeals();
   }
 
   const STATUS_COLOR = { pending:'amber', under_review:'blue', approved:'green', rejected:'red' };
@@ -3070,33 +3076,34 @@ function DocGradeAppeals({ theme: C, doctor }) {
   return (
     <div style={{ padding: '12px 20px 24px' }}>
       <div style={{ fontSize: 22, fontWeight: 700, color: C.text, marginBottom: 12 }}>🏷️ Grade Appeals</div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap:'wrap', alignItems:'center' }}>
         {['all','pending','under_review','approved','rejected'].map(f => (
-          <button key={f} onClick={() => { setFilter(f); refresh(f); }}
+          <button key={f} onClick={() => setFilter(f)}
             style={{ padding: '5px 14px', borderRadius: 8, border: `1px solid ${C.border}`,
               background: filter === f ? C.blue2 : C.bg3, color: filter === f ? '#fff' : C.text,
               cursor: 'pointer', fontSize: 11 }}>
             {f === 'under_review' ? 'Under Review' : f.charAt(0).toUpperCase() + f.slice(1)}
           </button>
         ))}
+        <button onClick={loadAppeals} style={{ marginLeft:'auto', padding:'5px 12px', borderRadius:8, border:`1px solid ${C.border}`, background:C.bg3, color:C.text2, fontSize:11, cursor:'pointer' }}>🔄 Refresh</button>
       </div>
-      {appeals.length === 0 ? (
+      {loading ? (
+        <div style={{ textAlign:'center', color:C.text3, padding:48 }}>Loading…</div>
+      ) : filtered.length === 0 ? (
         <div style={{ textAlign: 'center', color: C.text3, padding: 48 }}>No grade appeals for your courses.</div>
-      ) : appeals.map(a => (
+      ) : filtered.map(a => (
         <div key={a.id} style={{ background: C.card, borderRadius: 12, border: `1px solid ${a.status === 'pending' ? C.amber : C.border}`, padding: 16, marginBottom: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{a.studentName} — {a.courseName}</div>
-              <div style={{ fontSize: 11, color: C.text2, marginTop: 2 }}>
-                Grade dispute: {a.currentGrade}% → requested {a.requestedGrade}%
-              </div>
-              <div style={{ fontSize: 12, color: C.text, marginTop: 6, lineHeight: 1.5 }}>{a.reason}</div>
-              {a.doctorResponse && <div style={{ fontSize: 11, color: C.text3, marginTop: 4 }}>Your response: {a.doctorResponse}</div>}
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{a.student_name} — {a.course_name}</div>
+              <div style={{ fontSize: 11, color: C.text2, marginTop: 2 }}>Course: {a.course_id}</div>
+              <div style={{ fontSize: 12, color: C.text, marginTop: 6, lineHeight: 1.5 }}>{a.description}</div>
+              {a.doctor_response && <div style={{ fontSize: 11, color: C.text3, marginTop: 4 }}>Your response: {a.doctor_response}</div>}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
               <Badge text={a.status} color={STATUS_COLOR[a.status] || 'gray'}/>
               {(a.status === 'pending' || a.status === 'under_review') && (
-                <button onClick={() => { setSelected(a); setDocResp(a.doctorResponse || ''); }}
+                <button onClick={() => { setSelected(a); setDocResp(a.doctor_response || ''); }}
                   style={{ padding: '4px 12px', borderRadius: 7, border: `1px solid ${C.border}`, background: C.bg3, color: C.text, fontSize: 11, cursor: 'pointer' }}>
                   Respond
                 </button>
@@ -3109,9 +3116,9 @@ function DocGradeAppeals({ theme: C, doctor }) {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           onClick={() => setSelected(null)}>
           <div style={{ background: C.card, borderRadius: 14, padding: 28, width: 460, maxWidth: '92vw' }} onClick={e => e.stopPropagation()}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 12 }}>Respond — {selected.studentName}</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 12 }}>Respond — {selected.student_name}</div>
             <div style={{ fontSize: 12, color: C.text2, marginBottom: 16 }}>
-              {selected.courseName}: {selected.currentGrade}% → {selected.requestedGrade}%<br/>{selected.reason}
+              {selected.course_name} ({selected.course_id})<br/>{selected.description}
             </div>
             <div style={{ fontSize: 11, color: C.text3, marginBottom: 6 }}>Your Response</div>
             <textarea value={docResp} onChange={e => setDocResp(e.target.value)}

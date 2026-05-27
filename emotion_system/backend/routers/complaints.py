@@ -19,10 +19,14 @@ async def get_complaints(payload: dict = Depends(require_auth), db=Depends(get_d
             int(uid)
         )
     elif role == "doctor":
+        # Match by explicit doctor_id OR by course (complaint's course_id taught by this doctor)
         rows = await db.fetch(
-            """SELECT c.* FROM complaints c
-               JOIN doctors d ON d.doctor_id = c.doctor_id
-               WHERE d.user_id = $1 ORDER BY c.created_at DESC""",
+            """SELECT DISTINCT c.* FROM complaints c
+               LEFT JOIN doctors d  ON d.doctor_id = c.doctor_id
+               LEFT JOIN lectures l ON l.course_code = c.course_id
+               LEFT JOIN doctors d2 ON d2.doctor_id = l.doctor_id
+               WHERE d.user_id = $1 OR d2.user_id = $1
+               ORDER BY c.created_at DESC""",
             int(uid)
         )
     else:

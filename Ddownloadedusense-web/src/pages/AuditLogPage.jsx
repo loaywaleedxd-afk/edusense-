@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import api from '../api';
 import store from '../dataStore';
 import Card from '../components/Card';
 import Badge from '../components/Badge';
@@ -6,29 +7,56 @@ import Badge from '../components/Badge';
 const ROLE_COLORS = { admin:'blue', doctor:'purple', student:'green', system:'gray' };
 const ACTION_LABELS = {
   grade_appeal_submitted: 'Grade Appeal Submitted',
-  grade_appeal_updated: 'Grade Appeal Updated',
-  login: 'Login',
-  logout: 'Logout',
-  student_added: 'Student Added',
-  student_deleted: 'Student Deleted',
-  doctor_added: 'Lecturer Added',
-  course_added: 'Course Added',
-  grade_posted: 'Grade Posted',
+  grade_appeal_updated:   'Grade Appeal Updated',
+  login:                  'Login',
+  logout:                 'Logout',
+  student_added:          'Student Added',
+  student_deleted:        'Student Deleted',
+  doctor_added:           'Lecturer Added',
+  course_added:           'Course Added',
+  grade_posted:           'Grade Posted',
 };
 
 export default function AuditLogPage({ theme: C }) {
+  const [allLogs,      setAllLogs]      = useState([]);
+  const [loading,      setLoading]      = useState(true);
   const [roleFilter,   setRoleFilter]   = useState('all');
   const [actionFilter, setActionFilter] = useState('all');
   const [search,       setSearch]       = useState('');
 
-  const filters = {};
-  if (roleFilter   !== 'all') filters.role   = roleFilter;
-  if (actionFilter !== 'all') filters.action = actionFilter;
-  if (search)                 filters.search = search;
-  const logs = store.getAuditLog(filters);
+  useEffect(() => {
+    setLoading(true);
+    api.getAuditLog()
+      .then(rows => {
+        // DB uses snake_case; map to the camelCase shape the UI expects
+        setAllLogs(rows.map(r => ({
+          id:        r.id,
+          action:    r.action,
+          actorRole: r.actor_role,
+          actorName: r.actor_name,
+          details:   r.details,
+          timestamp: r.created_at,
+        })));
+      })
+      .catch(() => {
+        // Fall back to localStorage-backed store
+        setAllLogs(store.getAuditLog ? store.getAuditLog() : []);
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
-  const roles    = ['all', ...new Set(store.getAuditLog().map(l => l.actorRole))];
-  const actions  = ['all', ...new Set(store.getAuditLog().map(l => l.action))];
+  const roles   = useMemo(() => ['all', ...new Set(allLogs.map(l => l.actorRole).filter(Boolean))], [allLogs]);
+  const actions = useMemo(() => ['all', ...new Set(allLogs.map(l => l.action).filter(Boolean))],    [allLogs]);
+
+  const logs = useMemo(() => allLogs.filter(l => {
+    if (roleFilter   !== 'all' && l.actorRole !== roleFilter)   return false;
+    if (actionFilter !== 'all' && l.action    !== actionFilter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      if (!`${l.actorName || ''} ${l.action || ''} ${l.details || ''}`.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  }), [allLogs, roleFilter, actionFilter, search]);
 
   const inp = {
     background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 8,
@@ -42,7 +70,7 @@ export default function AuditLogPage({ theme: C }) {
         🗃️ Audit Log
       </div>
       <div style={{ fontSize: 12, color: C.text2, marginBottom: 16 }}>
-        Full trail of system actions — {logs.length} entries
+        {loading ? 'Loading…' : `Full trail of system actions — ${logs.length} entries`}
       </div>
 
       {/* Filters */}
@@ -61,7 +89,11 @@ export default function AuditLogPage({ theme: C }) {
         </select>
       </div>
 
-      {logs.length === 0 ? (
+      {loading ? (
+        <div style={{ textAlign: 'center', color: C.text3, padding: 48, fontSize: 13 }}>
+          ⏳ Loading audit log…
+        </div>
+      ) : logs.length === 0 ? (
         <div style={{ textAlign: 'center', color: C.text3, padding: 48, fontSize: 13 }}>
           No audit entries found.
         </div>
@@ -87,7 +119,7 @@ export default function AuditLogPage({ theme: C }) {
                   </div>
                 </div>
                 <div style={{ fontSize: 10, color: C.text3, flexShrink: 0, textAlign: 'right' }}>
-                  {new Date(entry.timestamp).toLocaleString()}
+                  {entry.timestamp ? new Date(entry.timestamp).toLocaleString() : ''}
                 </div>
               </div>
             ))}

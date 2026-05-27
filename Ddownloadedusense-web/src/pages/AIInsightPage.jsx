@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useLang } from '../context/LanguageContext';
-import api from '../api';
+import api, { get } from '../api';
 import store from '../dataStore';
 
 /* ─── helpers ─── */
@@ -55,36 +55,57 @@ function predictStudent(stu, results) {
 
 /* ─── Emotion Insight Engine ─── */
 async function generateInsights(doctor, myCourses) {
-  const weeks = [1, 2, 3, 4];
-  const SEED = String(doctor.id).split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-
-  // Fetch enrolled students for all courses via API
+  // Fetch enrolled students for all courses via real API
   const allStudentsNested = await Promise.all(
     myCourses.map(c => api.getCourseStudents(c.code || c.id).catch(() => []))
   );
   const allStudents = allStudentsNested.flat();
   const unique = [...new Map(allStudents.map(s => [s.id || s.student_id, s])).values()];
   const disengaged = unique.filter(s => s.engagement < 50).slice(0, 5);
-  const confused = unique.filter(s => ['confused', 'bored', 'sad'].includes(s.emotion)).slice(0, 4);
+  const confused   = unique.filter(s => ['confused', 'bored', 'sad'].includes(s.emotion)).slice(0, 4);
 
-  // Simulate weekly trends
-  const trendData = weeks.map((w, i) => {
-    const base = 65 + (SEED % 20);
-    return {
-      week: w,
-      engagement: Math.min(100, Math.max(40, base + (Math.sin(i + SEED) * 12))),
-      attention: Math.min(100, Math.max(35, base - 5 + (Math.cos(i + SEED) * 10))),
-      happiness: Math.min(100, Math.max(30, base - 10 + (Math.sin(i * 2 + SEED) * 15))),
-    };
-  });
+  // Fetch real analytics summary from backend
+  let avgEngagement = 65;
+  let emotionDist   = {};
+  try {
+    const analytics = await get('/api/analytics');
+    if (analytics?.avg_engagement_rate != null)
+      avgEngagement = Math.min(100, Math.max(20, Number(analytics.avg_engagement_rate)));
+    if (analytics?.emotion_distribution)
+      emotionDist = analytics.emotion_distribution;
+  } catch { /* keep defaults */ }
 
-  // Confusing topics (use myCourses directly as lectures)
-  const lectures = myCourses;
-  const hardTopics = lectures.map((l, i) => ({
-    name: l.topic || l.name,
-    code: l.code,
-    confusionScore: Math.round(30 + ((SEED + i * 7) % 50)),
-    avgEmotion: ['confused', 'bored', 'neutral', 'happy'][Math.floor((SEED + i) % 4)],
+  // Derive confusion / happiness rates from real emotion distribution
+  const totalEmotions   = Object.values(emotionDist).reduce((a, b) => a + b, 0);
+  const negCount = (emotionDist.confused || 0) + (emotionDist.bored || 0)
+                 + (emotionDist.sad || 0)      + (emotionDist.angry || 0);
+  const posCount = (emotionDist.happy    || 0) + (emotionDist.engaged  || 0)
+                 + (emotionDist.excited  || 0) + (emotionDist.surprised || 0);
+  const baseConfusion = totalEmotions > 0
+    ? Math.round((negCount / totalEmotions) * 100)
+    : Math.max(15, 100 - avgEngagement);
+  const baseHappiness = totalEmotions > 0
+    ? Math.round((posCount / totalEmotions) * 100)
+    : Math.min(90, avgEngagement);
+
+  // Weekly trend — real average as baseline, small deterministic offsets per week
+  const WEEKLY_ENG_OFFSETS = [-5, 4, -8, 3];
+  const WEEKLY_ATT_OFFSETS = [ 2,-3,  5,-4];
+  const WEEKLY_HAP_OFFSETS = [ 3,-4,  2,-5];
+  const trendData = [1, 2, 3, 4].map((w, i) => ({
+    week:       w,
+    engagement: Math.min(100, Math.max(20, avgEngagement  + WEEKLY_ENG_OFFSETS[i])),
+    attention:  Math.min(100, Math.max(15, avgEngagement - 5 + WEEKLY_ATT_OFFSETS[i])),
+    happiness:  Math.min(100, Math.max(15, baseHappiness  + WEEKLY_HAP_OFFSETS[i])),
+  }));
+
+  // Hard topics — real course names, confusion score anchored to real neg-emotion rate
+  const CONFUSION_OFFSETS = [7, -5, 12, -3, 9, -7];
+  const hardTopics = myCourses.map((l, i) => ({
+    name:          l.topic || l.name,
+    code:          l.code,
+    confusionScore: Math.min(90, Math.max(5, baseConfusion + CONFUSION_OFFSETS[i % 6])),
+    avgEmotion:    ['confused', 'bored', 'neutral', 'happy'][i % 4],
   })).sort((a, b) => b.confusionScore - a.confusionScore).slice(0, 4);
 
   return { disengaged, confused, trendData, hardTopics, totalStudents: unique.length };
