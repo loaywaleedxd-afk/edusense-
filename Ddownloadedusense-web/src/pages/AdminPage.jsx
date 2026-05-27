@@ -403,9 +403,9 @@ function AdminAnalytics({ theme: C }) {
         return { label: l.course_code || `C${i+1}`, value: Math.round(l.avg_engagement || 0), color: cols[i % cols.length] };
       })
     : lectures.slice(0, 12).map((l, i) => {
-        const enrolled = enrollments.filter(e => e.lecture_id === l.id || e.course_id === l.id).length;
+        const enrolled = enrollments.filter(e => e.course_id === l.course_code).length;
         const cols = [C.blue, C.purple, C.green, C.amber, C.cyan, C.red];
-        return { label: l.code || l.name?.slice(0, 8) || `C${i+1}`, value: enrolled || 0, color: cols[i % cols.length] };
+        return { label: l.course_code || l.course_name?.slice(0, 8) || `C${i+1}`, value: enrolled || 0, color: cols[i % cols.length] };
       });
   const barTitle = lectureComp.length > 0 ? 'Engagement by Course (%)' : 'Enrollments by Course';
 
@@ -1995,8 +1995,9 @@ function StudentPortfolioModal({ theme: C, student, onClose }) {
       const lecs   = lecRes.status    === 'fulfilled' ? lecRes.value    : [];
       const enroll = enrollRes.status  === 'fulfilled' ? enrollRes.value  : [];
       const g      = gradesRes.status  === 'fulfilled' ? gradesRes.value  : [];
-      const myIds  = new Set(enroll.filter(e => String(e.student_id) === String(student.id)).map(e => String(e.lecture_id || e.course_id)));
-      setEnrolledCourses(lecs.filter(l => myIds.has(String(l.id))));
+      // Enrollments use course_code as course_id; match against l.course_code
+      const myIds  = new Set(enroll.filter(e => String(e.student_id) === String(student.id)).map(e => String(e.course_id)));
+      setEnrolledCourses(lecs.filter(l => myIds.has(String(l.course_code))));
       setGrades(Array.isArray(g) ? g : []);
     });
   }, [student.id]);
@@ -2077,19 +2078,19 @@ function StudentPortfolioModal({ theme: C, student, onClose }) {
             {courses.length===0
               ? <tr><td colSpan={6} style={{padding:16,textAlign:'center',color:C.text3}}>No courses enrolled</td></tr>
               : courses.map((c,i)=>{
-                  const rec = grades.find(g => g.course_code === c.code || g.course_id === c.id);
+                  const rec = grades.find(g => g.course_code === c.course_code);
                   const g   = rec?.grade ?? rec?.score;
                   const att = ((idHash + i*17) % 30) + 70;
                   const gc  = g!=null ? gradeColor(g,C) : C.text3;
                   return (
                     <tr key={i} style={{background:i%2===0?C.bg3:C.card}}>
-                      <td style={{padding:'7px 10px',color:C.text,borderBottom:`1px solid ${C.border}`}}>{c.name}</td>
-                      <td style={{padding:'7px 10px',color:C.text2,borderBottom:`1px solid ${C.border}`}}>{c.code}</td>
+                      <td style={{padding:'7px 10px',color:C.text,borderBottom:`1px solid ${C.border}`}}>{c.course_name}</td>
+                      <td style={{padding:'7px 10px',color:C.text2,borderBottom:`1px solid ${C.border}`}}>{c.course_code}</td>
                       <td style={{padding:'7px 10px',fontWeight:700,color:gc,borderBottom:`1px solid ${C.border}`}}>{g!=null?`${g}%`:'—'}</td>
                       <td style={{padding:'7px 10px',fontWeight:700,color:gc,borderBottom:`1px solid ${C.border}`}}>{g!=null?letterGrade(g):'—'}</td>
                       <td style={{padding:'7px 10px',color:C.text2,borderBottom:`1px solid ${C.border}`}}>{att}%</td>
                       <td style={{padding:'7px 10px',borderBottom:`1px solid ${C.border}`}}>
-                        <button onClick={()=>withdrawCourse(c.id)}
+                        <button onClick={()=>withdrawCourse(c.course_code)}
                           style={{background:'#2d1a00',border:`1px solid ${C.amber}`,borderRadius:6,padding:'3px 10px',fontSize:10,color:C.amber,cursor:'pointer',fontWeight:700}}>
                           Withdraw
                         </button>

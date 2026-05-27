@@ -1,5 +1,5 @@
 """Complaints / Appeals router."""
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from database import get_db
 from auth_utils import require_auth, require_role
 from utils import parse_dt
@@ -36,6 +36,16 @@ async def get_complaints(payload: dict = Depends(require_auth), db=Depends(get_d
 
 @router.post("/")
 async def upsert_complaint(data: dict, payload: dict = Depends(require_auth), db=Depends(get_db)):
+    # Students may only submit complaints for themselves
+    caller_role = payload.get("role")
+    caller_uid  = int(payload.get("sub"))
+    if caller_role == "student":
+        stu_row = await db.fetchrow(
+            "SELECT student_id FROM students WHERE user_id=$1", caller_uid
+        )
+        if not stu_row or stu_row["student_id"].upper() != str(data.get("studentId", "")).upper():
+            raise HTTPException(status_code=403, detail="You may only submit complaints for yourself")
+
     await db.execute(
         """INSERT INTO complaints
            (id, student_id, student_name, type, course_id, course_name,

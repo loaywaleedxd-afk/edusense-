@@ -113,6 +113,16 @@ async def get_submissions(payload: dict = Depends(require_auth), db=Depends(get_
 
 @router.post("/submissions")
 async def upsert_submission(data: dict, payload: dict = Depends(require_auth), db=Depends(get_db)):
+    # Students may only submit for themselves
+    caller_role = payload.get("role")
+    caller_uid  = int(payload.get("sub"))
+    if caller_role == "student":
+        stu_row = await db.fetchrow(
+            "SELECT student_id FROM students WHERE user_id=$1", caller_uid
+        )
+        if not stu_row or stu_row["student_id"].upper() != str(data.get("studentId", "")).upper():
+            raise HTTPException(status_code=403, detail="You may only submit for yourself")
+
     await db.execute(
         """INSERT INTO submissions
            (id, assignment_id, student_id, course_id, content,

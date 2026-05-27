@@ -374,7 +374,7 @@ async def init_tenant_schema(pool, schema: str):
                 student_id  TEXT PRIMARY KEY,
                 paid        BOOLEAN DEFAULT TRUE,
                 amount      REAL DEFAULT 1500,
-                due_date    TEXT DEFAULT '2024-12-01'
+                due_date    TEXT DEFAULT '2026-09-30'
             )
         """)
 

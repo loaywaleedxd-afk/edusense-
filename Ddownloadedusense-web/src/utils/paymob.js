@@ -106,9 +106,9 @@ export async function handlePaymobReturn() {
   const payload = { student_id: studentId, amount };
   params.forEach((v, k) => { payload[k] = v; });
 
-  // Send to backend for HMAC verification and DB write
+  // Send to our own backend for HMAC verification and DB write (NOT Paymob's BASE URL)
   try {
-    const res  = await fetch(`${BASE}/api/payment/confirm`, {
+    const res  = await fetch(`/api/payment/confirm`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),

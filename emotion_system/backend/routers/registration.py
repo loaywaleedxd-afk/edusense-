@@ -12,7 +12,7 @@ async def get_registration(payload: dict = Depends(require_auth), db=Depends(get
     if row:
         r = dict(row)
         return {"open": bool(r["is_open"]), "semester": r["semester"], "deadline": r["deadline"]}
-    return {"open": True, "semester": "Fall 2024", "deadline": "2024-12-15"}
+    return {"open": True, "semester": "Fall 2026", "deadline": "2026-09-30"}
 
 
 @router.put("/")
@@ -23,6 +23,6 @@ async def set_registration(data: dict, payload: dict = Depends(require_role("adm
            ON CONFLICT(id) DO UPDATE SET is_open=EXCLUDED.is_open,
            semester=EXCLUDED.semester, deadline=EXCLUDED.deadline""",
         bool(data.get("open")),
-        data.get("semester","Fall 2024"), data.get("deadline","2024-12-15")
+        data.get("semester","Fall 2026"), data.get("deadline","2026-09-30")
     )
     return {"ok": True}

@@ -218,7 +218,7 @@ async def degree_audit(student_id: str, payload: dict = Depends(require_auth), d
 
     enrolled_rows = await db.fetch(
         """SELECT l.course_code, l.course_name FROM course_enrollments ce
-           JOIN lectures l ON ce.course_id = l.lecture_id
+           JOIN lectures l ON ce.course_id = l.course_code
            WHERE ce.student_id=$1""",
         student_id
     )

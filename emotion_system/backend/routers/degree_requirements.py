@@ -11,6 +11,7 @@ router = APIRouter()
 class RequirementCreate(BaseModel):
     course_code:    str
     course_name:    str
+    program:        str = "General"
     credits:        int = 3
     category:       str = "Core"
     semester_order: int = 1
@@ -44,9 +45,9 @@ async def add_requirement(
 ):
     row = await db.fetchrow(
         """INSERT INTO degree_requirements
-           (course_code, course_name, credits, category, semester_order, is_required, department)
-           VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id""",
-        body.course_code, body.course_name, body.credits,
+           (program, course_code, course_name, credits, category, semester_order, is_required, department)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id""",
+        body.program, body.course_code, body.course_name, body.credits,
         body.category, body.semester_order, body.is_required, body.department,
     )
     return {"id": row["id"], "ok": True}
@@ -65,9 +66,10 @@ async def bulk_add_requirements(
         try:
             await db.execute(
                 """INSERT INTO degree_requirements
-                   (course_code, course_name, credits, category, semester_order, is_required, department)
-                   VALUES ($1,$2,$3,$4,$5,$6,$7)
+                   (program, course_code, course_name, credits, category, semester_order, is_required, department)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
                    ON CONFLICT DO NOTHING""",
+                r.get("program", "General"),
                 r.get("course_code",""), r.get("course_name",""),
                 int(r.get("credits", 3)), r.get("category","Core"),
                 int(r.get("semester_order", 1)), bool(r.get("is_required", True)),

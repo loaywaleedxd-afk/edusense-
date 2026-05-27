@@ -111,8 +111,23 @@ async def delete_doctor(
     if not row:
         raise HTTPException(404, "Doctor not found")
     user_id = row["user_id"]
-    await db.execute("DELETE FROM doctors WHERE doctor_id=$1", doctor_id)
-    await db.execute("DELETE FROM users WHERE id=$1", user_id)
+
+    async with db.transaction():
+        # Nullify doctor_id on lectures so FK constraint doesn't block the delete
+        await db.execute("UPDATE lectures SET doctor_id=NULL WHERE doctor_id=$1", doctor_id)
+        # Remove advisor records
+        await db.execute("DELETE FROM advisor_appointments    WHERE advisor_id=$1", doctor_id)
+        await db.execute("DELETE FROM advisor_student_notes   WHERE advisor_id=$1", doctor_id)
+        await db.execute("DELETE FROM office_hours_slots      WHERE doctor_id=$1", doctor_id)
+        await db.execute("DELETE FROM office_hours_bookings   WHERE doctor_id=$1", doctor_id)
+        await db.execute(
+            "DELETE FROM direct_messages WHERE sender_id=$1 OR receiver_id=$1",
+            str(user_id) if user_id else "0",
+        )
+        await db.execute("DELETE FROM doctors WHERE doctor_id=$1", doctor_id)
+        if user_id:
+            await db.execute("DELETE FROM users WHERE id=$1", user_id)
+
     return {"ok": True}
 
 

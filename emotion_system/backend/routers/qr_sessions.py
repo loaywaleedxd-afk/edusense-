@@ -25,8 +25,23 @@ async def create_qr(data: dict, payload: dict = Depends(require_role("doctor","a
 
 @router.post("/use")
 async def use_qr(data: dict, payload: dict = Depends(require_auth), db=Depends(get_db)):
-    token      = (data.get("token") or "").upper()
-    student_id = data.get("studentId","")
+    token = (data.get("token") or "").upper()
+
+    # Always derive student_id from the authenticated token — never trust the body
+    caller_role = payload.get("role")
+    caller_uid  = int(payload.get("sub"))
+    if caller_role == "student":
+        stu_row = await db.fetchrow(
+            "SELECT student_id FROM students WHERE user_id=$1", caller_uid
+        )
+        if not stu_row:
+            raise HTTPException(403, "Student record not found")
+        student_id = stu_row["student_id"]
+    else:
+        # Doctors/admins may pass an explicit studentId (for manual QR entry)
+        student_id = data.get("studentId", "")
+        if not student_id:
+            raise HTTPException(400, "studentId required for non-student users")
     row = await db.fetchrow("SELECT * FROM qr_sessions WHERE token=$1", token)
     if not row:
         raise HTTPException(400, "Invalid code")

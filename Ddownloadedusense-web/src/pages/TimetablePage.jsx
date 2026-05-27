@@ -30,12 +30,13 @@ export default function TimetablePage({ theme: C, stu, role = 'student', doctorI
       const allEnroll = enrollRes.status === 'fulfilled' ? enrollRes.value : [];
 
       if (role === 'student' && stu) {
+        // Enrollments use course_code as course_id; match against l.course_code
         const myIds = new Set(
           allEnroll
             .filter(e => String(e.student_id) === String(stu.id) || String(e.student_id) === String(stu.student_id))
-            .map(e => String(e.lecture_id || e.course_id))
+            .map(e => String(e.course_id))
         );
-        setLectures(allLecs.filter(l => myIds.has(String(l.id))));
+        setLectures(allLecs.filter(l => myIds.has(String(l.course_code))));
       } else if (role === 'doctor') {
         setLectures(allLecs.filter(l => String(l.doctor_id || l.doctorId) === String(doctorId)));
       } else {
@@ -52,7 +53,9 @@ export default function TimetablePage({ theme: C, stu, role = 'student', doctorI
   DAYS.forEach(d => (events[d] = []));
 
   lectures.forEach(lec => {
-    const days = lec.days || [];
+    // lec.days is stored as a JSON string in PostgreSQL TEXT column — parse it
+    let days = lec.days || [];
+    if (typeof days === 'string') { try { days = JSON.parse(days); } catch { days = []; } }
     const startMin = timeToMinutes(lec.time);
     const duration = lec.duration || 90;
     const endMin = startMin + duration;

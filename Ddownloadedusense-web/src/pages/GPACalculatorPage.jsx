@@ -74,16 +74,17 @@ export default function GPACalculatorPage({ theme: C, stu }) {
       const lecs   = lecRes.status    === 'fulfilled' ? lecRes.value    : [];
       const enroll = enrollRes.status  === 'fulfilled' ? enrollRes.value  : [];
       const gList  = gradesRes.status  === 'fulfilled' ? (Array.isArray(gradesRes.value) ? gradesRes.value : []) : [];
-      const myIds  = new Set(enroll.filter(e => String(e.student_id) === String(stu.id)).map(e => String(e.lecture_id || e.course_id)));
-      const myCourses = lecs.filter(l => myIds.has(String(l.id)));
+      // Enrollments use course_code as the key; match against l.course_code
+      const myIds  = new Set(enroll.filter(e => String(e.student_id) === String(stu.id)).map(e => String(e.course_id)));
+      const myCourses = lecs.filter(l => myIds.has(String(l.course_code)));
       setCourses(myCourses);
       setGrades(gList);
       setSliders(init => {
         const s = { ...init };
         myCourses.forEach(c => {
-          if (s[c.id] == null) {
-            const rec = gList.find(g => g.course_code === c.code || g.course_id === c.id);
-            s[c.id] = rec?.grade ?? rec?.score ?? 75;
+          if (s[c.course_code] == null) {
+            const rec = gList.find(g => g.course_code === c.course_code);
+            s[c.course_code] = rec?.grade ?? rec?.score ?? 75;
           }
         });
         return s;
@@ -91,10 +92,10 @@ export default function GPACalculatorPage({ theme: C, stu }) {
     });
   }, [stu?.id]);
 
-  // Build results map from API grades
+  // Build results map from API grades (keyed by course_code)
   const results = useMemo(() => {
     const map = {};
-    grades.forEach(g => { map[g.course_code || g.course_id] = { grade: g.grade ?? g.score, courseName: g.course_name }; });
+    grades.forEach(g => { map[g.course_code] = { grade: g.grade ?? g.score, courseName: g.course_name }; });
     return map;
   }, [grades]);
 
@@ -109,7 +110,7 @@ export default function GPACalculatorPage({ theme: C, stu }) {
   // Projected GPA using slider values for all courses
   const projectedGPA = useMemo(() => {
     if (!courses.length) return currentGPA;
-    const sum = courses.reduce((a, c) => a + toGPA(sliders[c.id] ?? 75), 0);
+    const sum = courses.reduce((a, c) => a + toGPA(sliders[c.course_code] ?? 75), 0);
     return +(sum / courses.length).toFixed(2);
   }, [sliders, courses, currentGPA]);
 
@@ -182,10 +183,10 @@ export default function GPACalculatorPage({ theme: C, stu }) {
       {/* ── Course sliders ── */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {courses.map(c => {
-          const pct = sliders[c.id] ?? 75;
+          const pct = sliders[c.course_code] ?? 75;
           const gp = toGPA(pct);
           const col = gpaColor(gp);
-          const existing = results[c.id]?.grade;
+          const existing = results[c.course_code]?.grade;
           return (
             <motion.div
               key={c.id}
@@ -199,8 +200,8 @@ export default function GPACalculatorPage({ theme: C, stu }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
                 <div style={{ width: 10, height: 10, borderRadius: '50%', background: c.color, flexShrink: 0 }} />
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{c.name}</div>
-                  <div style={{ fontSize: 10, color: C.text3 }}>{c.code}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{c.course_name}</div>
+                  <div style={{ fontSize: 10, color: C.text3 }}>{c.course_code}</div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: 22, fontWeight: 800, color: col }}>{pct}%</div>
@@ -212,7 +213,7 @@ export default function GPACalculatorPage({ theme: C, stu }) {
                 <span style={{ fontSize: 10, color: C.text3, width: 24 }}>0</span>
                 <input
                   type="range" min={0} max={100} value={pct}
-                  onChange={e => setSliders(s => ({ ...s, [c.id]: +e.target.value }))}
+                  onChange={e => setSliders(s => ({ ...s, [c.course_code]: +e.target.value }))}
                   style={{ flex: 1, accentColor: col, height: 6, cursor: 'pointer' }}
                 />
                 <span style={{ fontSize: 10, color: C.text3, width: 28 }}>100</span>

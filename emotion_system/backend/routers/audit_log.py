@@ -9,10 +9,8 @@ router = APIRouter()
 
 
 class AuditEntry(BaseModel):
-    action:     str
-    actor_role: str
-    actor_name: str
-    details:    Optional[str] = ""
+    action:  str
+    details: Optional[str] = ""
 
 
 @router.get("/")
@@ -32,9 +30,17 @@ async def add_audit_entry(
     payload: dict = Depends(require_auth),
     db=Depends(get_db),
 ):
+    # Derive actor identity from JWT — never trust client-supplied name/role
+    caller_id   = int(payload.get("sub"))
+    caller_role = payload.get("role", "")
+    user_row = await db.fetchrow(
+        "SELECT full_name FROM users WHERE id=$1", caller_id
+    )
+    actor_name = user_row["full_name"] if user_row else "Unknown"
+
     await db.execute(
         """INSERT INTO audit_log (action, actor_role, actor_name, details)
            VALUES ($1, $2, $3, $4)""",
-        body.action, body.actor_role, body.actor_name, body.details or ""
+        body.action, caller_role, actor_name, body.details or ""
     )
     return {"ok": True}

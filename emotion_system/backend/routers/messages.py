@@ -10,9 +10,6 @@ router = APIRouter()
 
 class Message(BaseModel):
     course_code: str
-    sender_id: str
-    sender_name: str
-    sender_role: str
     text: str
 
 
@@ -35,9 +32,16 @@ async def send_message(
     payload: dict = Depends(require_auth),
     db=Depends(get_db),
 ):
-    caller_id = payload.get("sub")
+    # Derive sender identity from JWT — never trust client-supplied name/role
+    caller_id   = payload.get("sub")
+    caller_role = payload.get("role")
+    user_row = await db.fetchrow(
+        "SELECT full_name FROM users WHERE id=$1", int(caller_id)
+    )
+    sender_name = user_row["full_name"] if user_row else "Unknown"
+
     await db.execute(
         "INSERT INTO messages (course_code,sender_id,sender_name,sender_role,text) VALUES ($1,$2,$3,$4,$5)",
-        msg.course_code, caller_id, msg.sender_name, payload.get("role"), msg.text,
+        msg.course_code, caller_id, sender_name, caller_role, msg.text,
     )
     return {"message": "Sent"}
