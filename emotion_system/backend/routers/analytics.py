@@ -2,8 +2,8 @@
 Analytics router — engagement scoring, clustering, trend analysis
 Integrates with R via subprocess or rpy2
 """
-from fastapi import APIRouter, Depends
-from typing import List, Dict, Any
+from fastapi import APIRouter, Depends, Query
+from typing import List, Dict, Any, Optional
 import os, json, subprocess, tempfile
 
 from database import get_db
@@ -19,40 +19,106 @@ EMOTION_SCORE = {
 
 
 @router.get("/engagement-overview")
-async def engagement_overview(payload: dict = Depends(require_role("doctor", "admin")), db=Depends(get_db)):
+async def engagement_overview(
+    student_id: Optional[str] = Query(None),
+    payload: dict = Depends(require_role("doctor", "admin", "student", "parent")),
+    db=Depends(get_db),
+):
     """Overall platform engagement metrics."""
-    overview = await db.fetchrow(
-        """SELECT
-             COUNT(DISTINCT student_id) as total_students,
-             COUNT(DISTINCT lecture_id) as total_lectures,
-             AVG(engagement_score)*100 as avg_engagement,
-             AVG(attention_score)*100 as avg_attention,
-             COUNT(*) as total_records
-           FROM emotion_records"""
-    )
-    emotions = await db.fetch(
-        "SELECT emotion, COUNT(*) as count, AVG(confidence) as avg_conf FROM emotion_records GROUP BY emotion ORDER BY count DESC"
-    )
+    role = payload.get("role")
+
+    # Students always see only their own data; resolve their student_id from
+    # the users table via the students join since the JWT only carries the user id.
+    if role == "student":
+        row = await db.fetchrow(
+            "SELECT student_id FROM students WHERE user_id=$1",
+            int(payload["sub"]),
+        )
+        student_id = row["student_id"] if row else None
+
+    if student_id:
+        overview = await db.fetchrow(
+            """SELECT
+                 COUNT(DISTINCT student_id) as total_students,
+                 COUNT(DISTINCT lecture_id) as total_lectures,
+                 AVG(engagement_score)*100 as avg_engagement,
+                 AVG(attention_score)*100 as avg_attention,
+                 COUNT(*) as total_records
+               FROM emotion_records
+               WHERE student_id = $1""",
+            student_id,
+        )
+        emotions = await db.fetch(
+            """SELECT emotion, COUNT(*) as count, AVG(confidence) as avg_conf
+               FROM emotion_records
+               WHERE student_id = $1
+               GROUP BY emotion ORDER BY count DESC""",
+            student_id,
+        )
+    else:
+        overview = await db.fetchrow(
+            """SELECT
+                 COUNT(DISTINCT student_id) as total_students,
+                 COUNT(DISTINCT lecture_id) as total_lectures,
+                 AVG(engagement_score)*100 as avg_engagement,
+                 AVG(attention_score)*100 as avg_attention,
+                 COUNT(*) as total_records
+               FROM emotion_records"""
+        )
+        emotions = await db.fetch(
+            "SELECT emotion, COUNT(*) as count, AVG(confidence) as avg_conf FROM emotion_records GROUP BY emotion ORDER BY count DESC"
+        )
     return {**dict(overview), "emotions": [dict(r) for r in emotions]}
 
 
 @router.get("/lecture-comparison")
-async def lecture_comparison(payload: dict = Depends(require_role("doctor", "admin")), db=Depends(get_db)):
+async def lecture_comparison(
+    student_id: Optional[str] = Query(None),
+    payload: dict = Depends(require_role("doctor", "admin", "student", "parent")),
+    db=Depends(get_db),
+):
     """Compare engagement across all lectures."""
-    rows = await db.fetch(
-        """SELECT
-             er.lecture_id,
-             l.course_name,
-             l.course_code,
-             AVG(er.engagement_score)*100 as avg_engagement,
-             AVG(er.attention_score)*100 as avg_attention,
-             COUNT(DISTINCT er.student_id) as students_tracked,
-             COUNT(*) as records
-           FROM emotion_records er
-           JOIN lectures l ON er.lecture_id=l.lecture_id
-           GROUP BY er.lecture_id, l.course_name, l.course_code
-           ORDER BY avg_engagement DESC"""
-    )
+    role = payload.get("role")
+
+    if role == "student":
+        row = await db.fetchrow(
+            "SELECT student_id FROM students WHERE user_id=$1",
+            int(payload["sub"]),
+        )
+        student_id = row["student_id"] if row else None
+
+    if student_id:
+        rows = await db.fetch(
+            """SELECT
+                 er.lecture_id,
+                 l.course_name,
+                 l.course_code,
+                 AVG(er.engagement_score)*100 as avg_engagement,
+                 AVG(er.attention_score)*100 as avg_attention,
+                 COUNT(DISTINCT er.student_id) as students_tracked,
+                 COUNT(*) as records
+               FROM emotion_records er
+               JOIN lectures l ON er.lecture_id=l.lecture_id
+               WHERE er.student_id = $1
+               GROUP BY er.lecture_id, l.course_name, l.course_code
+               ORDER BY avg_engagement DESC""",
+            student_id,
+        )
+    else:
+        rows = await db.fetch(
+            """SELECT
+                 er.lecture_id,
+                 l.course_name,
+                 l.course_code,
+                 AVG(er.engagement_score)*100 as avg_engagement,
+                 AVG(er.attention_score)*100 as avg_attention,
+                 COUNT(DISTINCT er.student_id) as students_tracked,
+                 COUNT(*) as records
+               FROM emotion_records er
+               JOIN lectures l ON er.lecture_id=l.lecture_id
+               GROUP BY er.lecture_id, l.course_name, l.course_code
+               ORDER BY avg_engagement DESC"""
+        )
     return [dict(r) for r in rows]
 
 
@@ -85,18 +151,45 @@ async def student_clusters(payload: dict = Depends(require_role("doctor", "admin
 
 
 @router.get("/time-trends")
-async def time_trends(payload: dict = Depends(require_role("doctor", "admin")), db=Depends(get_db)):
+async def time_trends(
+    student_id: Optional[str] = Query(None),
+    payload: dict = Depends(require_role("doctor", "admin", "student", "parent")),
+    db=Depends(get_db),
+):
     """Engagement trends over time across all lectures."""
-    rows = await db.fetch(
-        """SELECT
-             timestamp::date as date,
-             AVG(engagement_score)*100 as avg_engagement,
-             AVG(attention_score)*100 as avg_attention,
-             COUNT(DISTINCT student_id) as students,
-             COUNT(*) as records
-           FROM emotion_records
-           GROUP BY timestamp::date ORDER BY date DESC LIMIT 30"""
-    )
+    role = payload.get("role")
+
+    if role == "student":
+        row = await db.fetchrow(
+            "SELECT student_id FROM students WHERE user_id=$1",
+            int(payload["sub"]),
+        )
+        student_id = row["student_id"] if row else None
+
+    if student_id:
+        rows = await db.fetch(
+            """SELECT
+                 timestamp::date as date,
+                 AVG(engagement_score)*100 as avg_engagement,
+                 AVG(attention_score)*100 as avg_attention,
+                 COUNT(DISTINCT student_id) as students,
+                 COUNT(*) as records
+               FROM emotion_records
+               WHERE student_id = $1
+               GROUP BY timestamp::date ORDER BY date DESC LIMIT 30""",
+            student_id,
+        )
+    else:
+        rows = await db.fetch(
+            """SELECT
+                 timestamp::date as date,
+                 AVG(engagement_score)*100 as avg_engagement,
+                 AVG(attention_score)*100 as avg_attention,
+                 COUNT(DISTINCT student_id) as students,
+                 COUNT(*) as records
+               FROM emotion_records
+               GROUP BY timestamp::date ORDER BY date DESC LIMIT 30"""
+        )
     return [dict(r) for r in rows]
 
 

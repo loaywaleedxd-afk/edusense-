@@ -236,7 +236,7 @@ export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLog
             {page==='live'       && <DocLive theme={C} doctor={doctor} myCourses={myCourses}/>}
             {page==='attendance' && <DocAttendance theme={C} doctor={doctor} myCourses={myCourses}/>}
             {page==='lectures'   && <DocLectures theme={C} doctor={doctor} myCourses={myCourses}/>}
-            {page==='students'   && <DocStudents theme={C} doctor={doctor} myCourses={myCourses} doctor={doctor}/>}
+            {page==='students'   && <DocStudents theme={C} doctor={doctor} myCourses={myCourses}/>}
             {page==='grades'     && <DocGrades theme={C} user={user} doctor={doctor} myCourses={myCourses}/>}
             {page==='chat'       && <DocChat theme={C} user={user} doctor={doctor} myCourses={myCourses}/>}
             {page==='analytics'  && <DocAnalytics theme={C}/>}
@@ -269,6 +269,8 @@ function DocDashboard({ theme: C, doctor, myCourses }) {
   const { t, isRTL } = useLang();
   const isMobile = useMobile();
   const [totalStudents, setTotalStudents] = useState(0);
+  const [dashTrend, setDashTrend] = useState(store.trendData);
+  const [dashEmo,   setDashEmo]   = useState(store.emotionDist);
 
   useEffect(() => {
     if (!myCourses.length) return;
@@ -276,6 +278,36 @@ function DocDashboard({ theme: C, doctor, myCourses }) {
       api.getCourseStudents(c.id).then(r => (r.enrolled || []).length).catch(() => 0)
     )).then(counts => setTotalStudents(counts.reduce((a, b) => a + b, 0))).catch(() => {});
   }, [myCourses]);
+
+  useEffect(() => {
+    // Fetch trend data
+    get('/api/analytics/time-trends')
+      .then(rows => {
+        if (!rows || !rows.length) return;
+        const sorted = [...rows].sort((a, b) => new Date(a.date) - new Date(b.date)).slice(-16);
+        setDashTrend({
+          labels:     sorted.map(r => { const d = new Date(r.date); return `${d.getMonth()+1}/${d.getDate()}`; }),
+          engagement: sorted.map(r => Math.round(r.avg_engagement || 0)),
+          attention:  sorted.map(r => Math.round(r.avg_attention  || 0)),
+        });
+      })
+      .catch(() => {}); // keep store defaults on failure
+
+    // Fetch emotion distribution
+    get('/api/analytics/engagement-overview')
+      .then(ov => {
+        const emos = ov?.emotions;
+        if (!emos || !emos.length) return;
+        const total = emos.reduce((a, e) => a + e.count, 0);
+        setDashEmo(emos.map(e => ({
+          emotion: e.emotion,
+          count:   e.count,
+          pct:     total > 0 ? Math.round(e.count / total * 100) : 0,
+          color:   EMO_COLORS[e.emotion] || '#64748b',
+        })));
+      })
+      .catch(() => {}); // keep store defaults on failure
+  }, []);
 
   const presentToday = 0; // live attendance via DocLive
 
@@ -295,14 +327,14 @@ function DocDashboard({ theme: C, doctor, myCourses }) {
         <Card theme={C} title={t('engagement_trend')}>
           <div style={{padding:'4px 12px 12px'}}>
             <LineChart theme={C} series={[
-              {label: t('engagement'), data:store.trendData.engagement, color:C.blue},
-              {label: t('attention'),  data:store.trendData.attention,  color:C.green},
-            ]} labels={store.trendData.labels} height={200}/>
+              {label: t('engagement'), data:dashTrend.engagement, color:C.blue},
+              {label: t('attention'),  data:dashTrend.attention,  color:C.green},
+            ]} labels={dashTrend.labels} height={200}/>
           </div>
         </Card>
         <Card theme={C} title={t('emotion_dist')}>
           <div style={{padding:'4px 12px 12px'}}>
-            <EmotionBarsWidget theme={C} data={store.emotionDist.slice(0,6)}/>
+            <EmotionBarsWidget theme={C} data={dashEmo.slice(0,6)}/>
           </div>
         </Card>
       </div>
@@ -335,8 +367,25 @@ function DocLive({ theme: C, myCourses }) {
   const [matcherProgress, setMatcherProgress] = useState({ done: 0, total: 0 });
   const [matcherTimedOut,  setMatcherTimedOut] = useState(false);
   const [matcherReason,    setMatcherReason]   = useState('');
+  const [liveEmo, setLiveEmo] = useState(store.emotionDist);
   const [, forceUpdate]             = useState(0);
   const liveStudentsRef = useRef([]);
+
+  useEffect(() => {
+    get('/api/analytics/engagement-overview')
+      .then(ov => {
+        const emos = ov?.emotions;
+        if (!emos || !emos.length) return;
+        const total = emos.reduce((a, e) => a + e.count, 0);
+        setLiveEmo(emos.map(e => ({
+          emotion: e.emotion,
+          count:   e.count,
+          pct:     total > 0 ? Math.round(e.count / total * 100) : 0,
+          color:   EMO_COLORS[e.emotion] || '#64748b',
+        })));
+      })
+      .catch(() => {}); // keep store defaults on failure
+  }, []);
 
   const alertCooldown = useRef({});
   const course = myCourses.find(c => c.id === selCourse);
@@ -509,12 +558,6 @@ function DocLive({ theme: C, myCourses }) {
           <Card theme={C} title="Attendance Actions">
             <div style={{padding:'8px 12px 12px',display:'flex',flexDirection:'column',gap:8}}>
               <button
-                onClick={markPresentFromCamera}
-                style={{width:'100%',height:40,background:C.green,border:'none',borderRadius:8,fontSize:12,fontWeight:700,color:'#fff',cursor:'pointer'}}
-              >
-                ✅ Mark Present (Auto)
-              </button>
-              <button
                 onClick={async()=>{
                   if (course?.lectureId) {
                     await Promise.all(students.map(s => api.markAttendance({ student_id: s.id, lecture_id: course.lectureId, status: 'present', method: 'manual', week: 1 }).catch(()=>{})));
@@ -553,7 +596,7 @@ function DocLive({ theme: C, myCourses }) {
             </Card>
             <Card theme={C} title="Emotions">
               <div style={{padding:'4px 12px 12px'}}>
-                <EmotionBarsWidget theme={C} data={store.emotionDist.slice(0,5)}/>
+                <EmotionBarsWidget theme={C} data={liveEmo.slice(0,5)}/>
               </div>
             </Card>
           </div>

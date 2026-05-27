@@ -111,6 +111,26 @@ async def get_me(payload: dict = Depends(require_auth)):
     }
 
 
+@router.post("/reset-password")
+async def reset_password(request: Request, db=Depends(get_db)):
+    """Reset a user's password without authentication (forgot-password flow).
+    The client is responsible for verifying the user's identity (e.g. a 6-digit
+    OTP) before calling this endpoint."""
+    data = await request.json()
+    username = (data.get("username") or "").strip()
+    new_password = (data.get("new_password") or "").strip()
+    if not username or not new_password or len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="Invalid request")
+    hashed = hash_password(new_password)
+    result = await db.execute(
+        "UPDATE users SET password=$1 WHERE LOWER(username)=$2 OR LOWER(email)=$2",
+        hashed, username.lower(),
+    )
+    if result == "UPDATE 0":
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"ok": True}
+
+
 @router.post("/change-password")
 async def change_password(data: dict, payload: dict = Depends(require_auth), db=Depends(get_db)):
     """Allow authenticated users to change their own password."""
