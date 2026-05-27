@@ -340,14 +340,21 @@ function DocLive({ theme: C, myCourses }) {
   useEffect(() => {
     if (!selCourse) return;
     setFaceMatcher(null);
+    const API_BASE = import.meta.env.VITE_API_URL || '';
     api.getCourseStudents(selCourse)
       .then(async r => {
-        const stuList = (r.enrolled||[]).map(s => ({
-          id: s.student_id, name: s.name, photo: s.photo,
-          emoji: '👤', color: '#3b82f6', present: false,
-          attentionScore: Math.round(60 + Math.random()*40),
-          engagement: Math.round(60 + Math.random()*40),
-        }));
+        const stuList = (r.enrolled||[]).map(s => {
+          // Prefer photo_path (admin-imported ID photo) → fallback to u.photo (profile pic)
+          let photo = null;
+          if (s.photo_path) photo = `${API_BASE}${s.photo_path}`;
+          else if (s.photo)  photo = s.photo; // may be base64 data URI
+          return {
+            id: s.student_id, name: s.name, photo,
+            emoji: '👤', color: '#3b82f6', present: false,
+            attentionScore: Math.round(60 + Math.random()*40),
+            engagement:     Math.round(60 + Math.random()*40),
+          };
+        });
         setLiveStudents(stuList);
         // Build face matcher from student photos so the camera can recognize them
         const withPhotos = stuList.filter(s => s.photo);

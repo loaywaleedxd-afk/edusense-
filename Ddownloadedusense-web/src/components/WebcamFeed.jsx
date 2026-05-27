@@ -22,50 +22,79 @@ const EMOTION_EMOJI = {
   fearful:'😨', fear:'😨', confused:'🤔', bored:'😑',
 };
 
-// Load models once globally (detection + recognition)
-let modelsLoaded = false;
-let modelsLoading = false;
 const MODEL_URL = '/models';
 
+// ── Two-tier model loading ────────────────────────────────────────────────────
+// Tier 1 (base): emotion detection — must succeed for camera to work
+// Tier 2 (full): landmarks + recognition — loaded separately so a failure
+//                here doesn't block emotion detection
+let baseLoaded  = false;
+let baseLoading = false;
+let fullLoaded  = false;
+
 async function ensureModels() {
-  if (modelsLoaded) return true;
-  if (modelsLoading) {
-    while (modelsLoading) await new Promise(r => setTimeout(r, 100));
-    return modelsLoaded;
+  if (baseLoaded) return true;
+  if (baseLoading) {
+    while (baseLoading) await new Promise(r => setTimeout(r, 100));
+    return baseLoaded;
   }
-  modelsLoading = true;
+  baseLoading = true;
   try {
     await Promise.all([
       faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
       faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
+    ]);
+    baseLoaded = true;
+  } catch (e) {
+    console.error('face-api base models failed to load', e);
+  }
+  baseLoading = false;
+  return baseLoaded;
+}
+
+async function ensureFullModels() {
+  if (fullLoaded) return true;
+  await ensureModels(); // base must load first
+  try {
+    await Promise.all([
       faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
       faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
     ]);
-    modelsLoaded = true;
+    fullLoaded = true;
   } catch (e) {
-    console.error('face-api models failed to load', e);
+    console.warn('face-api recognition models unavailable:', e.message);
   }
-  modelsLoading = false;
-  return modelsLoaded;
+  return fullLoaded;
 }
 
-// Build a FaceMatcher from a list of {id, name, photo} student objects
-// Returns null if no student photos are loadable
+// ── Load an image from either an HTTP URL or a data: URI ─────────────────────
+function loadImg(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload  = () => resolve(img);
+    img.onerror = () => reject(new Error('img load failed'));
+    img.src = src;
+  });
+}
+
+// ── Build a FaceMatcher from {id, photo} student objects ─────────────────────
+// photo can be an HTTP URL or a base64 data: URI
 export async function buildFaceMatcher(students) {
+  const ok = await ensureFullModels();
+  if (!ok) return null; // recognition models not available
   const labeled = [];
   for (const s of students) {
     if (!s.photo) continue;
     try {
-      const img  = await faceapi.fetchImage(s.photo);
-      const det  = await faceapi
+      const img = await loadImg(s.photo);
+      const det = await faceapi
         .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 320 }))
         .withFaceLandmarks()
         .withFaceDescriptor();
-      if (det) {
-        labeled.push(new faceapi.LabeledFaceDescriptors(s.id, [det.descriptor]));
-      }
-    } catch (e) {
-      // Skip students whose photos can't be loaded
+      if (det) labeled.push(new faceapi.LabeledFaceDescriptors(s.id, [det.descriptor]));
+    } catch {
+      // skip students whose photo can't be encoded
     }
   }
   return labeled.length > 0 ? new faceapi.FaceMatcher(labeled, 0.55) : null;
@@ -123,8 +152,8 @@ export default function WebcamFeed({
     busyRef.current = true;
     setAnalyzing(true);
     try {
-      // If faceMatcher provided, run full pipeline with landmarks + descriptor for recognition
-      const useRecognition = !!faceMatcher;
+      // Use recognition pipeline only when faceMatcher AND full models are ready
+      const useRecognition = !!faceMatcher && fullLoaded;
       let detections;
       if (useRecognition) {
         detections = await faceapi

@@ -31,7 +31,8 @@ async def get_course_students(
 ):
     """Return enrolled and available students for a given course_code."""
     enrolled_rows = await db.fetch(
-        """SELECT s.student_id, u.full_name AS name, u.photo
+        """SELECT s.student_id, u.full_name AS name, u.photo,
+                  s.photo_path, s.department, u.email
            FROM course_enrollments ce
            JOIN students s ON s.student_id = ce.student_id
            JOIN users u ON u.id = s.user_id
@@ -40,7 +41,8 @@ async def get_course_students(
         course_code,
     )
     available_rows = await db.fetch(
-        """SELECT s.student_id, u.full_name AS name, u.photo
+        """SELECT s.student_id, u.full_name AS name, u.photo,
+                  s.photo_path, s.department, u.email
            FROM students s
            JOIN users u ON u.id = s.user_id
            WHERE s.student_id NOT IN (
