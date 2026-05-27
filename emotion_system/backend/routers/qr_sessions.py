@@ -40,12 +40,24 @@ async def use_qr(data: dict, payload: dict = Depends(require_auth), db=Depends(g
         "UPDATE qr_sessions SET used_by=$1 WHERE token=$2",
         json.dumps(used), token
     )
-    await db.execute(
-        """INSERT INTO attendance
-           (student_id, lecture_id, week, status, method, confidence, date)
-           VALUES ($1,$2,$3,$4,$5,$6,$7)
-           ON CONFLICT DO NOTHING""",
-        student_id, row["course_id"], row["week"],
-        "present", "qr", 1.0, datetime.now().strftime("%Y-%m-%d")
+    # Resolve the actual lecture_id from course_code (QR stores course_code, attendance needs lecture_id)
+    lec_row = await db.fetchrow(
+        "SELECT lecture_id FROM lectures WHERE course_code=$1 ORDER BY created_at DESC LIMIT 1",
+        row["course_id"]
     )
+    lecture_id = lec_row["lecture_id"] if lec_row else row["course_id"]
+
+    # Check for duplicate attendance record first
+    existing_att = await db.fetchrow(
+        "SELECT id FROM attendance WHERE student_id=$1 AND lecture_id=$2 AND week=$3",
+        student_id, lecture_id, row["week"]
+    )
+    if not existing_att:
+        await db.execute(
+            """INSERT INTO attendance
+               (student_id, lecture_id, week, status, method, confidence, date)
+               VALUES ($1,$2,$3,$4,$5,$6,$7)""",
+            student_id, lecture_id, row["week"],
+            "present", "qr", 1.0, datetime.now().strftime("%Y-%m-%d")
+        )
     return {"ok": True, "courseId": row["course_id"], "week": row["week"]}

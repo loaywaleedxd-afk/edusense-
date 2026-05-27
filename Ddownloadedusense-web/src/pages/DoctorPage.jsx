@@ -735,7 +735,7 @@ function DocAttendance({ theme: C, myCourses }) {
       {/* ── QR TAB ── */}
       {activeTab==='qr' && (() => {
         const qrUrl = qrMeta
-          ? `${window.location.origin}${window.location.pathname}?checkin=${btoa(JSON.stringify({courseId:qrMeta.courseId,week:qrMeta.week,createdAt:qrMeta.createdAt}))}`
+          ? `${window.location.origin}${window.location.pathname}?checkin=${btoa(JSON.stringify({token:qrMeta.token,courseId:qrMeta.courseId,week:qrMeta.week,createdAt:qrMeta.createdAt}))}`
           : '';
         return (
           <div style={{background:C.card,borderRadius:14,border:`1px solid ${C.border}`,padding:28,textAlign:'center'}}>
