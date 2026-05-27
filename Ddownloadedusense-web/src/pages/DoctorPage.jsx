@@ -491,6 +491,25 @@ function DocAttendance({ theme: C, myCourses }) {
   useEffect(() => {
     if (!selCourse) return;
     loadData();
+    // Auto-refresh attendance every 8 seconds so QR check-ins appear instantly
+    const interval = setInterval(() => {
+      if (course?.lectureId) {
+        api.getLectureAttendance(course.lectureId).then(attData => {
+          const weekMap = {};
+          const allMap = {};
+          for (const r of attData) {
+            allMap[r.student_id] = allMap[r.student_id] || [];
+            allMap[r.student_id].push(r);
+            if (Number(r.week) === week) {
+              weekMap[r.student_id] = { status: r.status, method: r.method, time: r.check_in_time };
+            }
+          }
+          setAttRecs(weekMap);
+          setAllWeekAttRecs(allMap);
+        }).catch(() => {});
+      }
+    }, 8000);
+    return () => clearInterval(interval);
   }, [selCourse, week]);
 
   async function loadData() {
@@ -730,8 +749,10 @@ function DocAttendance({ theme: C, myCourses }) {
                 <div style={{fontSize:12,fontWeight:700,color:total>=12?'#10b981':total>=8?'#f59e0b':'#ef4444'}}>
                   {total} / 16
                 </div>
-                <div style={{fontSize:11,color:C.text2}}>{rec?.time||'—'}</div>
-                <div style={{fontSize:11,color:C.text3}}>{rec?.method||'—'}</div>
+                <div style={{fontSize:11,color:C.text2}}>
+                  {present && rec?.time ? new Date(rec.time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : '—'}
+                </div>
+                <div style={{fontSize:11,color:C.text3}}>{present ? (rec?.method||'—') : '—'}</div>
               </div>
             );
           })}
