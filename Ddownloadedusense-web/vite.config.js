@@ -318,6 +318,27 @@ export default defineConfig({
     }
   ],
 
+  build: {
+    // Raise warning threshold — large chunks are expected with face-api.js
+    chunkSizeWarningLimit: 4000,
+    rollupOptions: {
+      output: {
+        // Split vendor code into separately-cached chunks.
+        // Browser only re-downloads a chunk when it actually changes.
+        manualChunks(id) {
+          // face-api.js is huge (~2 MB) — give it its own chunk
+          if (id.includes('face-api')) return 'face-api';
+          // Framer Motion animations
+          if (id.includes('framer-motion')) return 'framer-motion';
+          // React core (react + react-dom)
+          if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) return 'react-vendor';
+          // Everything else in node_modules goes into a shared vendor chunk
+          if (id.includes('node_modules')) return 'vendor';
+        },
+      },
+    },
+  },
+
   server: {
     proxy: {
       // Forward all /api/* calls to the FastAPI backend during dev

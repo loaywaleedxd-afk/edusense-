@@ -1,22 +1,25 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { DARK, LIGHT, buildTheme } from './theme';
 import { useLang } from './context/LanguageContext';
+// LoginPage is loaded eagerly — it's the first thing every user sees
 import LoginPage             from './pages/LoginPage';
-import StudentPage           from './pages/StudentPage';
-import DoctorPage            from './pages/DoctorPage';
-import AdminPage             from './pages/AdminPage';
-import ParentPage            from './pages/ParentPage';
+// All role pages are lazy-loaded — only the relevant one is ever downloaded
+const StudentPage        = lazy(() => import('./pages/StudentPage'));
+const DoctorPage         = lazy(() => import('./pages/DoctorPage'));
+const AdminPage          = lazy(() => import('./pages/AdminPage'));
+const ParentPage         = lazy(() => import('./pages/ParentPage'));
+const SuperAdminPage     = lazy(() => import('./pages/SuperAdminPage'));
+// Overlay pages: loaded only when the user opens them
+const ExamProctoringPage = lazy(() => import('./pages/ExamProctoringPage'));
+const AdvisingPage       = lazy(() => import('./pages/AdvisingPage'));
+const AtRiskPage         = lazy(() => import('./pages/AtRiskPage'));
 import ChatWidget            from './components/ChatWidget';
-import ExamProctoringPage    from './pages/ExamProctoringPage';
-import AdvisingPage          from './pages/AdvisingPage';
-import AtRiskPage            from './pages/AtRiskPage';
 import NotificationToast     from './components/NotificationToast';
 import OnboardingTour        from './components/OnboardingTour';
 import PWAInstallPrompt      from './components/PWAInstallPrompt';
 import store                 from './dataStore';
 import PaymentReturnPage     from './pages/PaymentReturnPage';
-import SuperAdminPage        from './pages/SuperAdminPage';
 
 // Rate-limit state: { count, lockedUntil } stored in sessionStorage
 const RATE_KEY = 'es_login_rate';
@@ -148,11 +151,34 @@ export default function App() {
     );
   }
 
+  /* ── Shared lazy-load fallback ─────────────────────────────────────────── */
+  const PageSpinner = (
+    <div style={{
+      height: '100vh', background: C.bg,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      flexDirection: 'column', gap: 14,
+    }}>
+      <motion.div
+        animate={{ rotate: 360 }}
+        transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
+        style={{
+          width: 44, height: 44, borderRadius: '50%',
+          border: `3px solid transparent`,
+          borderTopColor: C.blue2,
+          borderRightColor: C.blue2 + '44',
+        }}
+      />
+      <div style={{ fontSize: 13, color: C.text2 }}>Loading…</div>
+    </div>
+  );
+
   // SuperAdmin gets its own scrollable container (no overflow:hidden)
   if (user?.role === 'superadmin') {
     return (
       <div style={{ minHeight: '100vh', overflowY: 'auto', background: C.bg, fontFamily: "'Segoe UI', system-ui, sans-serif" }}>
-        <SuperAdminPage user={user} onLogout={onLogout} />
+        <Suspense fallback={PageSpinner}>
+          <SuperAdminPage user={user} onLogout={onLogout} />
+        </Suspense>
       </div>
     );
   }
@@ -161,16 +187,20 @@ export default function App() {
     <div style={{ height: '100vh', overflow: 'hidden', background: C.bg, fontFamily: "'Segoe UI', system-ui, sans-serif", direction: isRTL ? 'rtl' : 'ltr' }}>
       {!user ? (
         <LoginPage theme={C} onLogin={onLogin} branding={branding} />
-      ) : user.role === 'student' ? (
-        <StudentPage {...commonProps} pendingQR={pendingQR} onClearPendingQR={clearPendingQR} />
-      ) : user.role === 'doctor' ? (
-        <DoctorPage {...commonProps} />
-      ) : user.role === 'admin' ? (
-        <AdminPage {...commonProps} />
-      ) : user.role === 'parent' ? (
-        <ParentPage {...commonProps} />
       ) : (
-        <AdminPage {...commonProps} />
+        <Suspense fallback={PageSpinner}>
+          {user.role === 'student' ? (
+            <StudentPage {...commonProps} pendingQR={pendingQR} onClearPendingQR={clearPendingQR} />
+          ) : user.role === 'doctor' ? (
+            <DoctorPage {...commonProps} />
+          ) : user.role === 'admin' ? (
+            <AdminPage {...commonProps} />
+          ) : user.role === 'parent' ? (
+            <ParentPage {...commonProps} />
+          ) : (
+            <AdminPage {...commonProps} />
+          )}
+        </Suspense>
       )}
       {user && <ChatWidget user={user} />}
       {user && <NotificationToast user={user} />}
@@ -214,9 +244,11 @@ export default function App() {
               </span>
             </div>
             <div style={{ flex: 1, overflowY: 'auto' }}>
-              {overlay === 'proctoring' && <ExamProctoringPage theme={C} user={user} />}
-              {overlay === 'advising'   && <AdvisingPage       theme={C} user={user} />}
-              {overlay === 'atrisk'     && <AtRiskPage         theme={C} user={user} />}
+              <Suspense fallback={PageSpinner}>
+                {overlay === 'proctoring' && <ExamProctoringPage theme={C} user={user} />}
+                {overlay === 'advising'   && <AdvisingPage       theme={C} user={user} />}
+                {overlay === 'atrisk'     && <AtRiskPage         theme={C} user={user} />}
+              </Suspense>
             </div>
           </motion.div>
         )}

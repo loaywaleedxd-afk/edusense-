@@ -70,22 +70,50 @@ async def init_data(payload: dict = Depends(require_auth), db=Depends(get_db)):
         }
 
     # ── Attendance ────────────────────────────────────────────────────────
-    # Limit to the most recent 5000 records to prevent huge payloads on large
-    # deployments while still covering a full semester (~16 weeks × 300 students).
-    att_rows = await _q(db,
-        "SELECT * FROM attendance ORDER BY check_in_time DESC LIMIT 5000"
-    )
-    attendance = {}
-    for r in att_rows:
-        week = r.get("week") or 1
-        key  = f"{r['lecture_id']}_W{str(week).zfill(2)}"
-        attendance.setdefault(key, {})[r["student_id"]] = {
-            "studentId": r["student_id"], "courseId": r["lecture_id"],
-            "week": week, "status": r["status"],
-            "time": (str(r.get("check_in_time") or ""))[-8:],
-            "date": str(r.get("date","") or ""), "method": r.get("method","manual"),
-            "confidence": r.get("confidence",1.0),
-        }
+    # Scope the attendance query to the current user's role so we never send
+    # thousands of rows to users who only need their own data.
+    if role == "student":
+        # Students only need their own attendance — typically < 200 rows
+        stu_row_for_att = await _one(db, "SELECT student_id FROM students WHERE user_id=$1", uid)
+        stu_id_for_att  = stu_row_for_att["student_id"] if stu_row_for_att else ""
+        att_rows = await _q(db,
+            "SELECT * FROM attendance WHERE student_id=$1 ORDER BY check_in_time DESC",
+            stu_id_for_att
+        ) if stu_id_for_att else []
+    elif role == "doctor":
+        # Doctors need attendance for their own courses only (≤ 16 weeks × capacity)
+        doc_row_for_att = await _one(db, "SELECT doctor_id FROM doctors WHERE user_id=$1", uid)
+        doc_id_for_att  = doc_row_for_att["doctor_id"] if doc_row_for_att else ""
+        att_rows = await _q(db,
+            """SELECT a.* FROM attendance a
+               JOIN lectures l ON a.lecture_id = l.lecture_id
+               WHERE l.doctor_id = $1
+               ORDER BY a.check_in_time DESC LIMIT 2000""",
+            doc_id_for_att
+        ) if doc_id_for_att else []
+    elif role == "parent":
+        att_rows = []   # parent attendance scoped below after linked_ids is known
+    else:
+        # Admin gets full dataset — capped to keep payload manageable
+        att_rows = await _q(db,
+            "SELECT * FROM attendance ORDER BY check_in_time DESC LIMIT 5000"
+        )
+
+    def _build_attendance(rows):
+        att = {}
+        for r in rows:
+            week = r.get("week") or 1
+            key  = f"{r['lecture_id']}_W{str(week).zfill(2)}"
+            att.setdefault(key, {})[r["student_id"]] = {
+                "studentId": r["student_id"], "courseId": r["lecture_id"],
+                "week": week, "status": r["status"],
+                "time": (str(r.get("check_in_time") or ""))[-8:],
+                "date": str(r.get("date","") or ""), "method": r.get("method","manual"),
+                "confidence": r.get("confidence",1.0),
+            }
+        return att
+
+    attendance = _build_attendance(att_rows)
 
     # ── Messages ─────────────────────────────────────────────────────────
     msg_rows = await _q(db, "SELECT * FROM messages ORDER BY created_at ASC")
@@ -132,10 +160,16 @@ async def init_data(payload: dict = Depends(require_auth), db=Depends(get_db)):
             for sid in linked_ids
         )]
         my_grades = {sid: exam_results.get(sid, {}) for sid in linked_ids}
-        my_attendance = {
-            k: {sid: v for sid, v in vals.items() if sid in linked_ids}
-            for k, vals in attendance.items()
-        }
+        # Fetch attendance only for linked students (att_rows was [] for parents above)
+        if linked_ids:
+            placeholders = ",".join(f"${i+1}" for i in range(len(linked_ids)))
+            parent_att = await _q(db,
+                f"SELECT * FROM attendance WHERE student_id IN ({placeholders}) ORDER BY check_in_time DESC",
+                *linked_ids
+            )
+        else:
+            parent_att = []
+        my_attendance = _build_attendance(parent_att)
         linked_students = [s for s in all_students if s["id"] in linked_ids]
         return {
             "role": "parent",
