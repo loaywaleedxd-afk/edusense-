@@ -18,7 +18,7 @@ import EmotionBarsWidget from '../components/EmotionBars';
 import AlertItem from '../components/AlertItem';
 import WebcamFeed from '../components/WebcamFeed';
 import store from '../dataStore';
-import { api } from '../api';
+import api, { get } from '../api';
 import { DEPARTMENTS, TITLES } from '../theme';
 import AuditLogPage from './AuditLogPage';
 
@@ -178,21 +178,38 @@ function AdminDashboard({ theme: C, onNav }) {
   const deptShort  = ['CS','Engineering','Math','Physics','Data Sci'];
   const deptColors = [C.blue,C.purple,C.green,C.amber,C.cyan];
 
-  const [counts,   setCounts]   = useState({ students: 0, doctors: 0, lectures: 0, atRisk: 0, avgEng: 0 });
-  const [lectures, setLectures] = useState([]);
+  const [counts,      setCounts]      = useState({ students: 0, doctors: 0, lectures: 0, atRisk: 0, avgEng: 0 });
+  const [lectures,    setLectures]    = useState([]);
+  const [emoWidgetData, setEmoWidget] = useState(store.emotionDist.slice(0, 6));
+  const [lectureComp,   setLCompDash] = useState([]);
   useEffect(() => {
     Promise.allSettled([
       api.getStudents(),
       api.getLectureDoctors(),
       api.getLectures(),
       api.getAtRiskStudents('low'),
-    ]).then(([stuRes, docRes, lecRes, riskRes]) => {
+      get('/api/analytics/engagement-overview'),
+      get('/api/analytics/lecture-comparison'),
+    ]).then(([stuRes, docRes, lecRes, riskRes, ovRes, lcRes]) => {
       const students = stuRes.status === 'fulfilled' ? stuRes.value : [];
       const doctors  = docRes.status === 'fulfilled' ? docRes.value : [];
       const lecs     = lecRes.status === 'fulfilled' ? lecRes.value : [];
       const atRisk   = riskRes.status === 'fulfilled' ? riskRes.value : [];
+      const ov       = ovRes.status  === 'fulfilled' ? ovRes.value   : null;
+      const lc       = lcRes.status  === 'fulfilled' ? lcRes.value   : [];
       setLectures(lecs);
-      const avgEng = students.length ? Math.round(students.reduce((a,s) => a + (s.engagement || 0), 0) / students.length) : 0;
+      if (lc.length > 0) setLCompDash(lc);
+      if (ov?.emotions?.length > 0) {
+        const total = ov.emotions.reduce((a, e) => a + e.count, 0);
+        setEmoWidget(ov.emotions.slice(0, 6).map(e => ({
+          emotion: e.emotion,
+          count: e.count,
+          pct: total > 0 ? Math.round(e.count / total * 100) : 0,
+          color: _EMO_COLORS[e.emotion] || '#64748b',
+        })));
+      }
+      // avgEng from real analytics if available, else 0 (don't fake it)
+      const avgEng = ov?.avg_engagement ? Math.round(ov.avg_engagement) : 0;
       setCounts({
         students: students.length,
         doctors:  doctors.length,
@@ -203,11 +220,14 @@ function AdminDashboard({ theme: C, onNav }) {
     });
   }, []);
 
-  const deptEngData = depts.map((dept, i) => ({
-    label: deptShort[i],
-    value: 55 + (i * 7) % 30,
-    color: deptColors[i],
-  }));
+  // Engagement by course from real lecture comparison, fallback to per-dept estimate
+  const deptEngData = lectureComp.length > 0
+    ? lectureComp.slice(0, 5).map((l, i) => ({
+        label: l.course_code || deptShort[i] || `C${i+1}`,
+        value: Math.round(l.avg_engagement || 0),
+        color: deptColors[i % deptColors.length],
+      }))
+    : depts.map((dept, i) => ({ label: deptShort[i], value: 55 + (i * 7) % 30, color: deptColors[i] }));
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
@@ -298,7 +318,7 @@ function AdminDashboard({ theme: C, onNav }) {
         </Card>
         <Card theme={C} title={t('emotion_dist')}>
           <div style={{padding:'4px 12px 12px'}}>
-            <EmotionBarsWidget theme={C} data={store.emotionDist.slice(0,6)}/>
+            <EmotionBarsWidget theme={C} data={emoWidgetData}/>
           </div>
         </Card>
       </div>
@@ -307,62 +327,134 @@ function AdminDashboard({ theme: C, onNav }) {
 }
 
 /* ── ANALYTICS ── */
+const _EMO_COLORS = {
+  happy:'#10b981', neutral:'#6366f1', confused:'#8b5cf6', bored:'#64748b',
+  surprise:'#f59e0b', surprised:'#f59e0b', sad:'#475569', angry:'#ef4444', fear:'#f97316',
+};
+
 function AdminAnalytics({ theme: C }) {
   const { t } = useLang();
   const isMobile = useMobile();
+  const [overview,    setOverview]    = useState(null);
+  const [timeTrends,  setTimeTrends]  = useState([]);
+  const [lectureComp, setLectureComp] = useState([]);
   const [students,    setStudents]    = useState([]);
   const [lectures,    setLectures]    = useState([]);
   const [enrollments, setEnrollments] = useState([]);
   const [atRiskList,  setAtRiskList]  = useState([]);
+  const [loading,     setLoading]     = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     Promise.allSettled([
+      get('/api/analytics/engagement-overview'),
+      get('/api/analytics/time-trends'),
+      get('/api/analytics/lecture-comparison'),
       api.getStudents(),
       api.getLectures(),
       api.getEnrollments(),
       api.getAtRiskStudents('low'),
-    ]).then(([s, l, e, r]) => {
-      if (s.status === 'fulfilled') setStudents(s.value);
-      if (l.status === 'fulfilled') setLectures(l.value);
-      if (e.status === 'fulfilled') setEnrollments(e.value);
-      if (r.status === 'fulfilled') setAtRiskList(r.value);
+    ]).then(([ov, tt, lc, st, l, e, ar]) => {
+      if (ov.status === 'fulfilled') setOverview(ov.value);
+      if (tt.status === 'fulfilled') setTimeTrends(tt.value   || []);
+      if (lc.status === 'fulfilled') setLectureComp(lc.value  || []);
+      if (st.status === 'fulfilled') setStudents(st.value     || []);
+      if (l.status  === 'fulfilled') setLectures(l.value      || []);
+      if (e.status  === 'fulfilled') setEnrollments(e.value   || []);
+      if (ar.status === 'fulfilled') setAtRiskList(ar.value   || []);
+      setLoading(false);
     });
   }, []);
 
-  const totalEnrolled = enrollments.length;
-  const atRisk        = atRiskList.length;
-  const avgAtt        = students.length
-    ? Math.round(students.reduce((a,s)=>a+(s.attendanceRate||0),0)/students.length)
-    : 0;
-  const activeLectures = lectures.filter(l=>l.status==='active').length;
+  // ── Stats ──────────────────────────────────────────────────────────────────
+  const avgAtt         = overview ? Math.round(overview.avg_attention  || 0) : 0;
+  const avgEng         = overview ? Math.round(overview.avg_engagement || 0) : 0;
+  const totalEnrolled  = enrollments.length;
+  const atRisk         = atRiskList.length;
+  const activeLectures = lectures.filter(l => l.status === 'active').length;
+  const hasData        = (overview?.total_records || 0) > 0;
+
+  // ── Trend chart ────────────────────────────────────────────────────────────
+  const trendSorted     = [...timeTrends].sort((a, b) => new Date(a.date) - new Date(b.date)).slice(-16);
+  const trendLabels     = trendSorted.length > 0
+    ? trendSorted.map(r => { const d = new Date(r.date); return `${d.getMonth()+1}/${d.getDate()}`; })
+    : store.trendData.labels;
+  const trendEngagement = trendSorted.length > 0
+    ? trendSorted.map(r => Math.round(r.avg_engagement || 0))
+    : store.trendData.engagement;
+  const trendAttention  = trendSorted.length > 0
+    ? trendSorted.map(r => Math.round(r.avg_attention  || 0))
+    : store.trendData.attention;
+
+  // ── Emotion donut ──────────────────────────────────────────────────────────
+  const emoRaw   = overview?.emotions || [];
+  const emoTotal = emoRaw.reduce((a, e) => a + e.count, 0);
+  const emotionDonut = emoRaw.length > 0
+    ? emoRaw.slice(0, 5).map(e => ({ label: e.emotion, value: e.count, color: _EMO_COLORS[e.emotion] || '#64748b' }))
+    : store.emotionDist.slice(0, 5).map(d => ({ label: d.emotion, value: d.count, color: d.color }));
+  const emotionList  = emoRaw.length > 0
+    ? emoRaw.slice(0, 5).map(e => ({ emotion: e.emotion, pct: emoTotal > 0 ? Math.round(e.count / emoTotal * 100) : 0, color: _EMO_COLORS[e.emotion] || '#64748b' }))
+    : store.emotionDist.slice(0, 5);
+
+  // ── Bar chart: per-course engagement OR enrollment count ──────────────────
+  const barData = lectureComp.length > 0
+    ? lectureComp.slice(0, 12).map((l, i) => {
+        const cols = [C.blue, C.purple, C.green, C.amber, C.cyan, C.red];
+        return { label: l.course_code || `C${i+1}`, value: Math.round(l.avg_engagement || 0), color: cols[i % cols.length] };
+      })
+    : lectures.slice(0, 12).map((l, i) => {
+        const enrolled = enrollments.filter(e => e.lecture_id === l.id || e.course_id === l.id).length;
+        const cols = [C.blue, C.purple, C.green, C.amber, C.cyan, C.red];
+        return { label: l.code || l.name?.slice(0, 8) || `C${i+1}`, value: enrolled || 0, color: cols[i % cols.length] };
+      });
+  const barTitle = lectureComp.length > 0 ? 'Engagement by Course (%)' : 'Enrollments by Course';
+
+  const EstBadge = () => (
+    <span style={{fontSize:9,padding:'1px 6px',borderRadius:20,background:'rgba(245,158,11,0.15)',color:'#f59e0b',border:'1px solid rgba(245,158,11,0.3)',fontWeight:700,marginLeft:6,verticalAlign:'middle'}}>
+      estimated
+    </span>
+  );
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('system_analytics')}</div>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
+        <div style={{fontSize:22,fontWeight:700,color:C.text}}>{t('system_analytics')}</div>
+        {!loading && (
+          <span style={{
+            fontSize:10,padding:'2px 8px',borderRadius:20,fontWeight:700,
+            background: hasData ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.15)',
+            color:      hasData ? '#10b981' : '#f59e0b',
+            border:     `1px solid ${hasData ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)'}`,
+          }}>
+            {hasData ? '🟢 Live data' : '🟡 No session data yet'}
+          </span>
+        )}
+      </div>
 
       <div style={{display:'flex',gap:12,marginBottom:12,flexWrap:'wrap'}}>
-        <StatCard theme={C} label="Avg Attendance"    value={`${avgAtt}%`}                sub="Across all students"       icon="✅" accent="green"/>
-        <StatCard theme={C} label="Total Enrollments" value={totalEnrolled.toLocaleString()} sub="Across all courses"      icon="📋" accent="blue"/>
-        <StatCard theme={C} label="At-Risk Students"  value={atRisk}                      sub="Flagged by AI monitoring"  icon="⚠️" accent="purple"/>
-        <StatCard theme={C} label="Active Courses"    value={activeLectures}              sub="This semester"             icon="📚" accent="amber"/>
+        <StatCard theme={C} label="Avg Engagement"    value={loading ? '…' : `${avgEng}%`}  sub="From live sessions"       icon="🧠" accent="blue"/>
+        <StatCard theme={C} label="Avg Attendance"    value={loading ? '…' : `${avgAtt}%`}  sub="Across all students"      icon="✅" accent="green"/>
+        <StatCard theme={C} label="Total Enrollments" value={loading ? '…' : totalEnrolled.toLocaleString()} sub="Across all courses" icon="📋" accent="purple"/>
+        <StatCard theme={C} label="At-Risk Students"  value={loading ? '…' : atRisk}         sub="Flagged by AI monitoring" icon="⚠️" accent="red"/>
+        <StatCard theme={C} label="Active Courses"    value={loading ? '…' : activeLectures} sub="This semester"            icon="📚" accent="amber"/>
       </div>
 
       <div style={{display:'grid',gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',gap:12,marginBottom:12}}>
-        <Card theme={C} title="Engagement Trend (All Departments)">
+        <Card theme={C} title={<>Engagement Trend{trendSorted.length === 0 && <EstBadge/>}</>}>
           <div style={{padding:'4px 12px 12px'}}>
             <LineChart theme={C} series={[
-              {label:'Engagement',data:store.trendData.engagement,color:C.blue},
-              {label:'Attention', data:store.trendData.attention, color:C.green},
-            ]} labels={store.trendData.labels} height={200}/>
+              {label:'Engagement', data: trendEngagement, color: C.blue},
+              {label:'Attention',  data: trendAttention,  color: C.green},
+            ]} labels={trendLabels} height={200}/>
           </div>
         </Card>
-        <Card theme={C} title="Emotion Distribution">
+        <Card theme={C} title={<>Emotion Distribution{emoRaw.length === 0 && <EstBadge/>}</>}>
           <div style={{padding:'4px 12px 12px',display:'flex',gap:12,alignItems:'center'}}>
-            <DonutChart theme={C} data={store.emotionDist.slice(0,5).map(d=>({label:d.emotion,value:d.count,color:d.color}))} size={150}/>
+            <DonutChart theme={C} data={emotionDonut} size={150}/>
             <div>
-              {store.emotionDist.slice(0,5).map((d,i)=>(
+              {emotionList.map((d,i) => (
                 <div key={i} style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
-                  <span style={{color:d.color,fontSize:12}}>●</span>
+                  <span style={{color: d.color, fontSize:12}}>●</span>
                   <span style={{fontSize:10,color:C.text2}}>{d.emotion} {d.pct}%</span>
                 </div>
               ))}
@@ -371,13 +463,9 @@ function AdminAnalytics({ theme: C }) {
         </Card>
       </div>
 
-      <Card theme={C} title="Courses Overview">
+      <Card theme={C} title={barTitle}>
         <div style={{padding:'4px 12px 12px'}}>
-          <BarChart theme={C} data={lectures.slice(0,12).map((l,i)=>{
-            const enrolled = enrollments.filter(e=>e.lecture_id===l.id||e.course_id===l.id).length;
-            const colors = [C.blue,C.purple,C.green,C.amber,C.cyan,C.red];
-            return {label:l.code||l.name?.slice(0,8)||`C${i+1}`, value:enrolled||0, color:colors[i%colors.length]};
-          })} height={200}/>
+          <BarChart theme={C} data={barData} height={200}/>
         </div>
       </Card>
 

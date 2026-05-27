@@ -25,7 +25,7 @@ import ScheduleItem from '../components/ScheduleItem';
 import WebcamFeed, { buildFaceMatcher } from '../components/WebcamFeed';
 import QRCodeComp from '../components/QRCode';
 import store from '../dataStore';
-import api from '../api';
+import api, { get } from '../api';
 import { EMOTION_ICONS } from '../theme';
 
 const NAV = [
@@ -1861,50 +1861,132 @@ function DocTopicDetector({ theme: C, doctor, myCourses }) {
   );
 }
 
+const EMO_COLORS = {
+  happy:'#10b981', neutral:'#6366f1', confused:'#8b5cf6', bored:'#64748b',
+  surprise:'#f59e0b', surprised:'#f59e0b', sad:'#475569', angry:'#ef4444', fear:'#f97316',
+};
+
 function DocAnalytics({ theme: C }) {
   const { t } = useLang();
-  const [students,   setStudents]   = useState([]);
-  const [atRiskList, setAtRiskList] = useState([]);
-  const [lectures,   setLectures]   = useState([]);
+  const [overview,    setOverview]    = useState(null);   // /api/analytics/engagement-overview
+  const [timeTrends,  setTimeTrends]  = useState([]);     // /api/analytics/time-trends
+  const [lectureComp, setLectureComp] = useState([]);     // /api/analytics/lecture-comparison
+  const [atRiskList,  setAtRiskList]  = useState([]);
+  const [students,    setStudents]    = useState([]);
+  const [loading,     setLoading]     = useState(true);
 
   useEffect(() => {
-    api.getStudents().then(setStudents).catch(() => {});
-    api.getAtRiskStudents('low').then(setAtRiskList).catch(() => {});
-    api.getLectures().then(setLectures).catch(() => {});
+    setLoading(true);
+    Promise.allSettled([
+      get('/api/analytics/engagement-overview'),
+      get('/api/analytics/time-trends'),
+      get('/api/analytics/lecture-comparison'),
+      api.getAtRiskStudents('low'),
+      api.getStudents(),
+    ]).then(([ov, tt, lc, ar, st]) => {
+      if (ov.status === 'fulfilled') setOverview(ov.value);
+      if (tt.status === 'fulfilled') setTimeTrends(tt.value || []);
+      if (lc.status === 'fulfilled') setLectureComp(lc.value || []);
+      if (ar.status === 'fulfilled') setAtRiskList(ar.value  || []);
+      if (st.status === 'fulfilled') setStudents(st.value    || []);
+      setLoading(false);
+    });
   }, []);
 
-  const avgEng   = students.length ? Math.round(students.reduce((a,s)=>a+(s.engagement||0),0)/students.length) : 0;
-  const avgAtt   = students.length ? Math.round(students.reduce((a,s)=>a+(s.attendanceRate||0),0)/students.length) : 0;
-  const happyPct = students.length ? Math.round(students.filter(s=>['happy','neutral'].includes(s.emotion)).length/students.length*100) : 0;
-  const atRisk   = students.length ? Math.round(atRiskList.length/students.length*100) : 0;
+  // ── Stat card values (all from real DB) ──────────────────────────────────────
+  const avgEng   = overview ? Math.round(overview.avg_engagement || 0) : 0;
+  const avgAtt   = overview ? Math.round(overview.avg_attention  || 0) : 0;
+  const happyPct = (() => {
+    const emos = overview?.emotions;
+    if (!emos?.length) return 0;
+    const total = emos.reduce((a, e) => a + e.count, 0);
+    const pos   = emos.filter(e => ['happy','neutral'].includes(e.emotion)).reduce((a, e) => a + e.count, 0);
+    return total > 0 ? Math.round(pos / total * 100) : 0;
+  })();
+  const atRiskPct = students.length > 0 ? Math.round(atRiskList.length / students.length * 100) : 0;
+  const hasData   = (overview?.total_records || 0) > 0;
+
+  // ── Trend line: real daily data → last 16 points ──────────────────────────
+  const trendSorted = [...timeTrends].sort((a, b) => new Date(a.date) - new Date(b.date)).slice(-16);
+  const trendLabels     = trendSorted.length > 0
+    ? trendSorted.map(r => { const d = new Date(r.date); return `${d.getMonth()+1}/${d.getDate()}`; })
+    : store.trendData.labels;
+  const trendEngagement = trendSorted.length > 0
+    ? trendSorted.map(r => Math.round(r.avg_engagement || 0))
+    : store.trendData.engagement;
+  const trendAttention  = trendSorted.length > 0
+    ? trendSorted.map(r => Math.round(r.avg_attention  || 0))
+    : store.trendData.attention;
+  const trendIsEstimated = trendSorted.length === 0;
+
+  // ── Emotion donut: real distribution ─────────────────────────────────────
+  const emoDataRaw     = overview?.emotions || [];
+  const emoTotal       = emoDataRaw.reduce((a, e) => a + e.count, 0);
+  const emotionDonut   = emoDataRaw.length > 0
+    ? emoDataRaw.slice(0, 5).map(e => ({ label: e.emotion, value: e.count, color: EMO_COLORS[e.emotion] || '#64748b' }))
+    : store.emotionDist.slice(0, 5).map(d => ({ label: d.emotion, value: d.count, color: d.color }));
+  const emotionList    = emoDataRaw.length > 0
+    ? emoDataRaw.slice(0, 5).map(e => ({ emotion: e.emotion, pct: emoTotal > 0 ? Math.round(e.count / emoTotal * 100) : 0, color: EMO_COLORS[e.emotion] || '#64748b' }))
+    : store.emotionDist.slice(0, 5);
+  const emoIsEstimated = emoDataRaw.length === 0;
+
+  // ── Bar chart: real per-course engagement from lecture comparison ─────────
+  const barData = lectureComp.length > 0
+    ? lectureComp.slice(0, 12).map((l, i) => {
+        const cols = [C.blue, C.purple, C.green, C.amber, C.cyan, C.red];
+        return { label: l.course_code || `C${i+1}`, value: Math.round(l.avg_engagement || 0), color: cols[i % cols.length] };
+      })
+    : store.lectures.slice(0, 12).map((l, i) => {
+        const cols = [C.blue, C.purple, C.green, C.amber, C.cyan, C.red];
+        return { label: l.code || `C${i+1}`, value: l.avgEngagement || Math.round(55 + (i * 13) % 35), color: cols[i % cols.length] };
+      });
+  const barIsEstimated = lectureComp.length === 0;
+
+  const EstBadge = () => (
+    <span style={{fontSize:9,padding:'1px 6px',borderRadius:20,background:'rgba(245,158,11,0.15)',color:'#f59e0b',border:'1px solid rgba(245,158,11,0.3)',fontWeight:700,marginLeft:6,verticalAlign:'middle'}}>
+      estimated
+    </span>
+  );
 
   return (
     <div style={{padding:'8px 20px 20px'}}>
-      <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('analytics')}</div>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
+        <div style={{fontSize:22,fontWeight:700,color:C.text}}>{t('analytics')}</div>
+        {!loading && (
+          <span style={{
+            fontSize:10,padding:'2px 8px',borderRadius:20,fontWeight:700,
+            background: hasData ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.15)',
+            color:      hasData ? '#10b981' : '#f59e0b',
+            border:     `1px solid ${hasData ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)'}`,
+          }}>
+            {hasData ? '🟢 Live data' : '🟡 No session data yet'}
+          </span>
+        )}
+      </div>
 
       <div style={{display:'flex',gap:12,marginBottom:12,flexWrap:'wrap'}}>
-        <StatCard theme={C} label={t('avg_engagement')} value={`${avgEng}%`} sub={t('students')} icon="🧠" accent="blue"/>
-        <StatCard theme={C} label={t('attendance_rate')} value={`${avgAtt}%`} sub={t('semester')} icon="✅" accent="green"/>
-        <StatCard theme={C} label={t('emotion')}        value={`${happyPct}%`} sub={t('engagement')} icon="😊" accent="amber"/>
-        <StatCard theme={C} label={t('at_risk')}        value={`${atRisk}%`}  sub={t('avg_engagement')} icon="⚠️" accent="red"/>
+        <StatCard theme={C} label={t('avg_engagement')} value={loading ? '…' : `${avgEng}%`} sub={t('students')} icon="🧠" accent="blue"/>
+        <StatCard theme={C} label={t('attendance_rate')} value={loading ? '…' : `${avgAtt}%`} sub={t('semester')} icon="✅" accent="green"/>
+        <StatCard theme={C} label={t('emotion')}        value={loading ? '…' : `${happyPct}%`} sub={t('engagement')} icon="😊" accent="amber"/>
+        <StatCard theme={C} label={t('at_risk')}        value={loading ? '…' : `${atRiskPct}%`} sub={t('avg_engagement')} icon="⚠️" accent="red"/>
       </div>
 
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
-        <Card theme={C} title={t('engagement_trend')}>
+        <Card theme={C} title={<>{t('engagement_trend')}{trendIsEstimated && <EstBadge/>}</>}>
           <div style={{padding:'4px 12px 12px'}}>
             <LineChart theme={C} series={[
-              {label: t('engagement'), data:store.trendData.engagement, color:C.blue},
-              {label: t('attention'),  data:store.trendData.attention,  color:C.purple},
-            ]} labels={store.trendData.labels} height={200}/>
+              {label: t('engagement'), data: trendEngagement, color: C.blue},
+              {label: t('attention'),  data: trendAttention,  color: C.purple},
+            ]} labels={trendLabels} height={200}/>
           </div>
         </Card>
-        <Card theme={C} title={t('emotion_dist')}>
+        <Card theme={C} title={<>{t('emotion_dist')}{emoIsEstimated && <EstBadge/>}</>}>
           <div style={{padding:'4px 12px 12px',display:'flex',gap:12,alignItems:'center'}}>
-            <DonutChart theme={C} data={store.emotionDist.slice(0,5).map(d=>({label:d.emotion,value:d.count,color:d.color}))} size={150}/>
+            <DonutChart theme={C} data={emotionDonut} size={150}/>
             <div>
-              {store.emotionDist.slice(0,5).map((d,i)=>(
+              {emotionList.map((d,i) => (
                 <div key={i} style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
-                  <span style={{color:d.color,fontSize:12}}>●</span>
+                  <span style={{color: d.color, fontSize:12}}>●</span>
                   <span style={{fontSize:10,color:C.text2}}>{d.emotion} {d.pct}%</span>
                 </div>
               ))}
@@ -1913,9 +1995,9 @@ function DocAnalytics({ theme: C }) {
         </Card>
       </div>
 
-      <Card theme={C} title={t('engagement_dept')}>
+      <Card theme={C} title={<>{t('engagement_dept')}{barIsEstimated && <EstBadge/>}</>}>
         <div style={{padding:'4px 12px 12px'}}>
-          <BarChart theme={C} data={lectures.map((l,i)=>{const cols=[C.blue,C.purple,C.green,C.amber,C.cyan,C.red];return{label:l.code||`C${i+1}`,value:l.avgEngagement||Math.round(55+(i*13)%35),color:l.color||cols[i%cols.length]};} )} height={200}/>
+          <BarChart theme={C} data={barData} height={200}/>
         </div>
       </Card>
     </div>
