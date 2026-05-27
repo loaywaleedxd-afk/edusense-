@@ -5,6 +5,7 @@ from typing import Optional
 from database import get_db
 
 from auth_utils import require_auth, require_role
+from notifier import manager
 
 router = APIRouter()
 
@@ -30,24 +31,31 @@ async def mark_attendance(
     db=Depends(get_db),
 ):
     """Mark or update attendance for a specific student + lecture + week."""
-    existing = await db.fetchrow(
-        "SELECT id FROM attendance WHERE student_id=$1 AND lecture_id=$2 AND week=$3",
-        rec.student_id, rec.lecture_id, rec.week,
-    )
-    if existing:
-        # Update existing record (handles toggling present ↔ absent)
-        await db.execute(
-            """UPDATE attendance SET status=$1, method=$2, confidence=$3
-               WHERE student_id=$4 AND lecture_id=$5 AND week=$6""",
-            rec.status, rec.method, rec.confidence,
-            rec.student_id, rec.lecture_id, rec.week,
-        )
-        return {"message": "Attendance updated", "student_id": rec.student_id, "status": rec.status}
     await db.execute(
         """INSERT INTO attendance (student_id, lecture_id, week, status, method, confidence)
-           VALUES ($1, $2, $3, $4, $5, $6)""",
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT (student_id, lecture_id, week) DO UPDATE
+               SET status=EXCLUDED.status,
+                   method=EXCLUDED.method,
+                   check_in_time=NOW(),
+                   confidence=EXCLUDED.confidence""",
         rec.student_id, rec.lecture_id, rec.week, rec.status, rec.method, rec.confidence,
     )
+    # Push real-time notification to the student
+    try:
+        stu_row = await db.fetchrow(
+            "SELECT user_id FROM students WHERE student_id=$1", rec.student_id
+        )
+        if stu_row and stu_row["user_id"]:
+            await manager.notify_user(str(stu_row["user_id"]), {
+                "type": "attendance_marked",
+                "title": "Attendance Recorded",
+                "message": f"Your attendance for lecture {rec.lecture_id} has been marked as {rec.status}",
+                "lecture": rec.lecture_id,
+                "status": rec.status,
+            })
+    except Exception:
+        pass  # WS failure must not break the attendance endpoint
     return {"message": "Attendance marked", "student_id": rec.student_id, "status": rec.status}
 
 

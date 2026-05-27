@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useLang } from '../context/LanguageContext';
 import useMobile from '../hooks/useMobile';
 import store from '../dataStore';
+import { post } from '../api';
 
 const BREVO_KEY    = import.meta.env.VITE_BREVO_API_KEY;
 const BREVO_SENDER = import.meta.env.VITE_BREVO_SENDER;
@@ -128,13 +129,19 @@ export default function LoginPage({ theme: C, onLogin, branding }) {
     setForgotStep(2);
   }
 
-  function handleResetPassword() {
+  async function handleResetPassword() {
     if (!forgotPass) { setForgotErr('Enter a new password.'); return; }
     if (forgotPass.length < 6) { setForgotErr('Password must be at least 6 characters.'); return; }
     if (forgotPass !== forgotPass2) { setForgotErr('Passwords do not match.'); return; }
     setForgotErr('');
     const r = store.resetPassword(forgotUser.trim(), forgotCode.trim(), forgotPass);
     if (!r.ok) { setForgotErr(r.error); return; }
+    // Also reset on the backend (fire-and-forget — local reset always succeeds for offline mode)
+    try {
+      await post('/api/auth/reset-password', { username: forgotUser.trim(), new_password: forgotPass });
+    } catch (e) {
+      console.warn('[LoginPage] Backend password reset failed (local reset still applied):', e.message);
+    }
     setForgotDone(true);
     setTimeout(() => {
       setPassword(forgotPass);

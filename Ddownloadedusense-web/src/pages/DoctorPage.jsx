@@ -384,8 +384,8 @@ function DocLive({ theme: C, myCourses }) {
           return {
             id: s.student_id, name: s.name, photo,
             emoji: '👤', color: '#3b82f6', present: false,
-            attentionScore: Math.round(60 + Math.random()*40),
-            engagement:     Math.round(60 + Math.random()*40),
+            attentionScore: 0,
+            engagement:     0,
           };
         });
         setLiveStudents(stuList);
@@ -416,16 +416,11 @@ function DocLive({ theme: C, myCourses }) {
 
   function handleFaceDetected() { setDetections(n => n+1); }
 
-  async function markPresentFromCamera() {
-    if (!selCourse || !course?.lectureId) return;
-    const absent = students.filter(s=>!s.present);
-    if (!absent.length) { setLastMarked('All students already marked present'); return; }
-    const pick = absent[Math.floor(Math.random()*absent.length)];
-    await api.markAttendance({ student_id: pick.id, lecture_id: course.lectureId, status: 'present', method: 'face_recognition', week: 1 }).catch(()=>{});
-    setLiveStudents(prev => prev.map(s => s.id === pick.id ? {...s, present: true} : s));
-    pick.present = true;
-    setLastMarked(`✅ Marked ${pick.name.split(' ')[0]} as present`);
-    forceUpdate(n=>n+1);
+  function markPresentFromCamera() {
+    // Removed: was a debug placeholder that randomly picked an absent student
+    // and marked them present. Real attendance is handled via face recognition
+    // in handleEmotionDetected (triggered by WebcamFeed) or via manual controls.
+    console.warn('markPresentFromCamera: disabled (was debug placeholder using Math.random)');
   }
 
   return (

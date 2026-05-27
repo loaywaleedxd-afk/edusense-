@@ -165,9 +165,19 @@ async def init_tenant_schema(pool, schema: str):
                 method          TEXT DEFAULT 'face_recognition',
                 status          TEXT DEFAULT 'present',
                 confidence      REAL,
-                date            DATE DEFAULT CURRENT_DATE
+                date            DATE DEFAULT CURRENT_DATE,
+                UNIQUE(student_id, lecture_id, week)
             )
         """)
+        # Add UNIQUE constraint to existing installs that predate this constraint
+        try:
+            await conn.execute(f"""
+                ALTER TABLE "{schema}".attendance
+                ADD CONSTRAINT attendance_student_lecture_week_unique
+                UNIQUE (student_id, lecture_id, week)
+            """)
+        except Exception:
+            pass  # Constraint already exists — safe to ignore
 
         # ── Emotion records ──────────────────────────────────────────────────
         await conn.execute(f"""

@@ -406,6 +406,8 @@ function StudentDashboard({ theme: C, user, stu }) {
   const [myCoursesEnrolled, setMyCoursesEnrolled] = useState([]);
   const [attRecs, setAttRecs] = useState([]);
   const [gradeRows, setGradeRows] = useState([]);
+  const [trendSeries, setTrendSeries] = useState(null);   // {engagement, attention, labels}
+  const [emoDistLive, setEmoDistLive] = useState(null);   // array of {emotion, count, pct, color}
 
   useEffect(() => {
     api.getAvailableCourses()
@@ -413,6 +415,34 @@ function StudentDashboard({ theme: C, user, stu }) {
       .catch(() => {});
     api.getStudentAttendance(stu.id).then(setAttRecs).catch(() => {});
     api.getStudentGrades(stu.id).then(rows => setGradeRows(rows.map(r => ({ grade: r.grade })))).catch(() => {});
+    // Fetch real trend data
+    api.getTimeTrends(stu.id)
+      .then(rows => {
+        if (!rows || !rows.length) return;
+        setTrendSeries({
+          engagement: rows.map(r => Math.round((r.avg_engagement ?? 0) * 100)),
+          attention:  rows.map(r => Math.round((r.avg_attention  ?? 0) * 100)),
+          labels:     rows.map(r => r.date ? r.date.slice(5) : ''),
+        });
+      })
+      .catch(() => {});
+    // Fetch real emotion distribution
+    const EMOTION_COLORS = {
+      happy:'#10b981', neutral:'#3b82f6', surprised:'#f59e0b',
+      angry:'#ef4444', sad:'#8b5cf6', fearful:'#ec4899', disgusted:'#64748b',
+    };
+    api.getEngagementOverview(stu.id)
+      .then(res => {
+        if (!res?.emotions) return;
+        const total = res.total_records || 1;
+        const dist = Object.entries(res.emotions).map(([emotion, count]) => ({
+          emotion, count,
+          pct: Math.round(count / total * 100),
+          color: EMOTION_COLORS[emotion] || '#64748b',
+        }));
+        if (dist.length) setEmoDistLive(dist);
+      })
+      .catch(() => {});
   }, [stu.id]);
 
   const streak = calcStreakFromRecs(attRecs);
@@ -503,29 +533,35 @@ function StudentDashboard({ theme: C, user, stu }) {
       </div>
 
       {/* Charts row */}
-      <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '3fr 2fr', gap:12, marginBottom:12 }}>
-        <Card theme={C} title="Engagement Trend — Last 14 Lectures">
-          <div style={{ padding:'4px 12px 12px' }}>
-            <LineChart theme={C} series={[
-              {label:'Engagement',data:store.trendData.engagement,color:C.blue},
-              {label:'Attention', data:store.trendData.attention, color:C.green},
-            ]} labels={store.trendData.labels} height={200}/>
-          </div>
-        </Card>
-        <Card theme={C} title="Emotion Distribution">
-          <div style={{ padding:'4px 12px 12px', display:'flex', gap:12, alignItems:'center' }}>
-            <DonutChart theme={C} data={store.emotionDist.slice(0,5).map(d=>({label:d.emotion,value:d.count,color:d.color}))} size={160}/>
-            <div>
-              {store.emotionDist.slice(0,5).map((d,i)=>(
-                <div key={i} style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
-                  <span style={{ color:d.color, fontSize:12 }}>●</span>
-                  <span style={{ fontSize:10, color:C.text2 }}>{d.emotion} {d.pct}%</span>
+      {(() => {
+        const td = trendSeries || store.trendData;
+        const ed = emoDistLive  || store.emotionDist;
+        return (
+          <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '3fr 2fr', gap:12, marginBottom:12 }}>
+            <Card theme={C} title={`Engagement Trend${trendSeries ? ' (Live)' : ' — Demo'}`}>
+              <div style={{ padding:'4px 12px 12px' }}>
+                <LineChart theme={C} series={[
+                  {label:'Engagement',data:td.engagement,color:C.blue},
+                  {label:'Attention', data:td.attention, color:C.green},
+                ]} labels={td.labels} height={200}/>
+              </div>
+            </Card>
+            <Card theme={C} title={`Emotion Distribution${emoDistLive ? ' (Live)' : ' — Demo'}`}>
+              <div style={{ padding:'4px 12px 12px', display:'flex', gap:12, alignItems:'center' }}>
+                <DonutChart theme={C} data={ed.slice(0,5).map(d=>({label:d.emotion,value:d.count,color:d.color}))} size={160}/>
+                <div>
+                  {ed.slice(0,5).map((d,i)=>(
+                    <div key={i} style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
+                      <span style={{ color:d.color, fontSize:12 }}>●</span>
+                      <span style={{ fontSize:10, color:C.text2 }}>{d.emotion} {d.pct}%</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            </Card>
           </div>
-        </Card>
-      </div>
+        );
+      })()}
 
       {/* Bottom row */}
       <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap:12 }}>
@@ -541,7 +577,7 @@ function StudentDashboard({ theme: C, user, stu }) {
           </div>
         </Card>
         <Card theme={C} title="Emotion Log Today">
-          <EmotionBarsWidget theme={C} data={store.emotionDist}/>
+          <EmotionBarsWidget theme={C} data={emoDistLive || store.emotionDist}/>
         </Card>
       </div>
     </div>
@@ -842,48 +878,97 @@ function StudentAttendance({ theme: C, stu, pendingQR, onClearPendingQR }) {
 /* ══ EMOTIONS ══ */
 function StudentEmotions({ theme: C, stu }) {
   const { t, isRTL } = useLang();
-  // Deterministic values — seeded by student id so they're consistent across renders
-  const idNum = stu.id.split('').reduce((a,c)=>a+c.charCodeAt(0),0);
-  const emoRows = Array.from({length:20},(_,i)=>{
-    const emo=store.emotionDist[i%store.emotionDist.length];
-    const lec=store.lectures[i%store.lectures.length];
-    const seed = (idNum + i*31) % 100;
-    return [
-      `10:${String(5+i*3).padStart(2,'0')}`,
-      `${lec.id} — ${lec.name}`,
-      `${EMOTION_ICONS[emo.emotion]||'😐'} ${emo.emotion}`,
-      `${60 + (seed % 35)}%`,
-      `${35 + ((seed*3+7) % 55)}%`,
-      `${30 + ((seed*7+13) % 58)}%`,
-    ];
-  });
+  const [emotionData, setEmotionData]   = useState(null);
+  const [loadingEmo,  setLoadingEmo]    = useState(true);
+
+  useEffect(() => {
+    setLoadingEmo(true);
+    api.getEngagementOverview(stu.id)
+      .then(res => {
+        setEmotionData(res);
+        setLoadingEmo(false);
+      })
+      .catch(() => {
+        // Fall back to store.emotionDist on error
+        setEmotionData(null);
+        setLoadingEmo(false);
+      });
+  }, [stu.id]);
+
+  // Normalise API response into chart-friendly format
+  const EMOTION_COLORS = {
+    happy:'#10b981', neutral:'#3b82f6', surprised:'#f59e0b',
+    angry:'#ef4444', sad:'#8b5cf6', fearful:'#ec4899', disgusted:'#64748b',
+  };
+  const emoDistFromAPI = emotionData?.emotions
+    ? Object.entries(emotionData.emotions).map(([emotion, count]) => ({
+        emotion,
+        count,
+        pct: emotionData.total_records
+          ? Math.round(count / emotionData.total_records * 100)
+          : 0,
+        color: EMOTION_COLORS[emotion] || '#64748b',
+      }))
+    : null;
+
+  // Fall back to store data if API returned nothing
+  const emoDistDisplay = emoDistFromAPI && emoDistFromAPI.length > 0
+    ? emoDistFromAPI
+    : store.emotionDist;
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>
       <div style={{ fontSize:22, fontWeight:700, color:C.text, marginBottom:12 }}>😊 {t('page_emotions')}</div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
-        <Card theme={C} title="Emotion Frequency">
-          <div style={{ padding:'4px 12px 12px' }}>
-            <BarChart theme={C} data={store.emotionDist.map(d=>({label:d.emotion,value:d.count,color:d.color}))} height={200}/>
-          </div>
-        </Card>
-        <Card theme={C} title="Engagement per Lecture">
-          <div style={{ padding:'4px 12px 12px' }}>
-            <BarChart theme={C} data={store.lectures.map(l=>({label:l.id,value:l.avgEngagement,color:l.color}))} height={200}/>
-          </div>
-        </Card>
-      </div>
-
-      <Card theme={C} title="Emotion Log (last 20 detections)">
-        <div style={{ padding:'4px 12px 12px' }}>
-          <DataTable theme={C} columns={[
-            {key:'time',label:'Time',width:70},{key:'lecture',label:'Lecture',width:180},
-            {key:'emotion',label:'Emotion',width:100},{key:'conf',label:'Confidence',width:100},
-            {key:'eng',label:'Engagement',width:100},{key:'att',label:'Attention',width:100},
-          ]} rows={emoRows}/>
+      {loadingEmo && (
+        <div style={{ textAlign:'center', padding:'40px 0', color:C.text3, fontSize:13 }}>
+          Loading emotion data…
         </div>
-      </Card>
+      )}
+
+      {!loadingEmo && (
+        <>
+          {emotionData && (
+            <div style={{ display:'flex', gap:12, marginBottom:12, flexWrap:'wrap' }}>
+              <div style={{ background:C.card, borderRadius:12, border:`1px solid ${C.border}`, padding:'12px 18px', flex:1, textAlign:'center' }}>
+                <div style={{ fontSize:22, fontWeight:700, color:C.blue }}>{emotionData.avg_engagement_rate != null ? `${(emotionData.avg_engagement_rate * 100).toFixed(1)}%` : '—'}</div>
+                <div style={{ fontSize:11, color:C.text3, marginTop:2 }}>Avg Engagement Rate</div>
+              </div>
+              <div style={{ background:C.card, borderRadius:12, border:`1px solid ${C.border}`, padding:'12px 18px', flex:1, textAlign:'center' }}>
+                <div style={{ fontSize:22, fontWeight:700, color:C.green }}>{emotionData.total_records ?? '—'}</div>
+                <div style={{ fontSize:11, color:C.text3, marginTop:2 }}>Total Records</div>
+              </div>
+            </div>
+          )}
+
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:12 }}>
+            <Card theme={C} title="Emotion Frequency">
+              <div style={{ padding:'4px 12px 12px' }}>
+                <BarChart theme={C} data={emoDistDisplay.map(d=>({label:d.emotion,value:d.count,color:d.color}))} height={200}/>
+              </div>
+            </Card>
+            <Card theme={C} title="Emotion Distribution">
+              <div style={{ padding:'4px 12px 12px', display:'flex', gap:12, alignItems:'center' }}>
+                <DonutChart theme={C} data={emoDistDisplay.slice(0,5).map(d=>({label:d.emotion,value:d.count,color:d.color}))} size={160}/>
+                <div>
+                  {emoDistDisplay.slice(0,5).map((d,i)=>(
+                    <div key={i} style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
+                      <span style={{ color:d.color, fontSize:12 }}>●</span>
+                      <span style={{ fontSize:10, color:C.text2 }}>{d.emotion} {d.pct}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          {!emoDistFromAPI && (
+            <div style={{ fontSize:11, color:C.text3, marginBottom:8, fontStyle:'italic' }}>
+              Showing demo data — no live emotion records available yet.
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

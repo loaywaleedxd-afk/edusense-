@@ -1570,15 +1570,18 @@ class DataStore {
     return +(entries.reduce((sum,[,v])=>sum+this.gradeToPoints(v.grade),0)/entries.length).toFixed(2);
   }
   getAcademicStanding(studentId){
-    const gpa=this.calculateSemesterGPA(studentId);
-    if(gpa===null) return 'No Grades Yet';
-    if(gpa>=3.5) return 'Honors';
-    if(gpa>=2.0) return 'Good Standing';
-    if(gpa>=1.5) return 'Academic Warning';
-    return 'Academic Probation';
+    // Compute average percentage grade from examResults for this student
+    const results = this.getStudentResults(studentId);
+    const grades = Object.values(results).map(r => r.grade).filter(g => typeof g === 'number');
+    if (!grades.length) return 'Good Standing'; // default when no grades recorded yet
+    const avg = grades.reduce((a, b) => a + b, 0) / grades.length;
+    if (avg >= 90) return 'Excellent Standing';
+    if (avg >= 80) return 'Good Standing';
+    if (avg >= 70) return 'Satisfactory';
+    return 'Probation';
   }
   getStudentsOnProbation(){
-    return this.students.filter(s=>this.getAcademicStanding(s.id)==='Academic Probation');
+    return this.students.filter(s=>this.getAcademicStanding(s.id)==='Probation');
   }
 
   // ── DEGREE AUDIT ──────────────────────────────────────────────────────────

@@ -671,38 +671,91 @@ function ParentPerformance({ theme: C, child }) {
 /* ── EMOTIONS ── */
 function ParentEmotions({ theme: C, child }) {
   const { t } = useLang();
-  // Emotion charts use demo/simulation data — no DB equivalent
+  const [emoDistLive, setEmoDistLive] = useState(null);
+  const [trendSeries, setTrendSeries] = useState(null);
+  const [loading,     setLoading]     = useState(true);
+
+  useEffect(() => {
+    if (!child?.id) return;
+    setLoading(true);
+
+    const EMOTION_COLORS = {
+      happy:'#10b981', neutral:'#3b82f6', surprised:'#f59e0b',
+      angry:'#ef4444', sad:'#8b5cf6', fearful:'#ec4899', disgusted:'#64748b',
+    };
+
+    Promise.all([
+      api.getEngagementOverview(child.id).catch(() => null),
+      api.getTimeTrends(child.id).catch(() => null),
+    ]).then(([emoRes, trendRes]) => {
+      if (emoRes?.emotions) {
+        const total = emoRes.total_records || 1;
+        const dist = Object.entries(emoRes.emotions).map(([emotion, count]) => ({
+          emotion, count,
+          pct: Math.round(count / total * 100),
+          color: EMOTION_COLORS[emotion] || '#64748b',
+        }));
+        if (dist.length) setEmoDistLive(dist);
+      }
+      if (trendRes && trendRes.length) {
+        setTrendSeries({
+          engagement: trendRes.map(r => Math.round((r.avg_engagement ?? 0) * 100)),
+          attention:  trendRes.map(r => Math.round((r.avg_attention  ?? 0) * 100)),
+          labels:     trendRes.map(r => r.date ? r.date.slice(5) : ''),
+        });
+      }
+      setLoading(false);
+    });
+  }, [child?.id]);
+
+  const ed = emoDistLive || store.emotionDist;
+  const td = trendSeries  || store.trendData;
+
   return (
     <div style={{padding:'8px 20px 20px'}}>
       <div style={{fontSize:22,fontWeight:700,color:C.text,marginBottom:12}}>{t('page_emotions')} — {child.name}</div>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
-        <Card theme={C} title="Emotion Frequency">
-          <div style={{padding:'4px 12px 12px'}}>
-            <BarChart theme={C} data={store.emotionDist.map(d=>({label:d.emotion,value:d.count,color:d.color}))} height={200}/>
-          </div>
-        </Card>
-        <Card theme={C} title="Emotion Distribution">
-          <div style={{padding:'4px 12px 12px',display:'flex',gap:12,alignItems:'center'}}>
-            <DonutChart theme={C} data={store.emotionDist.slice(0,5).map(d=>({label:d.emotion,value:d.count,color:d.color}))} size={150}/>
-            <div>
-              {store.emotionDist.slice(0,5).map((d,i)=>(
-                <div key={i} style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
-                  <span style={{color:d.color,fontSize:12}}>●</span>
-                  <span style={{fontSize:10,color:C.text2}}>{d.emotion} {d.pct}%</span>
-                </div>
-              ))}
+
+      {loading && (
+        <div style={{textAlign:'center',padding:'40px 0',color:C.text3,fontSize:13}}>Loading emotion data…</div>
+      )}
+
+      {!loading && (
+        <>
+          {!emoDistLive && (
+            <div style={{fontSize:11,color:C.text3,marginBottom:10,fontStyle:'italic'}}>
+              No live emotion records available — showing demo data.
             </div>
+          )}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
+            <Card theme={C} title={`Emotion Frequency${emoDistLive ? ' (Live)' : ' — Demo'}`}>
+              <div style={{padding:'4px 12px 12px'}}>
+                <BarChart theme={C} data={ed.map(d=>({label:d.emotion,value:d.count,color:d.color}))} height={200}/>
+              </div>
+            </Card>
+            <Card theme={C} title={`Emotion Distribution${emoDistLive ? ' (Live)' : ' — Demo'}`}>
+              <div style={{padding:'4px 12px 12px',display:'flex',gap:12,alignItems:'center'}}>
+                <DonutChart theme={C} data={ed.slice(0,5).map(d=>({label:d.emotion,value:d.count,color:d.color}))} size={150}/>
+                <div>
+                  {ed.slice(0,5).map((d,i)=>(
+                    <div key={i} style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
+                      <span style={{color:d.color,fontSize:12}}>●</span>
+                      <span style={{fontSize:10,color:C.text2}}>{d.emotion} {d.pct}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Card>
           </div>
-        </Card>
-      </div>
-      <Card theme={C} title="Weekly Engagement Trend">
-        <div style={{padding:'4px 12px 12px'}}>
-          <LineChart theme={C} series={[
-            {label:'Engagement',data:store.trendData.engagement,color:C.blue},
-            {label:'Attention', data:store.trendData.attention, color:C.green},
-          ]} labels={store.trendData.labels} height={200}/>
-        </div>
-      </Card>
+          <Card theme={C} title={`Weekly Engagement Trend${trendSeries ? ' (Live)' : ' — Demo'}`}>
+            <div style={{padding:'4px 12px 12px'}}>
+              <LineChart theme={C} series={[
+                {label:'Engagement',data:td.engagement,color:C.blue},
+                {label:'Attention', data:td.attention, color:C.green},
+              ]} labels={td.labels} height={200}/>
+            </div>
+          </Card>
+        </>
+      )}
     </div>
   );
 }

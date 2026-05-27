@@ -51,6 +51,8 @@ export const api = {
   me:             ()                   => get('/api/auth/me'),
   changePassword: (old_password, new_password) =>
                     post('/api/auth/change-password', { old_password, new_password }),
+  resetPassword:  (username, newPassword) =>
+                    post('/api/auth/reset-password', { username, new_password: newPassword }),
 
   // Init — bulk data load after login
   init: () => get('/api/init/'),
@@ -224,6 +226,12 @@ export const api = {
   addDegreeRequirement:      (data)  => post('/api/degree-requirements/', data),
   bulkAddDegreeRequirements: (data)  => post('/api/degree-requirements/bulk', data),
   deleteDegreeRequirement:   (id)    => del(`/api/degree-requirements/${id}`),
+
+  // ── Analytics ──────────────────────────────────────────────────────────────
+  getEngagementOverview: (studentId) =>
+    get(`/api/analytics/engagement-overview${studentId ? `?student_id=${encodeURIComponent(studentId)}` : ''}`),
+  getTimeTrends: (studentId) =>
+    get(`/api/analytics/time-trends${studentId ? `?student_id=${encodeURIComponent(studentId)}` : ''}`),
 };
 
 export default api;

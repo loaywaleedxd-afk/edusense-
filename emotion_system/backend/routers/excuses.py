@@ -14,9 +14,11 @@ async def submit_excuse(
     db=Depends(get_db),
 ):
     """Any authenticated user can submit an excuse."""
+    # Accept both 'courseId' (frontend key) and 'course_code' (DB column name)
+    course_code = data.get("courseId") or data.get("course_code")
     await db.execute(
         "INSERT INTO excuses (student_id, course_code, week, reason, status) VALUES ($1, $2, $3, $4, 'pending')",
-        data.get("student_id"), data.get("course_code"), data.get("week", 1), data.get("reason", ""),
+        data.get("student_id"), course_code, data.get("week", 1), data.get("reason", ""),
     )
     return {"message": "Excuse submitted"}
 

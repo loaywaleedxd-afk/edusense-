@@ -74,15 +74,20 @@ async def save_grade(
         entry.student_id, entry.course_code, entry.course_name, entry.grade, entry.doctor_id,
     )
     # Notify the student in real-time
-    stu_row = await db.fetchrow(
-        "SELECT user_id FROM students WHERE student_id=$1", entry.student_id
-    )
-    if stu_row and stu_row["user_id"]:
-        await manager.notify_user(str(stu_row["user_id"]), {
-            "type": "grade_posted",
-            "title": "Grade Posted",
-            "message": f"Your grade for {entry.course_name}: {entry.grade:.1f}",
-            "icon": "📝",
-            "color": "#10b981",
-        })
+    try:
+        stu_row = await db.fetchrow(
+            "SELECT user_id FROM students WHERE student_id=$1", entry.student_id
+        )
+        if stu_row and stu_row["user_id"]:
+            await manager.notify_user(str(stu_row["user_id"]), {
+                "type": "grade_update",
+                "title": "Grade Posted",
+                "message": f"Your grade for {entry.course_name}: {entry.grade:.1f}",
+                "course": entry.course_code,
+                "grade": entry.grade,
+                "icon": "📝",
+                "color": "#10b981",
+            })
+    except Exception:
+        pass  # WS failure must not break the grade endpoint
     return {"message": "Grade saved"}

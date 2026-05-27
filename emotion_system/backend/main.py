@@ -177,9 +177,9 @@ async def ws_notifications(websocket: WebSocket, user_id: str):
         manager.disconnect_user(websocket, user_id)
 
 # Serve student photos as static files
-_PHOTOS_DIR = os.path.join(os.path.dirname(__file__), "..", "student_photos")
-if os.path.isdir(_PHOTOS_DIR):
-    app.mount("/photos", StaticFiles(directory=_PHOTOS_DIR), name="photos")
+_PHOTOS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "student_photos"))
+os.makedirs(_PHOTOS_DIR, exist_ok=True)
+app.mount("/photos", StaticFiles(directory=_PHOTOS_DIR), name="photos")
 
 
 @app.get("/")
