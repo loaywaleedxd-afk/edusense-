@@ -18,7 +18,7 @@ import EmotionBarsWidget from '../components/EmotionBars';
 import AlertItem from '../components/AlertItem';
 import WebcamFeed from '../components/WebcamFeed';
 import store from '../dataStore';
-import api, { get } from '../api';
+import api, { get, post } from '../api';
 import { DEPARTMENTS, TITLES } from '../theme';
 import AuditLogPage from './AuditLogPage';
 
@@ -1674,9 +1674,22 @@ function AdminParents({ theme: C }) {
   const reloadParents = () => api.init().then(d => setParents(d.parents || [])).catch(() => {});
   useEffect(() => { reloadParents(); }, []);
 
-  function addParent() {
+  async function addParent() {
     if(!form.name.trim()||!form.username.trim()) { alert('Name and username required'); return; }
-    store.addUser({...form, role:'parent'});
+    if(!form.email.trim()) { alert('Email is required'); return; }
+    try {
+      // Save parent account to database via backend API
+      await post('/api/users/', {
+        username:  form.username.trim(),
+        full_name: form.name.trim(),
+        email:     form.email.trim(),
+        role:      'parent',
+        password:  form.password || form.username,
+      });
+    } catch(err) {
+      alert('Failed to create parent: ' + err.message);
+      return;
+    }
     setCreatedAccount({ name: form.name, role: 'Parent', username: form.username, password: form.password, email: form.email, id: form.studentId||null });
     reloadParents();
     setShowAdd(false); setForm({name:'',username:'',password:'demo123',email:'',studentId:''});

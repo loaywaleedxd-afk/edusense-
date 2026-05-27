@@ -1,5 +1,5 @@
 """Student fees router."""
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from database import get_db
 from auth_utils import require_auth, require_role
 
@@ -8,6 +8,17 @@ router = APIRouter()
 
 @router.get("/{student_id}")
 async def get_fee_status(student_id: str, payload: dict = Depends(require_auth), db=Depends(get_db)):
+    """Students may only read their own fee record; admins/doctors can read any."""
+    caller_role = payload.get("role")
+    caller_id   = int(payload.get("sub"))
+
+    if caller_role == "student":
+        row = await db.fetchrow(
+            "SELECT student_id FROM students WHERE user_id=$1", caller_id
+        )
+        if not row or row["student_id"].upper() != student_id.upper():
+            raise HTTPException(status_code=403, detail="Access denied")
+
     row = await db.fetchrow(
         "SELECT * FROM student_fees WHERE student_id=$1", student_id
     )

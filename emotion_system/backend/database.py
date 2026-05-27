@@ -416,14 +416,14 @@ async def init_tenant_schema(pool, schema: str):
             CREATE TABLE IF NOT EXISTS "{schema}".registration_status (
                 id       INTEGER PRIMARY KEY DEFAULT 1,
                 is_open  BOOLEAN DEFAULT TRUE,
-                semester TEXT DEFAULT 'Fall 2024',
-                deadline TEXT DEFAULT '2024-12-15'
+                semester TEXT DEFAULT 'Fall 2026',
+                deadline TEXT DEFAULT '2026-09-30'
             )
         """)
 
         await conn.execute(f"""
             INSERT INTO "{schema}".registration_status (id, is_open, semester, deadline)
-            VALUES (1, TRUE, 'Fall 2024', '2024-12-15')
+            VALUES (1, TRUE, 'Fall 2026', '2026-09-30')
             ON CONFLICT DO NOTHING
         """)
 

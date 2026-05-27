@@ -47,7 +47,7 @@ async def _compute_student_risk(db, student_id: str) -> dict:
             SUM(CASE WHEN status='present' THEN 1 ELSE 0 END) as present
         FROM attendance WHERE student_id=$1
     """, student_id)
-    att_rate = (att["present"] / att["total"] * 100) if att and att["total"] else 100
+    att_rate = ((att["present"] or 0) / att["total"] * 100) if att and att["total"] else 100
     if att_rate < 50:   att_factor = 30
     elif att_rate < 70: att_factor = 20
     elif att_rate < 80: att_factor = 10

@@ -1,5 +1,5 @@
 """Absence excuses router — protected by JWT auth."""
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 
 from database import get_db
 from auth_utils import require_auth, require_role
@@ -13,12 +13,24 @@ async def submit_excuse(
     payload: dict = Depends(require_auth),
     db=Depends(get_db),
 ):
-    """Any authenticated user can submit an excuse."""
+    """Submit an absence excuse. Students may only submit for themselves."""
+    caller_role = payload.get("role")
+    caller_id   = int(payload.get("sub"))
+    target_sid  = data.get("student_id") or ""
+
+    # Students must only file excuses for their own record
+    if caller_role == "student":
+        row = await db.fetchrow(
+            "SELECT student_id FROM students WHERE user_id=$1", caller_id
+        )
+        if not row or row["student_id"].upper() != target_sid.upper():
+            raise HTTPException(status_code=403, detail="You may only submit excuses for yourself")
+
     # Accept both 'courseId' (frontend key) and 'course_code' (DB column name)
     course_code = data.get("courseId") or data.get("course_code")
     await db.execute(
         "INSERT INTO excuses (student_id, course_code, week, reason, status) VALUES ($1, $2, $3, $4, 'pending')",
-        data.get("student_id"), course_code, data.get("week", 1), data.get("reason", ""),
+        target_sid, course_code, data.get("week", 1), data.get("reason", ""),
     )
     return {"message": "Excuse submitted"}
 

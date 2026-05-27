@@ -70,7 +70,11 @@ async def init_data(payload: dict = Depends(require_auth), db=Depends(get_db)):
         }
 
     # ── Attendance ────────────────────────────────────────────────────────
-    att_rows = await _q(db, "SELECT * FROM attendance")
+    # Limit to the most recent 5000 records to prevent huge payloads on large
+    # deployments while still covering a full semester (~16 weeks × 300 students).
+    att_rows = await _q(db,
+        "SELECT * FROM attendance ORDER BY check_in_time DESC LIMIT 5000"
+    )
     attendance = {}
     for r in att_rows:
         week = r.get("week") or 1

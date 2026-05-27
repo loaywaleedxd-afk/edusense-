@@ -50,7 +50,7 @@ async def login(req: LoginRequest, request: Request, db=Depends(get_db)):
             """SELECT u.* FROM users u
                JOIN students s ON s.user_id = u.id
                WHERE LOWER(s.student_id) = $1""",
-            uname.upper(),
+            uname,   # uname is already lowercase — LOWER(student_id) will match
         )
 
     if not user:
@@ -116,6 +116,7 @@ async def reset_password(request: Request, db=Depends(get_db)):
     """Reset a user's password without authentication (forgot-password flow).
     The client is responsible for verifying the user's identity (e.g. a 6-digit
     OTP) before calling this endpoint."""
+    _check_rate_limit(request.client.host if request.client else "unknown")
     data = await request.json()
     username = (data.get("username") or "").strip()
     new_password = (data.get("new_password") or "").strip()

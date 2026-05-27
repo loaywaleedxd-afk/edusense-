@@ -122,18 +122,32 @@ async def delete_student(
     user_id = row["user_id"]
 
     async with db.transaction():
-        # Remove dependent rows first to avoid FK violations
-        await db.execute("DELETE FROM attendance        WHERE student_id=$1", student_id)
-        await db.execute("DELETE FROM emotion_records   WHERE student_id=$1", student_id)
-        await db.execute("DELETE FROM course_enrollments WHERE student_id=$1", student_id)
-        await db.execute("DELETE FROM grades            WHERE student_id=$1", student_id)
-        await db.execute("DELETE FROM excuses           WHERE student_id=$1", student_id)
-        await db.execute("DELETE FROM submissions       WHERE student_id=$1", student_id)
-        await db.execute("DELETE FROM complaints        WHERE student_id=$1", student_id)
-        await db.execute("DELETE FROM system_alerts     WHERE student_id=$1", student_id)
-        await db.execute("DELETE FROM student_fees      WHERE student_id=$1", student_id)
-        await db.execute("DELETE FROM face_encodings    WHERE student_id=$1", student_id)
-        await db.execute("DELETE FROM students          WHERE student_id=$1", student_id)
+        # Remove all dependent rows first to avoid FK violations
+        await db.execute("DELETE FROM attendance              WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM emotion_records         WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM course_enrollments      WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM grades                  WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM excuses                 WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM submissions             WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM complaints              WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM system_alerts           WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM student_fees            WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM face_encodings          WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM at_risk_assessments     WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM enrollment_requests     WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM course_waitlist         WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM poll_votes              WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM advisor_appointments    WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM advisor_student_notes   WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM office_hours_bookings   WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM parent_students         WHERE student_id=$1", student_id)
+        await db.execute(
+            "DELETE FROM direct_messages WHERE sender_id=$1 OR receiver_id=$1",
+            str(user_id) if user_id else "0",
+        )
+        await db.execute("DELETE FROM proctoring_events       WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM proctoring_sessions     WHERE student_id=$1", student_id)
+        await db.execute("DELETE FROM students                WHERE student_id=$1", student_id)
         if user_id:
             await db.execute("DELETE FROM users WHERE id=$1", user_id)
 

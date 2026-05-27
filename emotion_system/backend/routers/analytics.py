@@ -68,7 +68,11 @@ async def engagement_overview(
         emotions = await db.fetch(
             "SELECT emotion, COUNT(*) as count, AVG(confidence) as avg_conf FROM emotion_records GROUP BY emotion ORDER BY count DESC"
         )
-    return {**dict(overview), "emotions": [dict(r) for r in emotions]}
+    base = dict(overview) if overview else {
+        "total_students": 0, "total_lectures": 0,
+        "avg_engagement": 0, "avg_attention": 0, "total_records": 0,
+    }
+    return {**base, "emotions": [dict(r) for r in emotions]}
 
 
 @router.get("/lecture-comparison")
