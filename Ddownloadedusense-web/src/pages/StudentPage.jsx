@@ -418,15 +418,20 @@ function StudentDashboard({ theme: C, user, stu }) {
   const streak = calcStreakFromRecs(attRecs);
   const streakMsg = streak >= 10 ? 'Incredible! Keep it up! 🏆' : streak >= 5 ? 'Great consistency!' : streak >= 2 ? 'Keep going!' : 'Start your streak today!';
   const presentCount = attRecs.filter(r => r.status === 'present' || r.status === 'excused').length;
-  const _maxWeekDash = attRecs.length > 0 ? Math.max(...attRecs.map(r => Number(r.week) || 1)) : 1;
-  const _presentPairsDash = new Set(
-    attRecs.filter(r => r.status === 'present' || r.status === 'excused')
-           .map(r => `${r.course_code || r.lecture_id}_${r.week}`)
-  ).size;
-  const _totalPossibleDash = myCoursesEnrolled.length * _maxWeekDash || 1;
-  const attendanceRate = myCoursesEnrolled.length > 0
-    ? Math.round(_presentPairsDash / _totalPossibleDash * 100)
-    : (stu.attendanceRate || 0);
+  // Dashboard rate: sum distinct attended weeks per course / (courses × 16)
+  const attendanceRate = (() => {
+    if (!myCoursesEnrolled.length) return stu.attendanceRate || 0;
+    const totalAtt = myCoursesEnrolled.reduce((sum, course) => {
+      const code = course.course_code || course.id;
+      const weeks = new Set(
+        attRecs.filter(r => (r.course_code === code || r.lecture_id === code)
+                         && (r.status === 'present' || r.status === 'excused'))
+               .map(r => r.week)
+      ).size;
+      return sum + weeks;
+    }, 0);
+    return Math.round(totalAtt / (myCoursesEnrolled.length * 16) * 100);
+  })();
 
   const gradeVals = gradeRows.map(r => r.grade);
   const avgGrade = gradeVals.length ? +(gradeVals.reduce((a,b)=>a+b,0)/gradeVals.length).toFixed(1) : null;
@@ -577,20 +582,21 @@ function StudentAttendance({ theme: C, stu, pendingQR, onClearPendingQR }) {
       .catch(() => {});
   }, [stu.id]);
 
-  // Compute attendance rate: distinct present (course+week) pairs / (courses × maxWeek)
+  // Compute attendance rate: sum of distinct weeks attended per course / (courses × 16)
+  // This matches the X/16 shown per course in the table
   const rate = (() => {
     if (!myCourses.length) return stu.attendanceRate || 0;
-    // Deduplicate: count each (course, week) pair only once
-    const presentPairs = new Set(
-      attRecs
-        .filter(r => r.status === 'present' || r.status === 'excused')
-        .map(r => `${r.course_code || r.lecture_id}_${r.week}`)
-    ).size;
-    const maxWeek = attRecs.length > 0
-      ? Math.max(...attRecs.map(r => Number(r.week) || 1))
-      : 1;
-    const totalPossible = myCourses.length * maxWeek;
-    return totalPossible > 0 ? Math.round(presentPairs / totalPossible * 100) : 0;
+    const totalAttended = myCourses.reduce((sum, course) => {
+      const courseRecs = attRecs.filter(r =>
+        r.course_code === course.code || r.lecture_id === course.code
+      );
+      const distinctWeeks = new Set(
+        courseRecs.filter(r => r.status === 'present' || r.status === 'excused').map(r => r.week)
+      ).size;
+      return sum + distinctWeeks;
+    }, 0);
+    const totalPossible = myCourses.length * 16;
+    return Math.round(totalAttended / totalPossible * 100);
   })();
 
   // Auto-check-in from QR scan URL (cross-device)
