@@ -334,6 +334,7 @@ function DocLive({ theme: C, myCourses }) {
   const [buildingMatcher, setBuildingMatcher] = useState(false);
   const [matcherProgress, setMatcherProgress] = useState({ done: 0, total: 0 });
   const [matcherTimedOut,  setMatcherTimedOut] = useState(false);
+  const [matcherReason,    setMatcherReason]   = useState('');
   const [, forceUpdate]             = useState(0);
   const liveStudentsRef = useRef([]);
 
@@ -346,8 +347,9 @@ function DocLive({ theme: C, myCourses }) {
     setFaceMatcher(null);
     setBuildingMatcher(true);
     setMatcherTimedOut(false);
+    setMatcherReason('');
     setMatcherProgress({ done: 0, total: withPhotos.length });
-    const matcher = await buildFaceMatcher(
+    const { matcher, reason } = await buildFaceMatcher(
       withPhotos,
       (done, total) => setMatcherProgress({ done, total }),
     );
@@ -355,9 +357,10 @@ function DocLive({ theme: C, myCourses }) {
     if (matcher) {
       setFaceMatcher(matcher);
       setMatcherTimedOut(false);
+      setMatcherReason('ok');
     } else {
-      // null means either no faces found or 150-second timeout fired
-      setMatcherTimedOut(withPhotos.length > 0);
+      setMatcherReason(reason);
+      setMatcherTimedOut(reason !== 'no_faces');
     }
   }
 
@@ -475,14 +478,27 @@ function DocLive({ theme: C, myCourses }) {
               )}
               {!buildingMatcher && matcherTimedOut && (
                 <div style={{fontSize:11,color:'#f97316',background:'rgba(249,115,22,0.08)',border:'1px solid #f97316',borderRadius:8,padding:'5px 10px',marginBottom:6,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
-                  <span>⏱️ Recognition models took too long — camera works without it</span>
+                  <span>
+                    {matcherReason === 'model_error'
+                      ? '⚠️ Recognition models failed to load — camera works without it'
+                      : '⏱️ Recognition models took too long — camera works without it'}
+                  </span>
                   <button onClick={() => triggerBuildMatcher(liveStudentsRef.current)}
                     style={{background:'#f97316',border:'none',borderRadius:6,padding:'3px 10px',fontSize:10,fontWeight:700,color:'#fff',cursor:'pointer',whiteSpace:'nowrap'}}>
                     🔄 Retry
                   </button>
                 </div>
               )}
-              {!buildingMatcher && !faceMatcher && !matcherTimedOut && liveStudents.length > 0 && (
+              {!buildingMatcher && !faceMatcher && !matcherTimedOut && matcherReason === 'no_faces' && (
+                <div style={{fontSize:11,color:'#f59e0b',background:'rgba(245,158,11,0.08)',border:'1px solid #f59e0b',borderRadius:8,padding:'5px 10px',marginBottom:6,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+                  <span>📷 No face detected in student photos — try retaking the photo</span>
+                  <button onClick={() => triggerBuildMatcher(liveStudentsRef.current)}
+                    style={{background:'#f59e0b',border:'none',borderRadius:6,padding:'3px 10px',fontSize:10,fontWeight:700,color:'#fff',cursor:'pointer',whiteSpace:'nowrap'}}>
+                    🔄 Retry
+                  </button>
+                </div>
+              )}
+              {!buildingMatcher && !faceMatcher && !matcherTimedOut && matcherReason !== 'no_faces' && liveStudents.filter(s=>s.photo).length === 0 && liveStudents.length > 0 && (
                 <div style={{fontSize:11,color:'#94a3b8',background:'rgba(148,163,184,0.1)',border:'1px solid #475569',borderRadius:8,padding:'5px 10px',marginBottom:6,textAlign:'center'}}>
                   ⚠️ No student photos — face recognition disabled
                 </div>

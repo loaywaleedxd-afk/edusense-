@@ -31,6 +31,13 @@ const MODEL_URL = '/models';
 let baseLoaded  = false;
 let baseLoading = false;
 let fullLoaded  = false;
+let fullLoading = false;
+
+// CDN first (fast, reliable CORS), local /models as fallback
+const FULL_MODEL_SOURCES = [
+  'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights',
+  MODEL_URL,
+];
 
 async function ensureModels() {
   if (baseLoaded) return true;
@@ -54,16 +61,26 @@ async function ensureModels() {
 
 async function ensureFullModels() {
   if (fullLoaded) return true;
-  await ensureModels(); // base must load first
-  try {
-    await Promise.all([
-      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
-    ]);
-    fullLoaded = true;
-  } catch (e) {
-    console.warn('face-api recognition models unavailable:', e.message);
+  // Guard against concurrent calls (prewarm + buildFaceMatcher racing)
+  if (fullLoading) {
+    while (fullLoading) await new Promise(r => setTimeout(r, 200));
+    return fullLoaded;
   }
+  fullLoading = true;
+  await ensureModels();
+  for (const src of FULL_MODEL_SOURCES) {
+    try {
+      if (!faceapi.nets.faceLandmark68Net.isLoaded)
+        await faceapi.nets.faceLandmark68Net.loadFromUri(src);
+      if (!faceapi.nets.faceRecognitionNet.isLoaded)
+        await faceapi.nets.faceRecognitionNet.loadFromUri(src);
+      fullLoaded = true;
+      break;
+    } catch (e) {
+      console.warn(`face-api full models failed from ${src}:`, e.message);
+    }
+  }
+  fullLoading = false;
   return fullLoaded;
 }
 
@@ -91,11 +108,15 @@ export function prewarmRecognitionModels() {
   ensureFullModels().catch(() => {});
 }
 
+// Returns { matcher, reason } where reason is one of:
+//   'ok'          — matcher built successfully
+//   'no_faces'    — models loaded but no faces detected in any photo
+//   'model_error' — recognition models failed / timed out loading
+//   'timeout'     — entire operation exceeded 150 s
 export async function buildFaceMatcher(students, onProgress) {
-  // Race against a 150-second hard timeout (recognition model is ~6 MB)
   return Promise.race([
     _buildFaceMatcherCore(students, onProgress),
-    new Promise(resolve => setTimeout(() => resolve(null), 150_000)),
+    new Promise(resolve => setTimeout(() => resolve({ matcher: null, reason: 'timeout' }), 150_000)),
   ]);
 }
 
@@ -105,12 +126,12 @@ async function _buildFaceMatcherCore(students, onProgress) {
       ensureFullModels(),
       new Promise(resolve => setTimeout(() => resolve(false), 120_000)),
     ]);
-    if (!ok) return null; // recognition models failed/timed-out
+    if (!ok) return { matcher: null, reason: 'model_error' };
 
     const labeled = [];
     let processed = 0;
     for (const s of students) {
-      if (!s.photo) { processed++; continue; }
+      if (!s.photo) { processed++; onProgress?.(processed, students.length); continue; }
       try {
         const img = await loadImg(s.photo);
         const det = await faceapi
@@ -124,9 +145,10 @@ async function _buildFaceMatcherCore(students, onProgress) {
       processed++;
       onProgress?.(processed, students.length);
     }
-    return labeled.length > 0 ? new faceapi.FaceMatcher(labeled, 0.55) : null;
+    if (labeled.length === 0) return { matcher: null, reason: 'no_faces' };
+    return { matcher: new faceapi.FaceMatcher(labeled, 0.55), reason: 'ok' };
   } catch {
-    return null;
+    return { matcher: null, reason: 'error' };
   }
 }
 
