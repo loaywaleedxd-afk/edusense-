@@ -332,14 +332,39 @@ function DocLive({ theme: C, myCourses }) {
   const [liveStudents, setLiveStudents] = useState([]);
   const [faceMatcher, setFaceMatcher]   = useState(null);
   const [buildingMatcher, setBuildingMatcher] = useState(false);
+  const [matcherProgress, setMatcherProgress] = useState({ done: 0, total: 0 });
+  const [matcherTimedOut,  setMatcherTimedOut] = useState(false);
   const [, forceUpdate]             = useState(0);
+  const liveStudentsRef = useRef([]);
 
   const alertCooldown = useRef({});
   const course = myCourses.find(c => c.id === selCourse);
 
+  async function triggerBuildMatcher(stuList) {
+    const withPhotos = stuList.filter(s => s.photo);
+    if (withPhotos.length === 0) return;
+    setFaceMatcher(null);
+    setBuildingMatcher(true);
+    setMatcherTimedOut(false);
+    setMatcherProgress({ done: 0, total: withPhotos.length });
+    const matcher = await buildFaceMatcher(
+      withPhotos,
+      (done, total) => setMatcherProgress({ done, total }),
+    );
+    setBuildingMatcher(false);
+    if (matcher) {
+      setFaceMatcher(matcher);
+      setMatcherTimedOut(false);
+    } else {
+      // null means either no faces found or 50-second timeout fired
+      setMatcherTimedOut(withPhotos.length > 0);
+    }
+  }
+
   useEffect(() => {
     if (!selCourse) return;
     setFaceMatcher(null);
+    setMatcherTimedOut(false);
     const API_BASE = import.meta.env.VITE_API_URL || '';
     api.getCourseStudents(selCourse)
       .then(async r => {
@@ -356,19 +381,8 @@ function DocLive({ theme: C, myCourses }) {
           };
         });
         setLiveStudents(stuList);
-        // Build face matcher from student photos so the camera can recognize them
-        const withPhotos = stuList.filter(s => s.photo);
-        if (withPhotos.length > 0) {
-          setBuildingMatcher(true);
-          try {
-            const matcher = await buildFaceMatcher(withPhotos);
-            setFaceMatcher(matcher);
-          } catch(e) {
-            console.warn('buildFaceMatcher failed:', e);
-          } finally {
-            setBuildingMatcher(false);
-          }
-        }
+        liveStudentsRef.current = stuList;
+        triggerBuildMatcher(stuList);
       })
       .catch(() => {});
   }, [selCourse]);
@@ -436,8 +450,17 @@ function DocLive({ theme: C, myCourses }) {
           <Card theme={C} title="📷 Camera Feed">
             <div style={{padding:'8px 12px 12px'}}>
               {buildingMatcher && (
-                <div style={{fontSize:11,color:'#fbbf24',background:'rgba(251,191,36,0.1)',border:'1px solid #f59e0b',borderRadius:8,padding:'5px 10px',marginBottom:6,textAlign:'center'}}>
-                  ⏳ Building face recognition model from student photos…
+                <div style={{fontSize:11,color:'#fbbf24',background:'rgba(251,191,36,0.08)',border:'1px solid #f59e0b',borderRadius:8,padding:'6px 10px',marginBottom:6}}>
+                  <div style={{textAlign:'center',marginBottom:4}}>
+                    {matcherProgress.done === 0
+                      ? '⏳ Loading face recognition models (first load is slow)…'
+                      : `⏳ Scanning photos… ${matcherProgress.done}/${matcherProgress.total}`}
+                  </div>
+                  {matcherProgress.total > 0 && (
+                    <div style={{height:4,background:'rgba(251,191,36,0.2)',borderRadius:4,overflow:'hidden'}}>
+                      <div style={{height:'100%',background:'#f59e0b',borderRadius:4,width:`${Math.round((matcherProgress.done/matcherProgress.total)*100)}%`,transition:'width 0.3s'}}/>
+                    </div>
+                  )}
                 </div>
               )}
               {!buildingMatcher && faceMatcher && (
@@ -445,9 +468,18 @@ function DocLive({ theme: C, myCourses }) {
                   🎯 Face recognition ready — {liveStudents.filter(s=>s.photo).length} students enrolled
                 </div>
               )}
-              {!buildingMatcher && !faceMatcher && liveStudents.length > 0 && (
+              {!buildingMatcher && matcherTimedOut && (
+                <div style={{fontSize:11,color:'#f97316',background:'rgba(249,115,22,0.08)',border:'1px solid #f97316',borderRadius:8,padding:'5px 10px',marginBottom:6,display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}>
+                  <span>⏱️ Recognition models took too long — camera works without it</span>
+                  <button onClick={() => triggerBuildMatcher(liveStudentsRef.current)}
+                    style={{background:'#f97316',border:'none',borderRadius:6,padding:'3px 10px',fontSize:10,fontWeight:700,color:'#fff',cursor:'pointer',whiteSpace:'nowrap'}}>
+                    🔄 Retry
+                  </button>
+                </div>
+              )}
+              {!buildingMatcher && !faceMatcher && !matcherTimedOut && liveStudents.length > 0 && (
                 <div style={{fontSize:11,color:'#94a3b8',background:'rgba(148,163,184,0.1)',border:'1px solid #475569',borderRadius:8,padding:'5px 10px',marginBottom:6,textAlign:'center'}}>
-                  ⚠️ No student photos available — face recognition disabled
+                  ⚠️ No student photos — face recognition disabled
                 </div>
               )}
               <WebcamFeed theme={C} mode="📷 Live Session" courseId={selCourse} onFaceDetected={handleFaceDetected} onEmotionDetected={handleEmotionDetected} onCapture={()=>{}} faceMatcher={faceMatcher}/>

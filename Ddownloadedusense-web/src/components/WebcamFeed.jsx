@@ -68,36 +68,60 @@ async function ensureFullModels() {
 }
 
 // ── Load an image from either an HTTP URL or a data: URI ─────────────────────
+// Rejects after 6 seconds so a broken/slow URL never hangs the whole build.
 function loadImg(src) {
   return new Promise((resolve, reject) => {
-    const img = new Image();
+    const img   = new Image();
     img.crossOrigin = 'anonymous';
-    img.onload  = () => resolve(img);
-    img.onerror = () => reject(new Error('img load failed'));
+    const timer = setTimeout(() => reject(new Error('img load timeout')), 6000);
+    img.onload  = () => { clearTimeout(timer); resolve(img); };
+    img.onerror = () => { clearTimeout(timer); reject(new Error('img load failed')); };
     img.src = src;
   });
 }
 
 // ── Build a FaceMatcher from {id, photo} student objects ─────────────────────
-// photo can be an HTTP URL or a base64 data: URI
-export async function buildFaceMatcher(students) {
-  const ok = await ensureFullModels();
-  if (!ok) return null; // recognition models not available
-  const labeled = [];
-  for (const s of students) {
-    if (!s.photo) continue;
-    try {
-      const img = await loadImg(s.photo);
-      const det = await faceapi
-        .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 320 }))
-        .withFaceLandmarks()
-        .withFaceDescriptor();
-      if (det) labeled.push(new faceapi.LabeledFaceDescriptors(s.id, [det.descriptor]));
-    } catch {
-      // skip students whose photo can't be encoded
+// photo can be an HTTP URL or a base64 data: URI.
+// Resolves to null (never throws) so callers can always await safely.
+// Hard limit of 50 s — if model download or photo scanning takes longer,
+// returns null so the camera still works without recognition.
+export async function buildFaceMatcher(students, onProgress) {
+  // Race against a 50-second hard timeout
+  return Promise.race([
+    _buildFaceMatcherCore(students, onProgress),
+    new Promise(resolve => setTimeout(() => resolve(null), 50_000)),
+  ]);
+}
+
+async function _buildFaceMatcherCore(students, onProgress) {
+  try {
+    const ok = await Promise.race([
+      ensureFullModels(),
+      new Promise(resolve => setTimeout(() => resolve(false), 40_000)),
+    ]);
+    if (!ok) return null; // recognition models failed/timed-out
+
+    const labeled = [];
+    let processed = 0;
+    for (const s of students) {
+      if (!s.photo) { processed++; continue; }
+      try {
+        const img = await loadImg(s.photo);
+        const det = await faceapi
+          .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({ inputSize: 320 }))
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+        if (det) labeled.push(new faceapi.LabeledFaceDescriptors(s.id, [det.descriptor]));
+      } catch {
+        // skip students whose photo can't be encoded
+      }
+      processed++;
+      onProgress?.(processed, students.length);
     }
+    return labeled.length > 0 ? new faceapi.FaceMatcher(labeled, 0.55) : null;
+  } catch {
+    return null;
   }
-  return labeled.length > 0 ? new faceapi.FaceMatcher(labeled, 0.55) : null;
 }
 
 export default function WebcamFeed({
