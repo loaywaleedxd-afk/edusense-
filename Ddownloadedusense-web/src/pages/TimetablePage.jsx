@@ -8,6 +8,16 @@ const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu'];
 const DAYS_FULL = { sun: 'Sunday', mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday' };
 const HOURS = Array.from({ length: 11 }, (_, i) => i + 8); // 8am–6pm
 
+function extractTime(scheduled_at) {
+  if (!scheduled_at) return '09:00';
+  const s = String(scheduled_at);
+  // ISO "2025-01-15T09:00" or "2025-01-15T09:00:00" or space-separated or plain "09:00"
+  const m = s.match(/[T ](\d{2}:\d{2})/);
+  if (m) return m[1];
+  if (/^\d{2}:\d{2}/.test(s)) return s.slice(0, 5);
+  return '09:00';
+}
+
 function timeToMinutes(t) {
   const [h, m] = (t || '09:00').split(':').map(Number);
   return h * 60 + (m || 0);
@@ -56,8 +66,8 @@ export default function TimetablePage({ theme: C, stu, role = 'student', doctorI
     // lec.days is stored as a JSON string in PostgreSQL TEXT column — parse it
     let days = lec.days || [];
     if (typeof days === 'string') { try { days = JSON.parse(days); } catch { days = []; } }
-    const startMin = timeToMinutes(lec.time);
-    const duration = lec.duration || 90;
+    const startMin = timeToMinutes(extractTime(lec.scheduled_at));
+    const duration = lec.duration_min || 90;
     const endMin = startMin + duration;
 
     days.forEach(dayIdx => {
@@ -197,11 +207,11 @@ export default function TimetablePage({ theme: C, stu, role = 'student', doctorI
                         fontWeight: 700, color: ev.color || '#3b82f6',
                         lineHeight: 1.3, overflow: 'hidden',
                       }}>
-                        {isActive && '🔴 '}{ev.name || ev.code}
+                        {isActive && '🔴 '}{ev.course_name || ev.course_code}
                       </div>
                       {height > 45 && (
                         <div style={{ fontSize: 9, color: C.text3, marginTop: 2 }}>
-                          {ev.room} · {ev.time}
+                          {ev.room} · {extractTime(ev.scheduled_at)}
                         </div>
                       )}
                     </motion.div>
@@ -222,8 +232,8 @@ export default function TimetablePage({ theme: C, stu, role = 'student', doctorI
             border: `1px solid ${lec.color || C.border}44`,
           }}>
             <div style={{ width: 10, height: 10, borderRadius: 3, background: lec.color || '#3b82f6', flexShrink: 0 }} />
-            <span style={{ fontSize: 11, color: C.text2, fontWeight: 600 }}>{lec.code}</span>
-            <span style={{ fontSize: 11, color: C.text3 }}>{lec.name}</span>
+            <span style={{ fontSize: 11, color: C.text2, fontWeight: 600 }}>{lec.course_code}</span>
+            <span style={{ fontSize: 11, color: C.text3 }}>{lec.course_name}</span>
           </div>
         ))}
       </div>
@@ -257,15 +267,15 @@ export default function TimetablePage({ theme: C, stu, role = 'student', doctorI
                   display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24,
                 }}>📚</div>
                 <div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{selected.name}</div>
-                  <div style={{ fontSize: 12, color: C.text3 }}>{selected.code}</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{selected.course_name}</div>
+                  <div style={{ fontSize: 12, color: C.text3 }}>{selected.course_code}</div>
                 </div>
               </div>
               {[
-                ['🕐 Time', `${selected.time} (${selected.duration || 90} min)`],
+                ['🕐 Time', `${extractTime(selected.scheduled_at)} (${selected.duration_min || 90} min)`],
                 ['🏫 Room', selected.room],
-                ['👨‍🏫 Instructor', selected.doctor || selected.doctorName || '—'],
-                ['📅 Days', selected.daysLabel || '—'],
+                ['👨‍🏫 Instructor', selected.doctor_name || '—'],
+                ['📅 Days', selected.days_label || '—'],
               ].map(([label, val]) => (
                 <div key={label} style={{
                   display: 'flex', gap: 12, padding: '8px 0',
