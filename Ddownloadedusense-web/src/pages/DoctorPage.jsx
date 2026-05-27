@@ -575,6 +575,7 @@ function DocAttendance({ theme: C, myCourses }) {
       const result = await api.createQR({ courseId: selCourse, week });
       setQrMeta({ token: result.token, courseId: selCourse, week, createdAt: Date.now() });
     } catch(e) {
+      console.error('generateQR error:', e);
       alert(`Failed to generate QR: ${e.message}`);
       return;
     }
