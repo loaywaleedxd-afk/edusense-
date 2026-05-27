@@ -43,7 +43,8 @@ async def use_qr(data: dict, payload: dict = Depends(require_auth), db=Depends(g
     used_raw = row.get("used_by") or "[]"
     used = json.loads(used_raw)
     if student_id in used:
-        raise HTTPException(400, "Already checked in")
+        # Already used this exact token — still return ok (idempotent)
+        return {"ok": True, "courseId": row["course_id"], "week": row["week"]}
     used.append(student_id)
     await db.execute(
         "UPDATE qr_sessions SET used_by=$1 WHERE token=$2",
