@@ -22,6 +22,7 @@ class LectureCreate(BaseModel):
     days: Optional[str] = ""
     days_label: Optional[str] = ""
     semester: Optional[str] = ""
+    academic_year: int = 1
 
 
 class LectureStatusUpdate(BaseModel):
@@ -165,8 +166,8 @@ async def create_lecture(
         await db.execute(
             """INSERT INTO lectures
                (lecture_id, doctor_id, course_name, course_code, room,
-                scheduled_at, duration_min, capacity, color, days, days_label, semester)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)""",
+                scheduled_at, duration_min, capacity, color, days, days_label, semester, academic_year)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)""",
             lecture_id,
             lec.doctor_id or None,
             lec.course_name,
@@ -179,6 +180,7 @@ async def create_lecture(
             lec.days,
             lec.days_label,
             lec.semester,
+            lec.academic_year,
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -69,23 +69,35 @@ async def available_courses(
     uid  = int(payload.get("sub"))
     role = payload.get("role")
 
-    stu_row = await db.fetchrow("SELECT student_id FROM students WHERE user_id=$1", uid)
-    stu_id  = stu_row["student_id"] if stu_row else None
+    stu_row = await db.fetchrow(
+        "SELECT student_id, year FROM students WHERE user_id=$1", uid
+    )
+    stu_id   = stu_row["student_id"] if stu_row else None
+    stu_year = int(stu_row["year"] or 1) if stu_row else 1
+    target_year = stu_year + 1  # students register for next year's courses
 
     rows = await db.fetch(
         """SELECT DISTINCT ON (l.course_code)
                   l.lecture_id, l.course_code, l.course_name, l.room,
                   l.capacity, l.scheduled_at, l.days_label, l.days,
                   l.duration_min, l.semester, l.color,
+                  l.academic_year,
                   u.full_name AS doctor_name,
                   (SELECT COUNT(*) FROM course_enrollments
                    WHERE course_id = l.course_code) AS enrolled_count
            FROM lectures l
            LEFT JOIN doctors d ON d.doctor_id = l.doctor_id
            LEFT JOIN users u ON u.id = d.user_id
-           ORDER BY l.course_code"""
+           WHERE l.academic_year = $1
+           ORDER BY l.course_code""",
+        target_year,
     )
     courses = [dict(r) for r in rows]
+
+    # Embed year info in every course so the frontend knows without a 2nd call
+    for c in courses:
+        c["student_year"] = stu_year
+        c["target_year"]  = target_year
 
     if stu_id:
         # Attach request status for each course

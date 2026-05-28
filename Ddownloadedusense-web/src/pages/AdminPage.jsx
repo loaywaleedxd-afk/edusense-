@@ -19,6 +19,7 @@ import AlertItem from '../components/AlertItem';
 import WebcamFeed from '../components/WebcamFeed';
 import store from '../dataStore';
 import api, { get, post } from '../api';
+import { pushToast } from '../components/NotificationToast';
 import { DEPARTMENTS, TITLES } from '../theme';
 import AuditLogPage from './AuditLogPage';
 
@@ -903,6 +904,31 @@ function AdminStudents({ theme: C }) {
             {/* Actions */}
             <div style={{display:'flex',flexDirection:'column',gap:8}}>
               <button onClick={()=>setPortfolioStudent(selected)} style={{background:C.blue_dim,border:`1px solid ${C.blue}`,borderRadius:8,padding:'8px 14px',fontSize:11,fontWeight:700,color:C.blue2,cursor:'pointer'}}>📄 View Portfolio</button>
+              {/* Change academic year */}
+              <div style={{background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 12px'}}>
+                <div style={{fontSize:10,color:C.text3,fontWeight:700,marginBottom:6}}>🎓 ACADEMIC YEAR</div>
+                <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                  <select
+                    defaultValue={selected.year||1}
+                    id="year-select"
+                    style={{flex:1,height:30,background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:'0 8px',fontSize:12,color:C.text}}
+                  >
+                    {[1,2,3,4].map(y=><option key={y} value={y}>Year {y}</option>)}
+                  </select>
+                  <button
+                    onClick={async()=>{
+                      const y = parseInt(document.getElementById('year-select').value);
+                      try {
+                        await api.updateStudentYear(selected.id, y);
+                        setSelected({...selected, year:y});
+                        reloadStudents();
+                        pushToast({title:'Year updated',message:`${selected.name} → Year ${y}`,color:'#10b981'});
+                      } catch(e){ pushToast({title:'Failed',message:e.message,color:'#ef4444'}); }
+                    }}
+                    style={{background:'#10b981',border:'none',borderRadius:6,padding:'0 12px',height:30,fontSize:11,fontWeight:700,color:'#fff',cursor:'pointer'}}
+                  >Save</button>
+                </div>
+              </div>
               <button onClick={deleteSelected} style={{background:C.red_dim,border:`1px solid ${C.red}`,borderRadius:8,padding:'8px 14px',fontSize:11,color:C.red2,cursor:'pointer'}}>🗑️ Delete Student</button>
               {selected.capturedPhoto && (
                 <div>
@@ -1108,7 +1134,7 @@ function AdminCourses({ theme: C }) {
   const [saving,     setSaving]    = useState(false);
   const [saveErr,    setSaveErr]   = useState('');
   const [weeksOpen,  setWeeksOpen] = useState(null);
-  const [form, setForm] = useState({name:'',code:'',room:'',time:'09:00',duration:90,doctorId:'',color:'#3b82f6',semester:'Fall 2025',days:[1,4],capacity:300});
+  const [form, setForm] = useState({name:'',code:'',room:'',time:'09:00',duration:90,doctorId:'',color:'#3b82f6',semester:'Fall 2025',days:[1,4],capacity:300,academic_year:1});
 
   // Helper: map API lecture row → display shape
   function mapRow(r) {
@@ -1158,9 +1184,10 @@ function AdminCourses({ theme: C }) {
         duration_min: form.duration,
         capacity:     form.capacity,
         color:        form.color,
-        days:         form.days.join(','),
-        days_label:   daysLabel,
-        semester:     form.semester,
+        days:          form.days.join(','),
+        days_label:    daysLabel,
+        semester:      form.semester,
+        academic_year: form.academic_year || 1,
       });
       setShowAdd(false);
       setForm({name:'',code:'',room:'',time:'09:00',duration:90,doctorId:'',color:'#3b82f6',semester:'Fall 2025',days:[1,4],capacity:300});
@@ -1236,6 +1263,13 @@ function AdminCourses({ theme: C }) {
               <div style={{fontSize:10,color:C.text3,marginBottom:4,textTransform:'uppercase',fontWeight:700}}>Semester</div>
               <input value={form.semester} onChange={e=>setForm({...form,semester:e.target.value})} placeholder="e.g. Fall 2025"
                 style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}/>
+            </div>
+            <div>
+              <div style={{fontSize:10,color:C.text3,marginBottom:4,textTransform:'uppercase',fontWeight:700}}>Academic Year</div>
+              <select value={form.academic_year} onChange={e=>setForm({...form,academic_year:parseInt(e.target.value)})}
+                style={{width:'100%',height:36,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 10px',fontSize:12,color:C.text}}>
+                {[1,2,3,4].map(y=><option key={y} value={y}>Year {y}</option>)}
+              </select>
             </div>
             <div>
               <div style={{fontSize:10,color:C.text3,marginBottom:4,textTransform:'uppercase',fontWeight:700}}>Capacity</div>

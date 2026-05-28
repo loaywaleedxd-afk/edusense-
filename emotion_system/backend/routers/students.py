@@ -107,6 +107,26 @@ async def get_student(
     return dict(row)
 
 
+@router.patch("/{student_id}/year")
+async def update_student_year(
+    student_id: str,
+    data: dict,
+    payload: dict = Depends(require_role("admin")),
+    db=Depends(get_db),
+):
+    """Update a student's academic year (1–4) — admin only."""
+    year = int(data.get("year", 1))
+    if year < 1 or year > 4:
+        raise HTTPException(status_code=400, detail="Year must be between 1 and 4")
+    result = await db.execute(
+        "UPDATE students SET year=$1 WHERE student_id=$2",
+        year, student_id,
+    )
+    if result == "UPDATE 0":
+        raise HTTPException(status_code=404, detail="Student not found")
+    return {"ok": True, "student_id": student_id, "year": year}
+
+
 @router.delete("/{student_id}")
 async def delete_student(
     student_id: str,

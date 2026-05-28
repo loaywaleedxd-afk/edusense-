@@ -58,10 +58,11 @@ export const api = {
   init: () => get('/api/init/'),
 
   // Students
-  getStudents:    ()     => get('/api/students/'),
-  getStudent:     (id)   => get(`/api/students/${id}`),
-  createStudent:  (data) => post('/api/students/', data),
-  deleteStudent:  (id)   => req('DELETE', `/api/students/${id}`),
+  getStudents:       ()          => get('/api/students/'),
+  getStudent:        (id)        => get(`/api/students/${id}`),
+  createStudent:     (data)      => post('/api/students/', data),
+  deleteStudent:     (id)        => req('DELETE', `/api/students/${id}`),
+  updateStudentYear: (id, year)  => req('PATCH', `/api/students/${id}/year`, { year }),
 
   // Announcements
   getAnnouncements:   ()     => get('/api/announcements/'),

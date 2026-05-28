@@ -143,6 +143,11 @@ async def init_tenant_schema(pool, schema: str):
             )
         """)
 
+        # Safe migration: add academic_year to lectures for existing installs
+        await conn.execute(
+            f"ALTER TABLE \"{schema}\".lectures ADD COLUMN IF NOT EXISTS academic_year SMALLINT DEFAULT 1"
+        )
+
         # ── Course enrollments ───────────────────────────────────────────────
         await conn.execute(f"""
             CREATE TABLE IF NOT EXISTS "{schema}".course_enrollments (
@@ -637,6 +642,27 @@ async def init_tenant_schema(pool, schema: str):
                 created_at  TIMESTAMPTZ DEFAULT NOW()
             )
         """)
+
+    # ── Resync all sequences to max existing IDs (fixes desync from bulk inserts) ──
+    for tbl, col in [
+        ('users', 'id'), ('students', 'id'), ('doctors', 'id'),
+        ('lectures', 'id'), ('course_enrollments', 'id'),
+        ('attendance', 'id'), ('emotion_records', 'id'),
+        ('grades', 'id'), ('messages', 'id'), ('excuses', 'id'),
+        ('system_alerts', 'id'), ('announcements', 'id'),
+        ('exam_schedule', 'id'), ('course_resources', 'id'),
+        ('assignments', 'id'), ('submissions', 'id'),
+        ('complaints', 'id'), ('audit_log', 'id'),
+    ]:
+        try:
+            await conn.execute(f"""
+                SELECT setval(
+                    pg_get_serial_sequence('"{schema}".{tbl}', '{col}'),
+                    COALESCE((SELECT MAX({col}) FROM "{schema}".{tbl}), 1)
+                )
+            """)
+        except Exception:
+            pass
 
     print(f"[OK] Schema '{schema}' initialized")
 

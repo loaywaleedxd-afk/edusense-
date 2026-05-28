@@ -136,6 +136,8 @@ export default function CourseRegistrationPage({ theme: C }) {
   }
 
   const enrolledCourses = courses.filter(c => c.my_status === 'enrolled' || c.my_status === 'approved');
+  const studentYear  = courses[0]?.student_year  ?? null;
+  const targetYear   = courses[0]?.target_year   ?? null;
 
   const filtered = courses.filter(c => {
     const q = search.toLowerCase();
@@ -149,9 +151,28 @@ export default function CourseRegistrationPage({ theme: C }) {
   return (
     <div style={{ padding: 24 }}>
       <h2 style={{ color: C.text, marginBottom: 4, fontSize: 22 }}>🏛️ Course Registration</h2>
-      <p style={{ color: C.text2, fontSize: 14, marginBottom: 20 }}>
+      <p style={{ color: C.text2, fontSize: 14, marginBottom: studentYear ? 12 : 20 }}>
         Browse available courses and request enrollment. Your request will be reviewed by the admin.
       </p>
+
+      {/* Year banner */}
+      {studentYear && (
+        <div style={{
+          background: '#3b82f618', border: '1px solid #3b82f644',
+          borderRadius: 10, padding: '10px 16px', marginBottom: 20,
+          display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: 20 }}>🎓</span>
+          <div>
+            <span style={{ color: C.text, fontWeight: 700, fontSize: 13 }}>
+              You are currently in Year {studentYear}
+            </span>
+            <span style={{ color: C.text2, fontSize: 13 }}>
+              {' '}— showing Year {targetYear} courses available for registration
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Search */}
       <input
@@ -218,7 +239,16 @@ export default function CourseRegistrationPage({ theme: C }) {
               >
                 {/* Course header */}
                 <div>
-                  <div style={{ fontWeight: 700, color: C.text, fontSize: 15 }}>{course.course_name}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <div style={{ fontWeight: 700, color: C.text, fontSize: 15 }}>{course.course_name}</div>
+                    {course.academic_year && (
+                      <span style={{
+                        background: '#3b82f622', border: '1px solid #3b82f644',
+                        borderRadius: 6, padding: '1px 7px', fontSize: 10,
+                        fontWeight: 700, color: '#3b82f6',
+                      }}>Year {course.academic_year}</span>
+                    )}
+                  </div>
                   <div style={{ color: C.text2, fontSize: 12, marginTop: 2 }}>
                     {course.course_code} · {course.doctor_name || 'TBA'}
                   </div>
