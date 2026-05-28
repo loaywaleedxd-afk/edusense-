@@ -803,23 +803,29 @@ function AdminStudents({ theme: C }) {
         <div style={{ fontSize: 22, fontWeight: 700, color: C.text }}>{t('students')} <span style={{ fontSize: 14, fontWeight: 400, color: C.text3 }}>({filtered.length} / {students.length})</span></div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={deleteSelected} style={{ background: C.red_dim, border: `1px solid ${C.red}`, borderRadius: 8, padding: '8px 14px', fontSize: 11, color: C.red2, cursor: 'pointer' }}>🗑️ Delete</button>
-          {/* Bulk year promotion */}
-          <div style={{display:'flex',alignItems:'center',gap:4,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'4px 8px'}}>
-            <span style={{fontSize:10,color:C.text3,fontWeight:700}}>PROMOTE ALL TO</span>
-            <select id="bulk-year-select" defaultValue={2}
+          {/* Bulk year promotion: from Year X → to Year Y */}
+          <div style={{display:'flex',alignItems:'center',gap:6,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'4px 10px'}}>
+            <span style={{fontSize:10,color:C.text3,fontWeight:700}}>PROMOTE</span>
+            <select id="bulk-from-year" defaultValue={1}
+              style={{height:26,background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:'0 6px',fontSize:11,color:C.text}}>
+              {[1,2,3,4].map(y=><option key={y} value={y}>Year {y}</option>)}
+            </select>
+            <span style={{fontSize:11,color:C.text2,fontWeight:700}}>→</span>
+            <select id="bulk-to-year" defaultValue={2}
               style={{height:26,background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:'0 6px',fontSize:11,color:C.text}}>
               {[1,2,3,4].map(y=><option key={y} value={y}>Year {y}</option>)}
             </select>
             <button onClick={async()=>{
-              const y = parseInt(document.getElementById('bulk-year-select').value);
-              if(!confirm(`Set ALL ${filtered.length} visible students to Year ${y}?`)) return;
-              let ok=0, fail=0;
-              for(const s of filtered){
-                try{ await api.updateStudentYear(s.id, y); ok++; }catch{ fail++; }
-              }
-              reloadStudents();
-              pushToast({title:`Bulk year update`,message:`${ok} updated${fail?`, ${fail} failed`:''}`,color:'#10b981'});
-            }} style={{height:26,background:'#10b981',border:'none',borderRadius:6,padding:'0 10px',fontSize:11,fontWeight:700,color:'#fff',cursor:'pointer'}}>
+              const fromY = parseInt(document.getElementById('bulk-from-year').value);
+              const toY   = parseInt(document.getElementById('bulk-to-year').value);
+              if(fromY === toY){ alert('From and To years must be different'); return; }
+              if(!confirm(`Promote ALL Year ${fromY} students → Year ${toY}?`)) return;
+              try {
+                const res = await api.bulkUpdateStudentYear(fromY, toY);
+                reloadStudents();
+                pushToast({title:'Bulk promotion done', message:`${res.updated} students moved from Year ${fromY} to Year ${toY}`, color:'#10b981'});
+              } catch(e){ pushToast({title:'Failed', message:e.message, color:'#ef4444'}); }
+            }} style={{height:26,background:'#10b981',border:'none',borderRadius:6,padding:'0 12px',fontSize:11,fontWeight:700,color:'#fff',cursor:'pointer'}}>
               Apply
             </button>
           </div>

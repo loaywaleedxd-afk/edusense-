@@ -62,7 +62,8 @@ export const api = {
   getStudent:        (id)        => get(`/api/students/${id}`),
   createStudent:     (data)      => post('/api/students/', data),
   deleteStudent:     (id)        => req('DELETE', `/api/students/${id}`),
-  updateStudentYear: (id, year)  => req('PATCH', `/api/students/${id}/year`, { year }),
+  updateStudentYear:   (id, year)              => req('PATCH', `/api/students/${id}/year`, { year }),
+  bulkUpdateStudentYear: (from_year, to_year)  => post('/api/students/bulk-year', { from_year, to_year }),
 
   // Announcements
   getAnnouncements:   ()     => get('/api/announcements/'),

@@ -109,6 +109,24 @@ async def get_student(
     return dict(row)
 
 
+@router.post("/bulk-year")
+async def bulk_update_year(
+    data: dict,
+    payload: dict = Depends(require_role("admin")),
+    db=Depends(get_db),
+):
+    """Promote all students currently in from_year → to_year — admin only."""
+    from_year = int(data.get("from_year", 1))
+    to_year   = int(data.get("to_year",   2))
+    if from_year == to_year:
+        raise HTTPException(status_code=400, detail="from_year and to_year must be different")
+    result = await db.execute(
+        "UPDATE students SET year=$1 WHERE year=$2", to_year, from_year
+    )
+    count = int(result.split()[-1]) if result else 0
+    return {"ok": True, "updated": count, "from_year": from_year, "to_year": to_year}
+
+
 @router.patch("/{student_id}/year")
 async def update_student_year(
     student_id: str,
