@@ -207,6 +207,7 @@ export const api = {
   getLectureAttendance: (lectureId) => get(`/api/attendance/lecture/${encodeURIComponent(lectureId)}`),
   getExcuses:        ()          => get('/api/excuses/'),
   createLecture:     (data)      => post('/api/lectures/', data),
+  updateCourseYear:  (code, year) => req('PATCH', `/api/lectures/by-course/${encodeURIComponent(code)}/year`, { academic_year: year }),
   deleteCourseByCode:(code)      => del(`/api/lectures/by-course/${encodeURIComponent(code)}`),
   createDoctor:      (data)      => post('/api/lectures/doctors', data),
   deleteDoctor:      (doctorId)  => del(`/api/lectures/doctors/${doctorId}`),

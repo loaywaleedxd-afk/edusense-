@@ -76,8 +76,7 @@ async def available_courses(
     stu_year = int(stu_row["year"] or 1) if stu_row else 1
     target_year = stu_year + 1  # students register for next year's courses
 
-    rows = await db.fetch(
-        """SELECT DISTINCT ON (l.course_code)
+    BASE_QUERY = """SELECT DISTINCT ON (l.course_code)
                   l.lecture_id, l.course_code, l.course_name, l.room,
                   l.capacity, l.scheduled_at, l.days_label, l.days,
                   l.duration_min, l.semester, l.color,
@@ -87,11 +86,17 @@ async def available_courses(
                    WHERE course_id = l.course_code) AS enrolled_count
            FROM lectures l
            LEFT JOIN doctors d ON d.doctor_id = l.doctor_id
-           LEFT JOIN users u ON u.id = d.user_id
-           WHERE l.academic_year = $1
-           ORDER BY l.course_code""",
-        target_year,
-    )
+           LEFT JOIN users u ON u.id = d.user_id"""
+
+    # Students only see their next year's courses; admin/doctor see all
+    if role == "student" and stu_id:
+        rows = await db.fetch(
+            BASE_QUERY + " WHERE l.academic_year = $1 ORDER BY l.course_code",
+            target_year,
+        )
+    else:
+        rows = await db.fetch(BASE_QUERY + " ORDER BY l.course_code")
+
     courses = [dict(r) for r in rows]
 
     # Embed year info in every course so the frontend knows without a 2nd call

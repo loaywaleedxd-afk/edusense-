@@ -803,6 +803,26 @@ function AdminStudents({ theme: C }) {
         <div style={{ fontSize: 22, fontWeight: 700, color: C.text }}>{t('students')} <span style={{ fontSize: 14, fontWeight: 400, color: C.text3 }}>({filtered.length} / {students.length})</span></div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={deleteSelected} style={{ background: C.red_dim, border: `1px solid ${C.red}`, borderRadius: 8, padding: '8px 14px', fontSize: 11, color: C.red2, cursor: 'pointer' }}>🗑️ Delete</button>
+          {/* Bulk year promotion */}
+          <div style={{display:'flex',alignItems:'center',gap:4,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'4px 8px'}}>
+            <span style={{fontSize:10,color:C.text3,fontWeight:700}}>PROMOTE ALL TO</span>
+            <select id="bulk-year-select" defaultValue={2}
+              style={{height:26,background:C.bg,border:`1px solid ${C.border}`,borderRadius:6,padding:'0 6px',fontSize:11,color:C.text}}>
+              {[1,2,3,4].map(y=><option key={y} value={y}>Year {y}</option>)}
+            </select>
+            <button onClick={async()=>{
+              const y = parseInt(document.getElementById('bulk-year-select').value);
+              if(!confirm(`Set ALL ${filtered.length} visible students to Year ${y}?`)) return;
+              let ok=0, fail=0;
+              for(const s of filtered){
+                try{ await api.updateStudentYear(s.id, y); ok++; }catch{ fail++; }
+              }
+              reloadStudents();
+              pushToast({title:`Bulk year update`,message:`${ok} updated${fail?`, ${fail} failed`:''}`,color:'#10b981'});
+            }} style={{height:26,background:'#10b981',border:'none',borderRadius:6,padding:'0 10px',fontSize:11,fontWeight:700,color:'#fff',cursor:'pointer'}}>
+              Apply
+            </button>
+          </div>
           <button onClick={() => exportDataAsCSV(filtered.map(s => ({ ID: s.id, Name: s.name, Department: s.dept, Year: s.year, Email: s.email || '', Attendance: `${s.attendanceRate}%`, Engagement: `${s.engagement}%`, GPA: s.gpa || 'N/A' })), 'students_export.csv')} style={{ background: C.green_dim || 'rgba(16,185,129,0.15)', border: `1px solid ${C.green}`, borderRadius: 8, padding: '8px 14px', fontSize: 11, fontWeight: 700, color: C.green, cursor: 'pointer' }}>📤 Export</button>
           <button onClick={() => setShowImport(true)} style={{ background: 'linear-gradient(135deg,#8b5cf6,#6366f1)', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 11, fontWeight: 700, color: '#fff', cursor: 'pointer' }}>📥 Import</button>
           <button onClick={() => setShowAdd(true)} style={{ background: C.blue3, border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 11, fontWeight: 700, color: '#fff', cursor: 'pointer' }}>+ Add Student</button>
@@ -1139,19 +1159,20 @@ function AdminCourses({ theme: C }) {
   // Helper: map API lecture row → display shape
   function mapRow(r) {
     return {
-      id:          r.lecture_id || r.course_code,
-      code:        r.course_code,
-      name:        r.course_name,
-      room:        r.room || '',
-      time:        r.scheduled_at || '',
-      duration:    r.duration_min || 90,
-      daysLabel:   r.days_label || '',
-      doctorName:  r.doctor_name || 'Unassigned',
-      semester:    r.semester || '',
-      color:       r.color || '#3b82f6',
-      capacity:    r.capacity || 300,
+      id:           r.lecture_id || r.course_code,
+      code:         r.course_code,
+      name:         r.course_name,
+      room:         r.room || '',
+      time:         r.scheduled_at || '',
+      duration:     r.duration_min || 90,
+      daysLabel:    r.days_label || '',
+      doctorName:   r.doctor_name || 'Unassigned',
+      semester:     r.semester || '',
+      color:        r.color || '#3b82f6',
+      capacity:     r.capacity || 300,
       enrolledCount: r.enrolled_count || 0,
-      weeks:       Array.from({length:16},(_,k)=>k+1), // default all weeks on
+      academic_year: r.academic_year || 1,
+      weeks:        Array.from({length:16},(_,k)=>k+1),
     };
   }
 
@@ -1322,7 +1343,10 @@ function AdminCourses({ theme: C }) {
                 <div style={{width:6,background:c.color,flexShrink:0}}/>
                 <div style={{padding:'14px 18px',flex:1,display:'flex',alignItems:'center',gap:16}}>
                   <div style={{flex:1}}>
-                    <div style={{fontSize:14,fontWeight:700,color:C.text}}>{c.name}</div>
+                    <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                      <div style={{fontSize:14,fontWeight:700,color:C.text}}>{c.name}</div>
+                      <span style={{background:'#3b82f622',border:'1px solid #3b82f644',borderRadius:6,padding:'1px 8px',fontSize:10,fontWeight:700,color:'#3b82f6'}}>Year {c.academic_year}</span>
+                    </div>
                     <div style={{fontSize:11,color:C.text2,marginTop:2}}>{c.code} · {c.room} · {c.time} · {c.duration} min{c.daysLabel ? ` · 📅 ${c.daysLabel}` : ''}</div>
                     <div style={{fontSize:11,color:C.text3}}>👨‍🏫 {c.doctorName} · {c.semester}</div>
                   </div>
@@ -1340,6 +1364,21 @@ function AdminCourses({ theme: C }) {
                     <div style={{fontSize:9,color:C.text3}}>Capacity</div>
                   </div>
                   {/* Weeks edit button */}
+                  {/* Inline year changer */}
+                  <select
+                    value={c.academic_year || 1}
+                    onChange={async e => {
+                      const y = parseInt(e.target.value);
+                      try {
+                        await api.updateCourseYear(c.code, y);
+                        setCourses(cs => cs.map(x => x.code === c.code ? {...x, academic_year: y} : x));
+                        pushToast({title:'Year updated', message:`${c.name} → Year ${y}`, color:'#10b981'});
+                      } catch(err) { pushToast({title:'Failed', message:err.message, color:'#ef4444'}); }
+                    }}
+                    style={{height:32,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:8,padding:'0 8px',fontSize:11,color:C.text,cursor:'pointer'}}
+                  >
+                    {[1,2,3,4].map(y=><option key={y} value={y}>Yr {y}</option>)}
+                  </select>
                   <button
                     onClick={()=>setWeeksOpen(isOpen ? null : c.code)}
                     style={{background: isOpen ? C.blue3 : C.bg3, border:`1px solid ${isOpen ? C.blue3 : C.border}`, borderRadius:8, padding:'6px 12px', fontSize:11, fontWeight:700, color: isOpen ? '#fff' : C.text2, cursor:'pointer'}}>

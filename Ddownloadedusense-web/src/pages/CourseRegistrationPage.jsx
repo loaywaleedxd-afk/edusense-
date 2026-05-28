@@ -241,7 +241,7 @@ export default function CourseRegistrationPage({ theme: C }) {
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <div style={{ fontWeight: 700, color: C.text, fontSize: 15 }}>{course.course_name}</div>
-                    {course.academic_year && (
+                    {course.academic_year > 0 && (
                       <span style={{
                         background: '#3b82f622', border: '1px solid #3b82f644',
                         borderRadius: 6, padding: '1px 7px', fontSize: 10,

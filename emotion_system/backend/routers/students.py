@@ -33,10 +33,12 @@ async def list_students(payload: dict = Depends(require_role("doctor", "admin"))
                GREATEST(1, COUNT(a.id)), 1
              ) as attendance_rate,
              COUNT(a.id) as total_lectures,
-             SUM(CASE WHEN a.status='present' THEN 1 ELSE 0 END) as attended
+             SUM(CASE WHEN a.status='present' THEN 1 ELSE 0 END) as attended,
+             ROUND(AVG(g.grade)::numeric, 1) as gpa
            FROM students s
            JOIN users u ON s.user_id = u.id
            LEFT JOIN attendance a ON s.student_id = a.student_id
+           LEFT JOIN grades g ON g.student_id = s.student_id
            GROUP BY s.student_id, u.full_name, u.email, s.department, s.year, s.photo_path
            ORDER BY u.full_name"""
     )

@@ -188,6 +188,23 @@ async def create_lecture(
     return {"message": "Course created", "lecture_id": lecture_id, "course_code": lec.course_code}
 
 
+@router.patch("/by-course/{course_code}/year")
+async def update_course_year(
+    course_code: str,
+    data: dict,
+    payload: dict = Depends(require_role("admin")),
+    db=Depends(get_db),
+):
+    """Update the academic_year for all lecture sections of a course — admin only."""
+    year = int(data.get("academic_year", 1))
+    if year < 1 or year > 4:
+        raise HTTPException(status_code=400, detail="academic_year must be 1–4")
+    await db.execute(
+        "UPDATE lectures SET academic_year=$1 WHERE course_code=$2", year, course_code
+    )
+    return {"ok": True, "course_code": course_code, "academic_year": year}
+
+
 @router.delete("/by-course/{course_code}")
 async def delete_course(
     course_code: str,
