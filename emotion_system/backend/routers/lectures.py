@@ -189,14 +189,15 @@ async def create_lecture(
 
 
 @router.post("/set-year")
+@router.put("/set-year")
 async def update_course_year(
     data: dict,
     payload: dict = Depends(require_role("admin")),
     db=Depends(get_db),
 ):
-    """Update the academic_year for a course — admin only."""
-    course_code = data.get("course_code", "")
-    year = int(data.get("academic_year", 1))
+    """Update the academic_year for a course — admin only. Accepts POST or PUT."""
+    course_code = str(data.get("course_code") or data.get("code") or "").strip()
+    year = int(data.get("academic_year") or data.get("year") or 1)
     if not course_code:
         raise HTTPException(status_code=400, detail="course_code is required")
     if year < 1 or year > 4:
