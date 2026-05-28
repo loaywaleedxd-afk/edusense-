@@ -745,7 +745,14 @@ function AdminStudents({ theme: C }) {
   const [createdAccount, setCreatedAccount] = useState(null);
   const [, forceUpdate] = useState(0);
 
-  const reloadStudents = () => api.getStudents().then(setStudents).catch(() => {});
+  const reloadStudents = () => api.getStudents()
+    .then(rows => setStudents(rows.map(s => ({
+      ...s,
+      id:           s.id           || s.student_id,
+      dept:         s.dept         || s.department,
+      attendanceRate: s.attendance_rate != null ? Number(s.attendance_rate) : (s.attendanceRate || 0),
+    }))))
+    .catch(() => {});
   useEffect(() => { reloadStudents(); }, []);
 
   const filtered = students.filter(s=>
