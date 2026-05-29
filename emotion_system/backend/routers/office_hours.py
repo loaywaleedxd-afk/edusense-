@@ -207,12 +207,38 @@ async def get_doctor_bookings(doctor_id: str, _: dict = Depends(require_auth), d
 
 # ── DELETE /booking/{booking_id} ──────────────────────────────────────────────
 @router.delete("/booking/{booking_id}")
-async def cancel_booking(booking_id: str, _: dict = Depends(require_auth), db=Depends(get_db)):
+async def cancel_booking(booking_id: str, payload: dict = Depends(require_auth), db=Depends(get_db)):
+    role = payload.get("role")
+    uid  = int(payload.get("sub"))
     try:
+        booking_row = await db.fetchrow(
+            "SELECT student_id, doctor_id FROM office_hours_bookings WHERE id = $1", booking_id
+        )
+        if not booking_row:
+            raise HTTPException(status_code=404, detail="Booking not found")
+
+        if role == "student":
+            # Students can only cancel their own bookings
+            stu_row = await db.fetchrow("SELECT student_id FROM students WHERE user_id=$1", uid)
+            if not stu_row or stu_row["student_id"] != booking_row["student_id"]:
+                raise HTTPException(status_code=403, detail="Access denied")
+        elif role == "doctor":
+            doc_row = await db.fetchrow("SELECT doctor_id FROM doctors WHERE user_id=$1", uid)
+            # Doctor can cancel bookings in their own slots
+            slot_row = await db.fetchrow(
+                "SELECT doctor_id FROM office_hours_slots WHERE id = (SELECT slot_id FROM office_hours_bookings WHERE id=$1)",
+                booking_id
+            )
+            if not doc_row or (booking_row["doctor_id"] != doc_row["doctor_id"] and
+                               (not slot_row or slot_row["doctor_id"] != doc_row["doctor_id"])):
+                raise HTTPException(status_code=403, detail="Access denied")
+
         await db.execute(
             "UPDATE office_hours_bookings SET status = 'cancelled' WHERE id = $1",
             booking_id
         )
         return {"ok": True}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -1144,7 +1144,7 @@ function AdminDoctors({ theme: C }) {
                 <div style={{fontSize:9,color:C.text3}}>Students</div>
               </div>
               <div style={{textAlign:'center',flex:1,background:C.bg3,borderRadius:8,padding:'6px'}}>
-                <div style={{fontSize:14,fontWeight:700,color:C.amber}}>{d.engagement}%</div>
+                <div style={{fontSize:14,fontWeight:700,color:C.amber}}>{d.engagement != null ? `${d.engagement}%` : '—'}</div>
                 <div style={{fontSize:9,color:C.text3}}>Engagement</div>
               </div>
             </div>
@@ -1755,7 +1755,7 @@ function AdminRegistration({ theme: C }) {
 function AdminParents({ theme: C }) {
   const { t } = useLang();
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({name:'',username:'',password:'demo123',email:'',studentId:''});
+  const [form, setForm] = useState({name:'',username:'',password:'',email:'',studentId:''});
   const [parents, setParents] = useState([]);
   const [createdAccount, setCreatedAccount] = useState(null);
   const [, forceUpdate] = useState(0);
@@ -1781,7 +1781,7 @@ function AdminParents({ theme: C }) {
     }
     setCreatedAccount({ name: form.name, role: 'Parent', username: form.username, password: form.password, email: form.email, id: form.studentId||null });
     reloadParents();
-    setShowAdd(false); setForm({name:'',username:'',password:'demo123',email:'',studentId:''});
+    setShowAdd(false); setForm({name:'',username:'',password:'',email:'',studentId:''});
   }
 
   return (
@@ -1832,9 +1832,9 @@ function AdminRReports({ theme: C }) {
     setRunning(script);
     setOutput(`# Running ${script}...\n`);
     try {
-      const res = await fetch('/api/run-r', {
+      const res = await fetch('/api/analytics/run-r-analysis', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('edusense_token')}` },
         body: JSON.stringify({ script }),
       });
       const reader = res.body.getReader();
@@ -1892,7 +1892,7 @@ function AdminRReports({ theme: C }) {
         fontSize: 12, color: '#10b981',
       }}>
         <span style={{ fontSize: 16 }}>✅</span>
-        R detected at <code style={{ fontFamily: 'monospace', background: 'rgba(16,185,129,0.1)', padding: '2px 6px', borderRadius: 4 }}>C:\Program Files\R\R-4.6.0\bin\Rscript.exe</code>
+        R scripts run server-side via the analytics endpoint
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 20 }}>
@@ -2096,7 +2096,7 @@ function StudentPortfolioModal({ theme: C, student, onClose }) {
     try {
       await api.unenroll(courseId, student.id);
     } catch(e) { alert('Failed to unenroll: ' + e.message); return; }
-    setEnrolledCourses(prev => prev.filter(c => String(c.id) !== String(courseId)));
+    setEnrolledCourses(prev => prev.filter(c => String(c.course_code) !== String(courseId)));
   }
 
   async function printPortfolio() {

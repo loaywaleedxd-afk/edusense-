@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends
 from database import get_db
 from auth_utils import require_auth, require_role
 from datetime import datetime, timezone
+import uuid
 
 router = APIRouter()
 
@@ -56,7 +57,7 @@ async def add_notification(data: dict, payload: dict = Depends(require_auth), db
              student_id=EXCLUDED.student_id, doctor_id=EXCLUDED.doctor_id,
              course_id=EXCLUDED.course_id, alert_kind=EXCLUDED.alert_kind,
              is_read=EXCLUDED.is_read, created_at=EXCLUDED.created_at""",
-        data["id"], data.get("type","info"), data.get("title",""),
+        data.get("id") or str(uuid.uuid4()), data.get("type","info"), data.get("title",""),
         data.get("message",""), data.get("studentId"),
         data.get("doctorId"), data.get("courseId"),
         data.get("alertKind"), False, _parse_dt(data.get("createdAt"))
@@ -84,7 +85,7 @@ async def bulk_upsert_notifications(items: list[dict], payload: dict = Depends(r
                      student_id=EXCLUDED.student_id, doctor_id=EXCLUDED.doctor_id,
                      course_id=EXCLUDED.course_id, alert_kind=EXCLUDED.alert_kind,
                      is_read=EXCLUDED.is_read, created_at=EXCLUDED.created_at""",
-                data["id"], data.get("type","info"), data.get("title",""),
+                data.get("id") or str(uuid.uuid4()), data.get("type","info"), data.get("title",""),
                 data.get("message",""), data.get("studentId"),
                 data.get("doctorId"), data.get("courseId"),
                 data.get("alertKind"), bool(data.get("read")),

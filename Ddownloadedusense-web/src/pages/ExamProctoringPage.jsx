@@ -223,7 +223,7 @@ function StudentProctoring({ theme: C, user, examId }) {
     if (!frame) { setPhase('setup'); return; }
     try {
       const res = await post('/api/proctor/verify-identity', {
-        student_id: user.studentId || user.username,
+        student_id: user.studentId || user.student_id || '',
         exam_id:    examId,
         frame_b64:  frame,
       });
@@ -245,7 +245,7 @@ function StudentProctoring({ theme: C, user, examId }) {
     let sid;
     if (!isLocal) {
       const s = await post('/api/proctor/start', {
-        student_id: user.studentId || user.username,
+        student_id: user.studentId || user.student_id || '',
         exam_id:    examId,
       });
       sid = s.session_id;
@@ -282,7 +282,7 @@ function StudentProctoring({ theme: C, user, examId }) {
     try {
       const res = await post('/api/proctor/check-frame', {
         session_id: sid,
-        student_id: user.studentId || user.username,
+        student_id: user.studentId || user.student_id || '',
         exam_id:    examId,
         frame_b64:  frame,
       });

@@ -82,6 +82,15 @@ def _analyse_frame(frame_b64: str) -> dict:
 
 @router.post("/start")
 async def start_session(body: StartSession, payload: dict = Depends(require_auth), db=Depends(get_db)):
+    role = payload.get("role")
+    uid  = int(payload.get("sub"))
+
+    # Students can only start their own session
+    if role == "student":
+        stu_row = await db.fetchrow("SELECT student_id FROM students WHERE user_id=$1", uid)
+        if not stu_row or stu_row["student_id"] != body.student_id:
+            raise HTTPException(403, "Access denied")
+
     # Close any existing active session for same student+exam
     await db.execute(
         "UPDATE proctoring_sessions SET status='completed', ended_at=NOW() "
@@ -163,6 +172,18 @@ async def check_frame(body: CheckFrame, payload: dict = Depends(require_auth), d
 
 @router.post("/end")
 async def end_session(body: EndSession, payload: dict = Depends(require_auth), db=Depends(get_db)):
+    role = payload.get("role")
+    uid  = int(payload.get("sub"))
+
+    if role == "student":
+        # Ensure student owns this session
+        session_row = await db.fetchrow("SELECT student_id FROM proctoring_sessions WHERE id=$1", body.session_id)
+        if not session_row:
+            raise HTTPException(404, "Session not found")
+        stu_row = await db.fetchrow("SELECT student_id FROM students WHERE user_id=$1", uid)
+        if not stu_row or stu_row["student_id"] != session_row["student_id"]:
+            raise HTTPException(403, "Access denied")
+
     await db.execute(
         "UPDATE proctoring_sessions SET status='completed', ended_at=NOW() "
         "WHERE id=$1 AND status='active'",

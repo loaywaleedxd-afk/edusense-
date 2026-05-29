@@ -74,7 +74,8 @@ async def available_courses(
     )
     stu_id   = stu_row["student_id"] if stu_row else None
     stu_year = int(stu_row["year"] or 1) if stu_row else 1
-    target_year = stu_year + 1  # students register for next year's courses
+    # Students in year N register for year N+1 courses, but cap at 4 (final year)
+    target_year = min(stu_year + 1, 4)
 
     BASE_QUERY = """SELECT DISTINCT ON (l.course_code)
                   l.lecture_id, l.course_code, l.course_name, l.room,

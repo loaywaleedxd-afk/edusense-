@@ -103,13 +103,12 @@ function buildCurriculum(base) {
   return result;
 }
 
-/* ── Default status by student year ──────────────────────────────────────── */
+/* ── Default status by student year — based on real year, no hardcoded completions ── */
 function defaultStatus(code, stu) {
-  const COMPLETED_SEMS = [1, 2]; // semesters auto-completed
   const semNum = CURRICULUM.findIndex(s => s.courses.some(c => c.code === code)) + 1;
   const stuYear = stu?.year || 1;
   if (semNum === 0) return 'not_started';
-  if (semNum <= COMPLETED_SEMS.length) return 'completed';
+  // A semester is "completed" only if the student's year has passed it
   if (Math.ceil(semNum / 2) < stuYear) return 'completed';
   if (Math.ceil(semNum / 2) === stuYear) return 'in_progress';
   return 'not_started';

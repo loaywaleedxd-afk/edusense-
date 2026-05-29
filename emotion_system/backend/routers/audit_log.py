@@ -27,7 +27,7 @@ async def get_audit_log(
 @router.post("/")
 async def add_audit_entry(
     body: AuditEntry,
-    payload: dict = Depends(require_auth),
+    payload: dict = Depends(require_role("admin", "doctor", "superadmin")),
     db=Depends(get_db),
 ):
     # Derive actor identity from JWT — never trust client-supplied name/role

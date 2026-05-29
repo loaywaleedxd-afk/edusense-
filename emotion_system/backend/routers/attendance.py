@@ -123,7 +123,20 @@ async def attendance_summary(
     payload: dict = Depends(require_role("doctor", "admin")),
     db=Depends(get_db),
 ):
-    total_row = await db.fetchrow("SELECT COUNT(*) as total FROM students")
+    # Count only enrolled students for this lecture's course, not ALL students
+    lec_row = await db.fetchrow(
+        "SELECT course_code FROM lectures WHERE lecture_id=$1", lecture_id
+    )
+    if lec_row:
+        total_row = await db.fetchrow(
+            "SELECT COUNT(*) as total FROM course_enrollments WHERE course_id=$1",
+            lec_row["course_code"],
+        )
+    else:
+        total_row = await db.fetchrow(
+            "SELECT COUNT(DISTINCT student_id) as total FROM attendance WHERE lecture_id=$1",
+            lecture_id,
+        )
     total = total_row["total"] if total_row else 0
     present_row = await db.fetchrow(
         "SELECT COUNT(*) as present FROM attendance WHERE lecture_id=$1 AND status='present'",
@@ -134,6 +147,6 @@ async def attendance_summary(
         "lecture_id": lecture_id,
         "total_students": total,
         "present": present,
-        "absent": total - present,
+        "absent": max(0, total - present),
         "attendance_rate": round(present / max(total, 1) * 100, 1),
     }

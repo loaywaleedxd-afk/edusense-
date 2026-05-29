@@ -296,7 +296,7 @@ async def notify_at_risk(
         SELECT u.email, u.full_name FROM lectures l
         JOIN doctors d ON l.doctor_id = d.doctor_id
         JOIN users   u ON d.user_id   = u.id
-        JOIN course_enrollments ce ON ce.course_id = l.lecture_id
+        JOIN course_enrollments ce ON ce.course_id = l.course_code
         WHERE ce.student_id=$1
         LIMIT 1
     """, student_id)

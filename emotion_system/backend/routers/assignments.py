@@ -4,6 +4,7 @@ from database import get_db
 from auth_utils import require_auth, require_role
 from notifier import manager
 from utils import parse_dt
+import uuid
 
 router = APIRouter()
 
@@ -48,7 +49,7 @@ async def add_assignment(data: dict, request: Request, payload: dict = Depends(r
              max_score=EXCLUDED.max_score, attachment_name=EXCLUDED.attachment_name,
              attachment_size=EXCLUDED.attachment_size, attachment_data=EXCLUDED.attachment_data,
              created_at=EXCLUDED.created_at""",
-        data["id"], data.get("courseId",""), data.get("courseName",""),
+        data.get("id") or str(uuid.uuid4()), data.get("courseId",""), data.get("courseName",""),
         data.get("doctorId",""), data.get("title",""),
         data.get("description",""), data.get("deadline",""),
         int(data.get("maxScore",100)),
@@ -136,7 +137,7 @@ async def upsert_submission(data: dict, payload: dict = Depends(require_auth), d
              file_data=EXCLUDED.file_data, submitted_at=EXCLUDED.submitted_at,
              grade=EXCLUDED.grade, feedback=EXCLUDED.feedback,
              graded_at=EXCLUDED.graded_at, graded_by=EXCLUDED.graded_by""",
-        data["id"], data.get("assignmentId",""), data.get("studentId",""),
+        data.get("id") or str(uuid.uuid4()), data.get("assignmentId",""), data.get("studentId",""),
         data.get("courseId",""), data.get("content",""),
         data.get("fileName",""), int(data.get("fileSize",0)),
         data.get("fileData"), parse_dt(data.get("submittedAt")),

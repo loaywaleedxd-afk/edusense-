@@ -4,6 +4,7 @@ from database import get_db
 from auth_utils import require_auth, require_role
 from notifier import manager
 from utils import parse_dt
+import uuid
 
 router = APIRouter()
 
@@ -47,7 +48,7 @@ async def add_announcement(
              course_id=EXCLUDED.course_id, course_name=EXCLUDED.course_name,
              doctor_id=EXCLUDED.doctor_id, doctor_name=EXCLUDED.doctor_name,
              title=EXCLUDED.title, body=EXCLUDED.body, created_at=EXCLUDED.created_at""",
-        data["id"], data.get("courseId",""), data.get("courseName",""),
+        data.get("id") or str(uuid.uuid4()), data.get("courseId",""), data.get("courseName",""),
         data.get("doctorId",""), data.get("doctorName",""),
         data.get("title",""), data.get("body",""), parse_dt(data.get("createdAt"))
     )

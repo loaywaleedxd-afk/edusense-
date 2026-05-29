@@ -290,7 +290,8 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
   const [page, setPage] = useState('dashboard');
   const [menuOpen, setMenuOpen] = useState(false);
   const { t, isRTL } = useLang();
-  const sid = user.studentId || user.student_id || user.id || '';
+  // Never fall back to the numeric DB user.id — that's not the student_id string
+  const sid = user.studentId || user.student_id || '';
   const [stu, setStu] = useState(() => {
     const base = store.getStudent(sid);
     if (base) return base;

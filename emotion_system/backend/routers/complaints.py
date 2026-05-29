@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from database import get_db
 from auth_utils import require_auth, require_role
 from utils import parse_dt
+import uuid
 
 router = APIRouter()
 
@@ -59,7 +60,7 @@ async def upsert_complaint(data: dict, payload: dict = Depends(require_auth), db
              status=EXCLUDED.status, doctor_id=EXCLUDED.doctor_id,
              doctor_response=EXCLUDED.doctor_response, admin_response=EXCLUDED.admin_response,
              created_at=EXCLUDED.created_at, updated_at=EXCLUDED.updated_at""",
-        data["id"], data.get("studentId",""), data.get("studentName",""),
+        data.get("id") or str(uuid.uuid4()), data.get("studentId",""), data.get("studentName",""),
         data.get("type","general"), data.get("courseId",""), data.get("courseName",""),
         data.get("description",""), data.get("status","pending"),
         data.get("doctorId",""), data.get("doctorResponse",""),

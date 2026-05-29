@@ -83,8 +83,9 @@ async def login(req: LoginRequest, request: Request, db=Depends(get_db)):
         "name": user.get("full_name", ""),
     })
 
-    # For student users, fetch their photo_path for the profile picture
+    # For student users, fetch their photo_path and student_id for the profile picture
     photo_path = None
+    student_id = None
     if user.get("role") == "student":
         s_row = await db.fetchrow(
             "SELECT photo_path, student_id FROM students WHERE user_id=$1",
@@ -92,17 +93,23 @@ async def login(req: LoginRequest, request: Request, db=Depends(get_db)):
         )
         if s_row:
             photo_path = s_row["photo_path"]
+            student_id = s_row["student_id"]
+
+    user_obj = {
+        "id":         user["id"],
+        "username":   user.get("username") or uname,
+        "name":       user.get("full_name") or uname,
+        "email":      user.get("email", ""),
+        "role":       user.get("role", "student"),
+        "photo_path": photo_path,   # e.g. /photos/aast/231014184.jpg
+    }
+    if student_id:
+        user_obj["student_id"] = student_id
+        user_obj["studentId"]  = student_id   # camelCase alias for frontend
 
     return {
         "token": token,
-        "user": {
-            "id":         user["id"],
-            "username":   user.get("username") or uname,
-            "name":       user.get("full_name") or uname,
-            "email":      user.get("email", ""),
-            "role":       user.get("role", "student"),
-            "photo_path": photo_path,   # e.g. /photos/aast/231014184.jpg
-        },
+        "user": user_obj,
         "message": "Login successful",
     }
 

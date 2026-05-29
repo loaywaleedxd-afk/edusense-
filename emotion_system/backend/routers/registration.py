@@ -12,7 +12,8 @@ async def get_registration(payload: dict = Depends(require_auth), db=Depends(get
     if row:
         r = dict(row)
         return {"open": bool(r["is_open"]), "semester": r["semester"], "deadline": r["deadline"]}
-    return {"open": True, "semester": "Fall 2026", "deadline": "2026-09-30"}
+    # No DB record → default to CLOSED (safe-fail); admin must explicitly open registration
+    return {"open": False, "semester": "Fall 2026", "deadline": "2026-09-30"}
 
 
 @router.put("/")

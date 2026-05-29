@@ -57,7 +57,7 @@ function predictStudent(stu, results) {
 async function generateInsights(doctor, myCourses) {
   // Fetch enrolled students for all courses via real API
   const allStudentsNested = await Promise.all(
-    myCourses.map(c => api.getCourseStudents(c.code || c.id).catch(() => []))
+    myCourses.map(c => api.getCourseStudents(c.code || c.id).then(r => r?.enrolled || r || []).catch(() => []))
   );
   const allStudents = allStudentsNested.flat();
   const unique = [...new Map(allStudents.map(s => [s.id || s.student_id, s])).values()];

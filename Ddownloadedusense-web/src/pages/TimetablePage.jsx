@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import store from '../dataStore';
+import api from '../api';
 import { useLang } from '../context/LanguageContext';
 
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu'];
@@ -35,24 +36,49 @@ export default function TimetablePage({ theme: C, stu, role = 'student', doctorI
   const [lectures, setLectures] = useState([]);
 
   useEffect(() => {
-    const allCourses = store.courses || [];
-    const enrollments = store.courseEnrollments || {};
-    const stuId = String(stu?.id || stu?.student_id || '');
-
-    if (role === 'student' && stu) {
-      const myIds = new Set(
-        Object.entries(enrollments)
-          .filter(([, ids]) => ids.some(id => String(id) === stuId))
-          .map(([cid]) => cid)
-      );
-      setLectures(allCourses.filter(c => myIds.has(String(c.id || c.code))));
-    } else if (role === 'doctor') {
-      const dId = String(doctorId || '');
-      setLectures(allCourses.filter(c => String(c.doctorId || c.doctor_id || '') === dId));
-    } else {
-      setLectures(allCourses);
-    }
-  }, [role, stu?.id, stu?.student_id, doctorId]);
+    // Prefer real API data; fall back to dataStore for offline scenarios
+    api.getLectures().then(apiLectures => {
+      if (!Array.isArray(apiLectures) || apiLectures.length === 0) throw new Error('empty');
+      const stuId = String(stu?.studentId || stu?.student_id || stu?.id || '');
+      if (role === 'student' && stuId) {
+        // Filter to lectures where this student is enrolled
+        api.getStudentAttendance?.(stuId).catch(() => null); // warm-up; not used for filtering
+        // Get enrolled course_ids from API
+        api.getEnrollmentRequests?.().then(reqs => {
+          const enrolled = new Set(
+            (Array.isArray(reqs) ? reqs : [])
+              .filter(r => r.status === 'approved' || r.status === 'enrolled')
+              .map(r => r.course_id)
+          );
+          // Also check course_enrollments endpoint if available
+          setLectures(apiLectures.filter(l => enrolled.has(l.course_code) || enrolled.has(l.lecture_id)));
+        }).catch(() => setLectures(apiLectures));
+      } else if (role === 'doctor') {
+        const dId = String(doctorId || '');
+        setLectures(dId ? apiLectures.filter(l => String(l.doctor_id || '') === dId) : apiLectures);
+      } else {
+        setLectures(apiLectures);
+      }
+    }).catch(() => {
+      // Fallback to dataStore
+      const allCourses = store.courses || [];
+      const enrollments = store.courseEnrollments || {};
+      const stuId = String(stu?.studentId || stu?.student_id || stu?.id || '');
+      if (role === 'student' && stu) {
+        const myIds = new Set(
+          Object.entries(enrollments)
+            .filter(([, ids]) => ids.some(id => String(id) === stuId))
+            .map(([cid]) => cid)
+        );
+        setLectures(allCourses.filter(c => myIds.has(String(c.id || c.code))));
+      } else if (role === 'doctor') {
+        const dId = String(doctorId || '');
+        setLectures(allCourses.filter(c => String(c.doctorId || c.doctor_id || '') === dId));
+      } else {
+        setLectures(allCourses);
+      }
+    });
+  }, [role, stu?.id, stu?.student_id, stu?.studentId, doctorId]);
 
   // Build events per day
   const events = {};
@@ -63,7 +89,10 @@ export default function TimetablePage({ theme: C, stu, role = 'student', doctorI
     if (typeof days === 'string') { try { days = JSON.parse(days); } catch { days = []; } }
     if (!Array.isArray(days) || days.length === 0) return;
 
-    const startMin = timeToMinutes(lec.time || '09:00');
+    // scheduled_at may be a full ISO datetime or just a time string (HH:MM)
+    const rawTime = lec.scheduled_at || lec.time || '09:00';
+    const timeStr = rawTime.includes('T') ? rawTime.split('T')[1].slice(0, 5) : rawTime.slice(0, 5);
+    const startMin = timeToMinutes(timeStr);
     const duration = lec.duration || 90;
     const endMin = startMin + duration;
 

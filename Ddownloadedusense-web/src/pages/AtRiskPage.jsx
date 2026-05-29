@@ -507,7 +507,8 @@ function StudentSelfRisk({ theme: C, studentId }) {
 // ── Main export ───────────────────────────────────────────────────────────────
 export default function AtRiskPage({ theme: C, user }) {
   const isAdvisor = user?.role === 'doctor' || user?.role === 'admin';
-  const studentId = user?.studentId || user?.username;
+  // Never fall back to username — it's not the student_id
+  const studentId = user?.studentId || user?.student_id || '';
 
   return (
     <div style={{ padding: '24px 28px', height: '100%', overflowY: 'auto' }}>

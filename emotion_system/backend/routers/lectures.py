@@ -279,7 +279,7 @@ async def live_summary(
         lecture_id,
     )
     alert_row = await db.fetchrow(
-        "SELECT COUNT(*) as cnt FROM alerts WHERE lecture_id=$1 AND is_read=FALSE",
+        "SELECT COUNT(*) as cnt FROM system_alerts WHERE lecture_id=$1 AND is_read=FALSE",
         lecture_id,
     )
     alerts = alert_row["cnt"] if alert_row else 0

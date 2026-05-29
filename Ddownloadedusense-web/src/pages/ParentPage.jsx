@@ -54,7 +54,7 @@ export default function ParentPage({ theme: C, user, isDark, onToggleMode, onLog
   useEffect(() => {
     const ids = linkedIds.length > 0
       ? linkedIds
-      : [user.studentId || user.id || ''].filter(Boolean);
+      : [user.studentId || user.student_id || ''].filter(Boolean);  // never use numeric DB user.id
     if (!ids.length) return;
     Promise.all(ids.map(id => api.getStudent(id).catch(() => null)))
       .then(results => {

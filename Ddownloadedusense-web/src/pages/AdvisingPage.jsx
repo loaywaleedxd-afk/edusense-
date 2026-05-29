@@ -261,18 +261,27 @@ function ApptCard({ appt, role, theme: C, onUpdate, onCancel }) {
 
 // ── Book appointment form ─────────────────────────────────────────────────────
 function BookForm({ theme: C, user, onBooked }) {
-  const [date,  setDate]  = useState('');
-  const [time,  setTime]  = useState('09:00');
-  const [topic, setTopic] = useState('');
-  const [busy,  setBusy]  = useState(false);
-  const [msg,   setMsg]   = useState('');
+  const [date,      setDate]     = useState('');
+  const [time,      setTime]     = useState('09:00');
+  const [topic,     setTopic]    = useState('');
+  const [advisorId, setAdvisorId]= useState('');
+  const [advisors,  setAdvisors] = useState([]);
+  const [busy,      setBusy]     = useState(false);
+  const [msg,       setMsg]      = useState('');
+
+  useEffect(() => {
+    get('/api/lectures/doctors').then(list => {
+      if (Array.isArray(list)) setAdvisors(list);
+    }).catch(() => {});
+  }, []);
 
   async function submit() {
     if (!date) { setMsg('Please select a date'); return; }
+    if (!advisorId) { setMsg('Please select an advisor'); return; }
     setBusy(true);
     const apptData = {
-      student_id:     user.studentId || user.username,
-      advisor_id:     'dr.ahmed',
+      student_id:     user.studentId || user.student_id || user.username,
+      advisor_id:     advisorId,
       scheduled_date: date,
       scheduled_time: time,
       topic,
@@ -301,6 +310,17 @@ function BookForm({ theme: C, user, onBooked }) {
   return (
     <div style={{ background: C.card, borderRadius: 14, border: `1px solid ${C.border}`, padding: 20, marginBottom: 20 }}>
       <div style={{ fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 14 }}>📅 Book Appointment</div>
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: C.text3, marginBottom: 4 }}>ADVISOR</div>
+        <select value={advisorId} onChange={e => setAdvisorId(e.target.value)} style={inp}>
+          <option value="">— Select an advisor —</option>
+          {advisors.map(d => (
+            <option key={d.doctor_id} value={d.doctor_id}>
+              {d.title ? `${d.title} ` : ''}{d.name || d.full_name} {d.department ? `(${d.department})` : ''}
+            </option>
+          ))}
+        </select>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 10, fontWeight: 700, color: C.text3, marginBottom: 4 }}>DATE</div>

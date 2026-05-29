@@ -118,6 +118,27 @@ async def update_appointment(
     payload: dict = Depends(require_auth),
     db=Depends(get_db)
 ):
+    role = payload.get("role")
+    sub  = int(payload.get("sub"))
+
+    # Verify the caller owns this appointment
+    appt = await db.fetchrow("SELECT student_id, advisor_id FROM advisor_appointments WHERE id=$1", appt_id)
+    if not appt:
+        raise HTTPException(404, "Appointment not found")
+
+    if role == "student":
+        stu_row = await db.fetchrow("SELECT student_id FROM students WHERE user_id=$1", sub)
+        if not stu_row or stu_row["student_id"] != appt["student_id"]:
+            raise HTTPException(403, "Access denied")
+        # Students can only cancel (status), not write advisor_notes
+        if body.advisor_notes is not None:
+            raise HTTPException(403, "Students cannot set advisor notes")
+    elif role == "doctor":
+        doc_row = await db.fetchrow("SELECT doctor_id FROM doctors WHERE user_id=$1", sub)
+        if not doc_row or doc_row["doctor_id"] != appt["advisor_id"]:
+            raise HTTPException(403, "Access denied")
+    # admin may update any appointment
+
     fields, vals = [], []
     idx = 1
     if body.status        is not None:
@@ -135,6 +156,22 @@ async def update_appointment(
 
 @router.delete("/appointments/{appt_id}")
 async def cancel_appointment(appt_id: int, payload: dict = Depends(require_auth), db=Depends(get_db)):
+    role = payload.get("role")
+    sub  = int(payload.get("sub"))
+
+    appt = await db.fetchrow("SELECT student_id, advisor_id FROM advisor_appointments WHERE id=$1", appt_id)
+    if not appt:
+        raise HTTPException(404, "Appointment not found")
+
+    if role == "student":
+        stu_row = await db.fetchrow("SELECT student_id FROM students WHERE user_id=$1", sub)
+        if not stu_row or stu_row["student_id"] != appt["student_id"]:
+            raise HTTPException(403, "Access denied")
+    elif role == "doctor":
+        doc_row = await db.fetchrow("SELECT doctor_id FROM doctors WHERE user_id=$1", sub)
+        if not doc_row or doc_row["doctor_id"] != appt["advisor_id"]:
+            raise HTTPException(403, "Access denied")
+
     await db.execute(
         "UPDATE advisor_appointments SET status='cancelled' WHERE id=$1",
         appt_id
@@ -175,6 +212,17 @@ async def add_note(body: NoteCreate, payload: dict = Depends(require_role("docto
 
 @router.delete("/notes/{note_id}")
 async def delete_note(note_id: int, payload: dict = Depends(require_role("doctor", "admin")), db=Depends(get_db)):
+    role = payload.get("role")
+    sub  = int(payload.get("sub"))
+
+    if role == "doctor":
+        doc_row = await db.fetchrow("SELECT doctor_id FROM doctors WHERE user_id=$1", sub)
+        note_row = await db.fetchrow("SELECT advisor_id FROM advisor_student_notes WHERE id=$1", note_id)
+        if not note_row:
+            raise HTTPException(404, "Note not found")
+        if not doc_row or doc_row["doctor_id"] != note_row["advisor_id"]:
+            raise HTTPException(403, "You can only delete your own notes")
+
     await db.execute("DELETE FROM advisor_student_notes WHERE id=$1", note_id)
     return {"message": "Note deleted"}
 

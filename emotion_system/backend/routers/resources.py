@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends
 from database import get_db
 from auth_utils import require_auth, require_role
 from utils import parse_dt
+import uuid
 
 router = APIRouter()
 
@@ -44,7 +45,7 @@ async def add_resource(data: dict, payload: dict = Depends(require_role("doctor"
              doctor_id=EXCLUDED.doctor_id, file_name=EXCLUDED.file_name,
              file_size=EXCLUDED.file_size, file_data=EXCLUDED.file_data,
              created_at=EXCLUDED.created_at""",
-        data["id"], data.get("courseId",""), int(data.get("week",1)),
+        data.get("id") or str(uuid.uuid4()), data.get("courseId",""), int(data.get("week",1)),
         data.get("title",""), data.get("url",""), data.get("type","link"),
         data.get("description",""), data.get("doctorId",""),
         data.get("fileName",""), int(data.get("fileSize",0)),

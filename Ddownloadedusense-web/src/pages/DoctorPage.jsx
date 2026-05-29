@@ -148,7 +148,7 @@ export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLog
     email: user.email || '',
     title: '',
     dept: '',
-    engagement: 88,
+    engagement: null,
   });
   const [myCourses, setMyCourses] = useState([]);
 
@@ -157,7 +157,7 @@ export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLog
       .then(([doctors, lectures]) => {
         const doc = doctors.find(d => String(d.user_id) === String(user.id));
         if (doc) {
-          setDoctor({ id: doc.doctor_id, name: doc.name, email: doc.email || '', title: doc.title || '', dept: doc.department || '', engagement: 88 });
+          setDoctor({ id: doc.doctor_id, name: doc.name, email: doc.email || '', title: doc.title || '', dept: doc.department || '', engagement: null });
           const seen = new Set();
           const courses = [];
           for (const l of lectures.filter(l => l.doctor_id === doc.doctor_id)) {
