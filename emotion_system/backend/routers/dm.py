@@ -70,10 +70,12 @@ async def get_messages(
         FROM direct_messages
         WHERE (sender_id = $1 AND receiver_id = $2)
            OR (sender_id = $2 AND receiver_id = $1)
-        ORDER BY created_at ASC
+        ORDER BY created_at DESC
+        LIMIT 200
         """,
         uid, other_id,
     )
+    rows = list(reversed(rows))  # return oldest-first for display
 
     # Mark messages sent by the other party to us as read
     await db.execute(

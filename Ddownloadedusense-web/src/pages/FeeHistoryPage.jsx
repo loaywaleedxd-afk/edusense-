@@ -81,8 +81,12 @@ function buildLocalFees(stuId) {
   return { records, aid, totalFees: +totalFees.toFixed(2), totalPaid: +totalPaid.toFixed(2), totalAid, balance };
 }
 
-/* ── Fake receipt generator ── */
-function downloadReceipt(record, stuName) {
+/* ── Receipt download — only for API-sourced (real) records ── */
+function downloadReceipt(record, stuName, isFromAPI) {
+  if (!isFromAPI) {
+    alert('Receipt download is only available for payments processed through the university payment portal.');
+    return;
+  }
   const text = [
     '══════════════════════════════════',
     '       EduSense University        ',
@@ -484,7 +488,7 @@ export default function FeeHistoryPage({ theme: C, stu, user, role }) {
 
               {rec.status === 'paid' && !isAdmin && (
                 <button
-                  onClick={() => downloadReceipt(rec, activeStu?.name || 'Student')}
+                  onClick={() => downloadReceipt(rec, activeStu?.name || 'Student', fromAPI)}
                   title={t('download_receipt')}
                   style={{
                     flexShrink: 0, background: C.bg3, border: `1px solid ${C.border}`,

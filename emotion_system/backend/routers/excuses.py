@@ -28,9 +28,12 @@ async def submit_excuse(
 
     # Accept both 'courseId' (frontend key) and 'course_code' (DB column name)
     course_code = data.get("courseId") or data.get("course_code")
+    reason = str(data.get("reason", ""))[:1000]  # cap at 1000 chars to prevent oversized inserts
+    if not course_code:
+        raise HTTPException(status_code=400, detail="course_code is required")
     await db.execute(
         "INSERT INTO excuses (student_id, course_code, week, reason, status) VALUES ($1, $2, $3, $4, 'pending')",
-        target_sid, course_code, data.get("week", 1), data.get("reason", ""),
+        target_sid, course_code, int(data.get("week", 1)), reason,
     )
     return {"message": "Excuse submitted"}
 

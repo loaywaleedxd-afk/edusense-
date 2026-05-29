@@ -1,11 +1,25 @@
 """QR attendance sessions router."""
 from fastapi import APIRouter, Depends, HTTPException
-import os, json, random, string
+import os, json, random, string, time
+from collections import defaultdict
 from datetime import datetime, timezone, date as date_type
 from database import get_db
 from auth_utils import require_auth, require_role
 
 router = APIRouter()
+
+# Simple in-memory rate limit: max 10 QR uses per IP per minute (brute-force protection)
+_qr_attempts: dict = defaultdict(list)
+_QR_MAX = 10
+_QR_WINDOW = 60  # seconds
+
+def _check_qr_rate(ip: str):
+    now = time.time()
+    hits = [t for t in _qr_attempts[ip] if now - t < _QR_WINDOW]
+    _qr_attempts[ip] = hits
+    if len(hits) >= _QR_MAX:
+        raise HTTPException(status_code=429, detail="Too many QR attempts. Please wait.")
+    _qr_attempts[ip].append(now)
 
 
 @router.post("/create")
@@ -26,6 +40,9 @@ async def create_qr(data: dict, payload: dict = Depends(require_role("doctor","a
 @router.post("/use")
 async def use_qr(data: dict, payload: dict = Depends(require_auth), db=Depends(get_db)):
     token = (data.get("token") or "").upper()
+
+    # Rate limit per user — prevents brute-forcing the 6-char token space
+    _check_qr_rate(str(payload.get("sub", "unknown")))
 
     # Always derive student_id from the authenticated token — never trust the body
     caller_role = payload.get("role")

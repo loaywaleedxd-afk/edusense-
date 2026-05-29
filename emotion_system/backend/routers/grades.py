@@ -83,15 +83,25 @@ async def save_grade(
     payload: dict = Depends(require_role("doctor", "admin")),
     db=Depends(get_db),
 ):
-    """Only doctors and admins can post/update grades."""
+    """Only doctors and admins can post/update grades.
+    Doctors may only grade students enrolled in their own courses."""
+    if not (0 <= entry.grade <= 100):
+        raise HTTPException(status_code=400, detail="Grade must be between 0 and 100")
     # Resolve doctor_id from JWT if not supplied in body
     doctor_id = entry.doctor_id
-    if not doctor_id and payload.get("role") == "doctor":
+    if payload.get("role") == "doctor":
         row = await db.fetchrow(
             "SELECT doctor_id FROM doctors WHERE user_id=$1", int(payload["sub"])
         )
         if row:
             doctor_id = row["doctor_id"]
+        # Verify this doctor teaches the given course
+        teaches = await db.fetchrow(
+            "SELECT 1 FROM lectures WHERE doctor_id=$1 AND course_code=$2",
+            doctor_id, entry.course_code,
+        )
+        if not teaches:
+            raise HTTPException(status_code=403, detail="You are not the instructor for this course")
 
     semester = entry.semester or _current_semester()
 

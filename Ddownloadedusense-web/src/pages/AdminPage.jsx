@@ -2080,21 +2080,23 @@ function StudentPortfolioModal({ theme: C, student, onClose }) {
   const idHash  = student.id.split('').reduce((a,c)=>a+c.charCodeAt(0),0);
 
   useEffect(() => {
-    Promise.allSettled([api.getLectures(), api.getEnrollments(), api.getStudentGrades(student.id)]).then(([lecRes, enrollRes, gradesRes]) => {
+    const stuId = student.student_id || student.id;  // prefer student_id string
+    Promise.allSettled([api.getLectures(), api.getEnrollments(), api.getStudentGrades(stuId)]).then(([lecRes, enrollRes, gradesRes]) => {
       const lecs   = lecRes.status    === 'fulfilled' ? lecRes.value    : [];
       const enroll = enrollRes.status  === 'fulfilled' ? enrollRes.value  : [];
       const g      = gradesRes.status  === 'fulfilled' ? gradesRes.value  : [];
       // Enrollments use course_code as course_id; match against l.course_code
-      const myIds  = new Set(enroll.filter(e => String(e.student_id) === String(student.id)).map(e => String(e.course_id)));
+      const myIds  = new Set(enroll.filter(e => String(e.student_id) === String(stuId)).map(e => String(e.course_id)));
       setEnrolledCourses(lecs.filter(l => myIds.has(String(l.course_code))));
       setGrades(Array.isArray(g) ? g : []);
     });
-  }, [student.id]);
+  }, [student.id, student.student_id]);
 
   async function withdrawCourse(courseId) {
     if (!window.confirm(`Withdraw ${student.name} from this course?`)) return;
     try {
-      await api.unenroll(courseId, student.id);
+      // student.id here is the DB user ID; student.student_id is the actual student_id string
+      await api.unenroll(courseId, student.student_id || student.id);
     } catch(e) { alert('Failed to unenroll: ' + e.message); return; }
     setEnrolledCourses(prev => prev.filter(c => String(c.course_code) !== String(courseId)));
   }
@@ -2722,7 +2724,8 @@ function AdminCSVImport({ theme: C }) {
     for (const row of rows) {
       try {
         if (mode === 'students') {
-          await api.createStudent({ student_id: row.student_id, name: row.name || row.full_name, email: row.email, department: row.dept || row.department, year: parseInt(row.year) || 1 });
+          // Generate a random password for bulk CSV imports; admin should distribute credentials
+          await api.createStudent({ student_id: row.student_id, name: row.name || row.full_name, email: row.email, department: row.dept || row.department, year: parseInt(row.year) || 1, password: row.password || (row.student_id?.toLowerCase() + '@EduSense1') });
         } else if (mode === 'grades') {
           await api.saveCourseGrade({ student_id: row.student_id, course_code: row.course_code, course_name: row.course_name || row.course_code, grade: parseFloat(row.grade) || 0 });
         } else if (mode === 'enrollments') {

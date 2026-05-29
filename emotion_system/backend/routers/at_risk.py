@@ -20,8 +20,10 @@ from database import get_db
 from auth_utils import require_auth, require_role
 
 router  = APIRouter()
-SMTP_USER = os.getenv("SMTP_USER", "")
-SMTP_PASS = os.getenv("SMTP_PASS", "")
+SMTP_USER = os.getenv("SMTP_USER") or os.getenv("SMTP_EMAIL", "")
+SMTP_PASS = os.getenv("SMTP_PASS") or os.getenv("SMTP_PASSWORD", "")
+SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 
 
 # ── Risk calculation ──────────────────────────────────────────────────────────
@@ -169,7 +171,7 @@ def _send_alert_email(to: str, student_name: str, risk_level: str,
         msg["To"]      = to
         msg.attach(MIMEText(html, "html"))
         ctx = ssl.create_default_context()
-        with smtplib.SMTP("smtp.gmail.com", 587) as s:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
             s.starttls(context=ctx)
             s.login(SMTP_USER, SMTP_PASS)
             s.sendmail(SMTP_USER, to, msg.as_string())

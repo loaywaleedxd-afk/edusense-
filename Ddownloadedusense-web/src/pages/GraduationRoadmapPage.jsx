@@ -177,7 +177,30 @@ export default function GraduationRoadmapPage({ theme: C, stu, role = 'student' 
     : stu;
 
   // Overrides: { [code]: 'completed'|'in_progress'|'not_started' }
+  // Seeded from localStorage; augmented by real degree-audit data from backend
   const [overrides, setOverrides] = useState(() => loadOverrides(activeStu?.id || ''));
+
+  // Load real completion data from backend when a student is selected
+  useEffect(() => {
+    const stuId = activeStu?.id || activeStu?.student_id;
+    if (!stuId) return;
+    api.getDegreeAudit?.(stuId).then(audit => {
+      if (!audit?.categories) return;
+      const backendStatus = {};
+      Object.values(audit.categories).forEach(cat => {
+        (cat.courses || []).forEach(c => {
+          if (c.course_code) {
+            backendStatus[c.course_code] = c.completed ? 'completed' : 'not_started';
+          }
+        });
+      });
+      // Merge: backend completion data wins, but keep existing local manual overrides on top
+      const localOverrides = loadOverrides(stuId);
+      setOverrides({ ...backendStatus, ...localOverrides });
+    }).catch(() => {
+      setOverrides(loadOverrides(stuId));
+    });
+  }, [activeStu?.id, activeStu?.student_id]);
 
   function loadStu(id) {
     setSelectedStuId(id);

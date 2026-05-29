@@ -26,6 +26,8 @@ class StudentCreate(BaseModel):
 @router.get("/")
 async def list_students(
     semester: Optional[str] = Query(None),
+    limit:    int            = Query(500, le=1000),
+    offset:   int            = Query(0,   ge=0),
     payload: dict = Depends(require_role("doctor", "admin")),
     db=Depends(get_db),
 ):
@@ -59,8 +61,9 @@ async def list_students(
            LEFT JOIN attendance a ON s.student_id = a.student_id
            LEFT JOIN grades g ON g.student_id = s.student_id
            GROUP BY s.student_id, u.full_name, u.email, s.department, s.year, s.photo_path
-           ORDER BY u.full_name""",
-        sem,
+           ORDER BY u.full_name
+           LIMIT $2 OFFSET $3""",
+        sem, limit, offset,
     )
     return [dict(r) for r in rows]
 
@@ -75,12 +78,14 @@ async def create_student(
     sid   = data.get("student_id", "").strip().upper()
     name  = data.get("name", data.get("full_name", "")).strip()
     email = data.get("email", f"{sid.lower()}@university.edu").strip()
-    plain = data.get("password", sid.lower()).strip()
+    plain = data.get("password", "").strip()
     dept  = data.get("department", "General")
     year  = int(data.get("year", 1))
 
     if not sid or not name:
         raise HTTPException(status_code=400, detail="student_id and name are required")
+    if not plain:
+        raise HTTPException(status_code=400, detail="Password is required when creating a student account")
     if len(plain) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
 
