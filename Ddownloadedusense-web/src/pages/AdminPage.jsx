@@ -60,6 +60,7 @@ const NAV = [
   {id:'enroll_requests',   icon:'🏛️', label:'Enrollment Requests'},
   {id:'parent_linking',    icon:'🔗', label:'Parent Linking'},
   {id:'csv_import',        icon:'📥', label:'CSV Import'},
+  {id:'gpa_management',    icon:'🎓', label:'GPA Management'},
   {id:'profile',           icon:'👤', label:'My Profile'},
 ];
 
@@ -138,6 +139,7 @@ export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogo
             {page==='enroll_requests' && <AdminEnrollmentRequests theme={C}/>}
             {page==='parent_linking'  && <AdminParentLinking theme={C}/>}
             {page==='csv_import'      && <AdminCSVImport theme={C}/>}
+            {page==='gpa_management'   && <AdminGPAManagement theme={C}/>}
             {page==='profile'         && <ProfilePage theme={C} user={user}/>}
           </AnimatedPage>
         </div>
@@ -2791,6 +2793,373 @@ function AdminCSVImport({ theme: C }) {
         style={{ padding: '10px 28px', borderRadius: 8, border: 'none', background: C.blue2, color: '#fff', fontSize: 14, fontWeight: 700, cursor: (!rows.length || running) ? 'not-allowed' : 'pointer', opacity: (!rows.length || running) ? 0.6 : 1 }}>
         {running ? '⏳ Importing…' : '🚀 Start Import'}
       </button>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   GPA MANAGEMENT PAGE
+───────────────────────────────────────────────────────────────── */
+function AdminGPAManagement({ theme: C }) {
+  // Auto-detect current semester same logic as backend
+  function currentSemester() {
+    const m = new Date().getMonth() + 1; // 1-12
+    const y = new Date().getFullYear();
+    return m >= 9 ? `${y}-S1` : `${y}-S2`;
+  }
+
+  const [semesters,       setSemesters]       = useState([]);
+  const [selectedSem,     setSelectedSem]     = useState(currentSemester());
+  const [allGPAs,         setAllGPAs]         = useState([]);
+  const [calcSem,         setCalcSem]         = useState(currentSemester());
+  const [calculating,     setCalculating]     = useState(false);
+  const [calcResult,      setCalcResult]      = useState(null);
+  const [students,        setStudents]        = useState([]);
+  const [historyStudent,  setHistoryStudent]  = useState(null);
+  const [historyData,     setHistoryData]     = useState([]);
+  const [historyLoading,  setHistoryLoading]  = useState(false);
+  const [viewMode,        setViewMode]        = useState('table'); // 'table' | 'chart'
+  const [search,          setSearch]          = useState('');
+  const [loadingGPAs,     setLoadingGPAs]     = useState(false);
+
+  // Load all available semesters
+  useEffect(() => {
+    get('/api/grades/semesters')
+      .then(data => {
+        setSemesters(data || []);
+        if (data && data.length > 0 && !data.includes(selectedSem)) setSelectedSem(data[0]);
+      })
+      .catch(() => {});
+    api.getStudents()
+      .then(rows => setStudents(rows.map(s => ({ ...s, id: s.id || s.student_id }))))
+      .catch(() => {});
+  }, []);
+
+  // Load GPAs for selected semester
+  useEffect(() => {
+    setLoadingGPAs(true);
+    get(`/api/grades/all-semester-gpa?semester=${encodeURIComponent(selectedSem)}`)
+      .then(data => setAllGPAs(data || []))
+      .catch(() => setAllGPAs([]))
+      .finally(() => setLoadingGPAs(false));
+  }, [selectedSem]);
+
+  async function calculateGPA() {
+    if (!calcSem.trim()) { pushToast({ title: 'Error', message: 'Enter a semester', color: '#ef4444' }); return; }
+    setCalculating(true); setCalcResult(null);
+    try {
+      const res = await post('/api/grades/calculate-semester-gpa', { semester: calcSem });
+      setCalcResult(res);
+      pushToast({ title: '✅ GPA Calculated', message: `${res.updated} students updated for ${calcSem}`, color: '#10b981' });
+      // Refresh semester list and GPA table
+      const [sems, gpas] = await Promise.all([
+        get('/api/grades/semesters'),
+        get(`/api/grades/all-semester-gpa?semester=${encodeURIComponent(calcSem)}`),
+      ]);
+      setSemesters(sems || []);
+      setSelectedSem(calcSem);
+      setAllGPAs(gpas || []);
+    } catch (e) {
+      pushToast({ title: 'Failed', message: e.message, color: '#ef4444' });
+    } finally {
+      setCalculating(false);
+    }
+  }
+
+  async function loadStudentHistory(student) {
+    setHistoryStudent(student);
+    setHistoryLoading(true);
+    try {
+      const data = await get(`/api/grades/semester-gpa/${student.id || student.student_id}`);
+      setHistoryData(data || []);
+    } catch {
+      setHistoryData([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  function gpaColor(gpa) {
+    if (!gpa) return C.text3;
+    if (gpa >= 85) return '#10b981';
+    if (gpa >= 70) return '#3b82f6';
+    if (gpa >= 60) return '#f59e0b';
+    return '#ef4444';
+  }
+  function gpaLabel(gpa) {
+    if (!gpa) return '—';
+    if (gpa >= 85) return 'Excellent';
+    if (gpa >= 70) return 'Good';
+    if (gpa >= 60) return 'Pass';
+    return 'At Risk';
+  }
+
+  const q = search.toLowerCase();
+  const filteredGPAs = allGPAs.filter(r =>
+    !q ||
+    (r.student_name || '').toLowerCase().includes(q) ||
+    (r.student_id || '').toLowerCase().includes(q) ||
+    (r.department  || '').toLowerCase().includes(q)
+  );
+
+  // Chart bars: top 20 by GPA
+  const chartData = [...filteredGPAs]
+    .sort((a, b) => (b.gpa || 0) - (a.gpa || 0))
+    .slice(0, 20)
+    .map(r => ({ label: (r.student_name || r.student_id || '?').split(' ')[0], value: Math.round((r.gpa || 0) * 1), color: gpaColor(r.gpa) }));
+
+  // Stats
+  const avg = filteredGPAs.length ? (filteredGPAs.reduce((a, r) => a + (r.gpa || 0), 0) / filteredGPAs.length).toFixed(1) : '—';
+  const highest = filteredGPAs.length ? Math.max(...filteredGPAs.map(r => r.gpa || 0)).toFixed(1) : '—';
+  const lowest  = filteredGPAs.length ? Math.min(...filteredGPAs.map(r => r.gpa || 0)).toFixed(1) : '—';
+  const atRiskCount = filteredGPAs.filter(r => (r.gpa || 0) < 60).length;
+
+  return (
+    <div style={{ padding: '8px 20px 20px' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4, flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: C.text }}>🎓 GPA Management</div>
+          <div style={{ fontSize: 12, color: C.text2 }}>Calculate, archive and view student GPA per semester</div>
+        </div>
+        <button
+          onClick={() => exportDataAsCSV(filteredGPAs.map(r => ({
+            'Student ID': r.student_id, Name: r.student_name, Department: r.department,
+            Semester: r.semester, GPA: r.gpa, Courses: r.total_courses,
+          })), `gpa_${selectedSem}.csv`)}
+          style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid #10b981', borderRadius: 8, padding: '7px 14px', fontSize: 11, fontWeight: 700, color: '#10b981', cursor: 'pointer' }}
+        >📤 Export CSV</button>
+      </div>
+
+      {/* ── Calculate GPA Card ── */}
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: '16px 20px', marginBottom: 14 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 10 }}>📊 Calculate & Save Semester GPA</div>
+        <div style={{ fontSize: 12, color: C.text2, marginBottom: 12, lineHeight: 1.6 }}>
+          At the end of each semester, click the button below to calculate each student's GPA from their grades and save it permanently.
+          This snapshot is never overwritten — you can always look back at any semester.
+        </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 10, color: C.text3, fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>Semester</div>
+            <input
+              value={calcSem}
+              onChange={e => setCalcSem(e.target.value)}
+              placeholder="e.g. 2026-S1"
+              style={{ height: 36, width: 160, background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0 10px', fontSize: 13, color: C.text }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginTop: 18, flexWrap: 'wrap' }}>
+            {(semesters.length > 0 ? semesters : [currentSemester()]).slice(0, 4).map(s => (
+              <button key={s} onClick={() => setCalcSem(s)}
+                style={{ padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                  background: calcSem === s ? C.blue3 : C.bg3,
+                  border: `1px solid ${calcSem === s ? C.blue3 : C.border}`,
+                  color: calcSem === s ? '#fff' : C.text2 }}>
+                {s}
+              </button>
+            ))}
+            <button onClick={() => setCalcSem(currentSemester())}
+              style={{ padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                background: 'rgba(16,185,129,0.15)', border: '1px solid #10b981', color: '#10b981' }}>
+              Current ({currentSemester()})
+            </button>
+          </div>
+          <button
+            onClick={calculateGPA}
+            disabled={calculating}
+            style={{ marginTop: 18, height: 36, padding: '0 22px', borderRadius: 8, border: 'none',
+              background: calculating ? '#64748b' : 'linear-gradient(135deg,#6366f1,#3b82f6)',
+              color: '#fff', fontSize: 13, fontWeight: 700, cursor: calculating ? 'not-allowed' : 'pointer' }}
+          >
+            {calculating ? '⏳ Calculating…' : '🔢 Calculate GPA'}
+          </button>
+        </div>
+        {calcResult && (
+          <div style={{ marginTop: 12, padding: '10px 14px', background: 'rgba(16,185,129,0.1)', border: '1px solid #10b981', borderRadius: 8, fontSize: 12, color: '#10b981', fontWeight: 700 }}>
+            ✅ {calcResult.message} — {calcResult.updated} students updated for semester <strong>{calcResult.semester}</strong>
+          </div>
+        )}
+      </div>
+
+      {/* ── Semester Selector + Stats ── */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div>
+          <div style={{ fontSize: 10, color: C.text3, fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>View Semester</div>
+          <select
+            value={selectedSem}
+            onChange={e => setSelectedSem(e.target.value)}
+            style={{ height: 36, background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: '0 12px', fontSize: 12, color: C.text, minWidth: 160 }}
+          >
+            {semesters.map(s => <option key={s} value={s}>{s}</option>)}
+            {!semesters.includes(selectedSem) && <option value={selectedSem}>{selectedSem} (not archived yet)</option>}
+          </select>
+        </div>
+        <div style={{ marginTop: 18, flex: 1, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {[
+            { label: 'Students', value: filteredGPAs.length, color: C.blue },
+            { label: 'Avg GPA', value: avg, color: '#10b981' },
+            { label: 'Highest', value: highest, color: '#6366f1' },
+            { label: 'Lowest', value: lowest, color: '#f59e0b' },
+            { label: 'At Risk (<60)', value: atRiskCount, color: '#ef4444' },
+          ].map((s, i) => (
+            <div key={i} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, padding: '8px 14px', textAlign: 'center', minWidth: 80 }}>
+              <div style={{ fontSize: 16, fontWeight: 800, color: s.color }}>{s.value}</div>
+              <div style={{ fontSize: 9, color: C.text3, fontWeight: 700, textTransform: 'uppercase' }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── View Toggle + Search ── */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search by name, ID, department…"
+          style={{ flex: 1, minWidth: 200, height: 36, background: C.card, border: `1.5px solid ${search ? C.blue : C.border}`, borderRadius: 8, padding: '0 12px', fontSize: 12, color: C.text }}
+        />
+        {search && <button onClick={() => setSearch('')} style={{ background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 8, padding: '6px 12px', fontSize: 12, color: C.text2, cursor: 'pointer' }}>✕</button>}
+        <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: `1px solid ${C.border}` }}>
+          {[['table', '📋 Table'], ['chart', '📊 Chart']].map(([m, lbl]) => (
+            <button key={m} onClick={() => setViewMode(m)}
+              style={{ padding: '6px 14px', border: 'none', background: viewMode === m ? C.blue3 : C.bg3, color: viewMode === m ? '#fff' : C.text2, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Table View ── */}
+      {viewMode === 'table' && (
+        <Card theme={C} title={`GPA Records — ${selectedSem} (${filteredGPAs.length} students)`}>
+          <div style={{ padding: '4px 12px 12px', maxHeight: 500, overflowY: 'auto' }}>
+            {loadingGPAs ? (
+              <div style={{ color: C.text2, fontSize: 13, padding: '20px 0', textAlign: 'center' }}>Loading…</div>
+            ) : filteredGPAs.length === 0 ? (
+              <div style={{ color: C.text3, fontSize: 13, padding: '30px 0', textAlign: 'center' }}>
+                No GPA data for {selectedSem}.<br/>
+                <span style={{ fontSize: 11 }}>Click "Calculate GPA" above to generate it.</span>
+              </div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: C.bg3 }}>
+                    {['Student ID', 'Name', 'Department', 'GPA', 'Courses', 'Level', 'History'].map(h => (
+                      <th key={h} style={{ padding: '8px 10px', textAlign: 'left', color: C.text2, fontWeight: 700, borderBottom: `1px solid ${C.border}`, whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredGPAs.map((r, i) => (
+                    <tr key={i} style={{ borderBottom: `1px solid ${C.border}`, transition: 'background 0.1s' }}
+                      onMouseEnter={e => e.currentTarget.style.background = C.bg3}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <td style={{ padding: '9px 10px', color: C.text2, fontWeight: 600 }}>{r.student_id}</td>
+                      <td style={{ padding: '9px 10px', color: C.text, fontWeight: 700 }}>{r.student_name || '—'}</td>
+                      <td style={{ padding: '9px 10px', color: C.text2 }}>{r.department || '—'}</td>
+                      <td style={{ padding: '9px 10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ flex: 1, height: 6, background: C.bg3, borderRadius: 3, overflow: 'hidden', minWidth: 60 }}>
+                            <div style={{ height: '100%', width: `${Math.min(r.gpa || 0, 100)}%`, background: gpaColor(r.gpa), borderRadius: 3, transition: 'width 0.4s' }} />
+                          </div>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: gpaColor(r.gpa), minWidth: 36 }}>{r.gpa != null ? r.gpa : '—'}</span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '9px 10px', color: C.text2, textAlign: 'center' }}>{r.total_courses || '—'}</td>
+                      <td style={{ padding: '9px 10px' }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                          background: gpaColor(r.gpa) + '20', color: gpaColor(r.gpa), border: `1px solid ${gpaColor(r.gpa)}50` }}>
+                          {gpaLabel(r.gpa)}
+                        </span>
+                      </td>
+                      <td style={{ padding: '9px 10px' }}>
+                        <button
+                          onClick={() => loadStudentHistory({ id: r.student_id, name: r.student_name })}
+                          style={{ background: C.blue_dim || 'rgba(59,130,246,0.1)', border: `1px solid ${C.blue}`, borderRadius: 6, padding: '3px 8px', fontSize: 10, color: C.blue2 || C.blue, cursor: 'pointer', fontWeight: 700 }}
+                        >📈 History</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {/* ── Chart View ── */}
+      {viewMode === 'chart' && (
+        <Card theme={C} title={`GPA Chart — ${selectedSem} (top 20)`}>
+          <div style={{ padding: '4px 12px 12px' }}>
+            {filteredGPAs.length === 0
+              ? <div style={{ color: C.text3, fontSize: 13, padding: '30px 0', textAlign: 'center' }}>No data. Run Calculate GPA first.</div>
+              : <BarChart theme={C} data={chartData} height={260} />
+            }
+          </div>
+        </Card>
+      )}
+
+      {/* ── Student GPA History Modal ── */}
+      {historyStudent && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: C.card, borderRadius: 18, border: `1px solid ${C.border}`, padding: 28, maxWidth: 600, width: '100%', maxHeight: '80vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>📈 GPA History</div>
+                <div style={{ fontSize: 13, color: C.text2 }}>{historyStudent.name} ({historyStudent.id})</div>
+              </div>
+              <button onClick={() => { setHistoryStudent(null); setHistoryData([]); }}
+                style={{ background: C.bg3, border: `1px solid ${C.border}`, borderRadius: 8, width: 32, height: 32, fontSize: 16, color: C.text2, cursor: 'pointer' }}>✕</button>
+            </div>
+
+            {historyLoading ? (
+              <div style={{ textAlign: 'center', color: C.text2, padding: '20px 0' }}>Loading…</div>
+            ) : historyData.length === 0 ? (
+              <div style={{ textAlign: 'center', color: C.text3, padding: '30px 0' }}>
+                No archived GPA yet.<br/><span style={{ fontSize: 11 }}>Calculate semester GPA to start tracking history.</span>
+              </div>
+            ) : (
+              <>
+                {/* History bars */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+                  {historyData.map((r, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ width: 80, fontSize: 11, fontWeight: 700, color: C.text2, flexShrink: 0 }}>{r.semester}</div>
+                      <div style={{ flex: 1, height: 20, background: C.bg3, borderRadius: 6, overflow: 'hidden' }}>
+                        <div style={{
+                          height: '100%', borderRadius: 6,
+                          width: `${Math.min(r.gpa || 0, 100)}%`,
+                          background: gpaColor(r.gpa),
+                          transition: 'width 0.5s ease',
+                          display: 'flex', alignItems: 'center', paddingLeft: 8,
+                        }}>
+                          <span style={{ fontSize: 10, color: '#fff', fontWeight: 700 }}>{r.gpa || '—'}</span>
+                        </div>
+                      </div>
+                      <div style={{ width: 40, textAlign: 'right', fontSize: 13, fontWeight: 800, color: gpaColor(r.gpa) }}>{r.gpa || '—'}</div>
+                      <div style={{ width: 60, fontSize: 10, color: C.text3 }}>{r.total_courses} courses</div>
+                    </div>
+                  ))}
+                </div>
+                {/* Trend summary */}
+                {historyData.length >= 2 && (() => {
+                  const sorted = [...historyData].sort((a, b) => a.semester.localeCompare(b.semester));
+                  const first = sorted[0].gpa || 0;
+                  const last  = sorted[sorted.length - 1].gpa || 0;
+                  const diff  = (last - first).toFixed(1);
+                  const up    = diff >= 0;
+                  return (
+                    <div style={{ padding: '10px 14px', background: up ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)', border: `1px solid ${up ? '#10b981' : '#ef4444'}`, borderRadius: 8, fontSize: 12, color: up ? '#10b981' : '#ef4444', fontWeight: 700 }}>
+                      {up ? '📈' : '📉'} GPA trend: {up ? '+' : ''}{diff} from {sorted[0].semester} to {sorted[sorted.length - 1].semester}
+                    </div>
+                  );
+                })()}
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
