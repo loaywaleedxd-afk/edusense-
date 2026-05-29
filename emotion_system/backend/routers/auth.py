@@ -1,9 +1,10 @@
 """Authentication router — bcrypt passwords + real JWT tokens."""
-from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi import APIRouter, HTTPException, Depends, Request, BackgroundTasks
 from pydantic import BaseModel
-import os
-import time
+import os, time, smtplib, ssl, secrets, html as _html
 from collections import defaultdict
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 from database import get_db
 from auth_utils import (
@@ -20,9 +21,65 @@ _WINDOW_SEC   = 300
 
 # In-memory reset tokens: {token: {username, expires}}
 # A real deployment should persist these in Redis or the DB
-import secrets
 _reset_tokens: dict = {}
 _RESET_TOKEN_TTL = 600  # 10 minutes
+
+# ── SMTP config (same env vars used by at_risk.py) ────────────────────────────
+_SMTP_USER = os.getenv("SMTP_USER") or os.getenv("SMTP_EMAIL", "")
+_SMTP_PASS = os.getenv("SMTP_PASS") or os.getenv("SMTP_PASSWORD", "")
+_SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
+_SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+_APP_URL   = os.getenv("APP_URL", "https://edusense.app")
+
+
+def _send_reset_email(to_email: str, to_name: str, token: str):
+    """Send a password-reset code email. Called in a background thread."""
+    if not _SMTP_USER or not _SMTP_PASS:
+        return  # SMTP not configured — token is valid but must be distributed manually
+    safe_name = _html.escape(to_name or "User")
+    # Show only the first 8 chars of the URL-safe token as the "code"
+    code = token[:8].upper()
+    html_body = f"""
+<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f0f4f8;font-family:Arial,sans-serif">
+<div style="max-width:520px;margin:40px auto">
+  <div style="background:#1a237e;padding:26px;text-align:center;border-radius:12px 12px 0 0">
+    <div style="font-size:26px;font-weight:900;color:#fff;letter-spacing:3px">⚡ EduSense</div>
+    <div style="font-size:10px;color:#90caf9;letter-spacing:3px;margin-top:4px;text-transform:uppercase">Password Reset</div>
+  </div>
+  <div style="background:#fff;padding:36px;border-radius:0 0 12px 12px">
+    <h2 style="color:#1a237e;margin:0 0 12px;font-size:20px">Hi {safe_name},</h2>
+    <p style="color:#546e7a;font-size:14px;line-height:1.7">
+      We received a request to reset your EduSense password.
+      Enter the code below in the app. It expires in <strong>10 minutes</strong>.
+    </p>
+    <div style="background:#f3f4f6;border-radius:12px;padding:28px;text-align:center;margin:24px 0;border:2px dashed #c5cae9">
+      <div style="font-size:11px;color:#7986cb;letter-spacing:3px;text-transform:uppercase;margin-bottom:8px">Your Reset Code</div>
+      <div style="font-size:40px;font-weight:900;letter-spacing:10px;font-family:monospace;color:#1a237e">{code}</div>
+    </div>
+    <p style="color:#78909c;font-size:12px;text-align:center;margin-bottom:24px">
+      If you didn't request this, you can safely ignore this email.
+    </p>
+    <div style="text-align:center">
+      <a href="{_APP_URL}" style="background:#1a237e;color:#fff;padding:13px 36px;border-radius:8px;text-decoration:none;font-size:13px;font-weight:700;display:inline-block">Open EduSense</a>
+    </div>
+  </div>
+  <p style="text-align:center;color:#b0bec5;font-size:11px;margin-top:16px">
+    EduSense Academic System &nbsp;·&nbsp; {_APP_URL}
+  </p>
+</div>
+</body></html>"""
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = "EduSense — Your Password Reset Code"
+    msg["From"]    = f"EduSense System <{_SMTP_USER}>"
+    msg["To"]      = to_email
+    msg.attach(MIMEText(html_body, "html"))
+    try:
+        ctx = ssl.create_default_context()
+        with smtplib.SMTP(_SMTP_HOST, _SMTP_PORT) as s:
+            s.ehlo(); s.starttls(context=ctx); s.login(_SMTP_USER, _SMTP_PASS)
+            s.sendmail(_SMTP_USER, to_email, msg.as_string())
+    except Exception:
+        pass  # Email failure is non-fatal — token is still usable
 
 def _check_rate_limit(ip: str):
     now  = time.time()
@@ -125,25 +182,28 @@ async def get_me(payload: dict = Depends(require_auth)):
 
 
 @router.post("/request-reset")
-async def request_reset(request: Request, db=Depends(get_db)):
-    """Issue a short-lived reset token for the given username/email.
-    Returns the token — in production this should be emailed, not returned directly."""
+async def request_reset(request: Request, background_tasks: BackgroundTasks, db=Depends(get_db)):
+    """Issue a short-lived reset token and email it to the user."""
     _check_rate_limit(request.client.host if request.client else "unknown")
     data = await request.json()
     username = (data.get("username") or "").strip().lower()
     if not username:
         raise HTTPException(status_code=400, detail="Username or email required")
     row = await db.fetchrow(
-        "SELECT id FROM users WHERE LOWER(username)=$1 OR LOWER(email)=$1", username
+        "SELECT email, full_name FROM users WHERE LOWER(username)=$1 OR LOWER(email)=$1", username
     )
-    if not row:
-        # Don't reveal whether the user exists
-        return {"ok": True, "message": "If that account exists, a reset token has been issued."}
-    token = secrets.token_urlsafe(32)
-    _reset_tokens[token] = {"username": username, "expires": time.time() + _RESET_TOKEN_TTL}
-    # NOTE: In production this token must be emailed to the user — never returned in the response.
-    # The frontend's "forgot password" flow should direct the user to check their email.
-    return {"ok": True, "message": "If that account exists, a reset link has been sent to the registered email."}
+    # Always return the same message to avoid username enumeration
+    if row:
+        token = secrets.token_urlsafe(32)
+        _reset_tokens[token] = {"username": username, "expires": time.time() + _RESET_TOKEN_TTL}
+        # Send email in background so the HTTP response returns immediately
+        background_tasks.add_task(
+            _send_reset_email,
+            row["email"],
+            row["full_name"] or username,
+            token,
+        )
+    return {"ok": True, "message": "If that account exists, a reset code has been sent to the registered email."}
 
 
 @router.post("/reset-password")

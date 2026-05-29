@@ -132,7 +132,7 @@ export default function LoginPage({ theme: C, onLogin, branding }) {
 
   async function handleResetPassword() {
     if (!forgotPass) { setForgotErr('Enter a new password.'); return; }
-    if (forgotPass.length < 6) { setForgotErr('Password must be at least 6 characters.'); return; }
+    if (forgotPass.length < 8) { setForgotErr('Password must be at least 8 characters.'); return; }
     if (forgotPass !== forgotPass2) { setForgotErr('Passwords do not match.'); return; }
     setForgotErr('');
     try {

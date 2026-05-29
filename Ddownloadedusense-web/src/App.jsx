@@ -29,7 +29,8 @@ class ErrorBoundary extends Component {
 import { AnimatePresence, motion } from 'framer-motion';
 import { DARK, LIGHT, buildTheme } from './theme';
 import { useLang } from './context/LanguageContext';
-// LoginPage is loaded eagerly — it's the first thing every user sees
+// LandingPage is shown to unauthenticated visitors; LoginPage is shown on "Get Started"
+import LandingPage           from './pages/LandingPage';
 import LoginPage             from './pages/LoginPage';
 // All role pages are lazy-loaded — only the relevant one is ever downloaded
 const StudentPage        = lazy(() => import('./pages/StudentPage'));
@@ -67,8 +68,9 @@ const PAYMOB_RETURN = new URLSearchParams(window.location.search).has('success')
 export default function App() {
   if (PAYMOB_RETURN) return <PaymentReturnPage />;
 
-  const [isDark, setIsDark] = useState(true);
-  const [user,   setUser]   = useState(null);
+  const [isDark,       setIsDark]       = useState(true);
+  const [user,         setUser]         = useState(null);
+  const [showLanding,  setShowLanding]  = useState(true); // landing → login flow
   const [loading, setLoading] = useState(false);
   const [branding, setBranding] = useState({ name: 'EduSense', primaryColor: '', logo: null });
   const { isRTL } = useLang();
@@ -212,7 +214,9 @@ export default function App() {
 
   return (
     <div style={{ height: '100vh', overflow: 'hidden', background: C.bg, fontFamily: "'Segoe UI', system-ui, sans-serif", direction: isRTL ? 'rtl' : 'ltr' }}>
-      {!user ? (
+      {!user && showLanding ? (
+        <LandingPage onLogin={() => setShowLanding(false)} branding={branding} />
+      ) : !user ? (
         <LoginPage theme={C} onLogin={onLogin} branding={branding} />
       ) : (
         <ErrorBoundary>
