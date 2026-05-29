@@ -13,9 +13,18 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 # ── Config ────────────────────────────────────────────────────────────────────
 # Override SECRET_KEY via environment variable in production.
-SECRET_KEY = os.getenv("JWT_SECRET", "edusense-change-me-in-production-use-a-long-random-string")
+_DEFAULT_SECRET = "edusense-change-me-in-production-use-a-long-random-string"
+SECRET_KEY = os.getenv("JWT_SECRET", _DEFAULT_SECRET)
 ALGORITHM  = "HS256"
 TOKEN_EXPIRE_HOURS = 12
+
+if SECRET_KEY == _DEFAULT_SECRET:
+    import warnings
+    warnings.warn(
+        "[SECURITY] JWT_SECRET is using the default insecure value. "
+        "Set JWT_SECRET env var to a long random string before going to production.",
+        stacklevel=1,
+    )
 
 # ── Bcrypt helpers ─────────────────────────────────────────────────────────────
 def hash_password(plain: str) -> str:

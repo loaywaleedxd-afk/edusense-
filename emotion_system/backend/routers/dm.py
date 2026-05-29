@@ -101,8 +101,11 @@ async def send_message(
     other_id = str(data.get("receiver_id", "")).strip()
     text     = str(data.get("text", "")).strip()
 
+    text = text[:2000]  # cap at 2000 chars
     if not other_id or not text:
         raise HTTPException(status_code=400, detail="receiver_id and text are required")
+    if other_id == uid:
+        raise HTTPException(status_code=400, detail="Cannot send a message to yourself")
 
     row = await db.fetchrow(
         """

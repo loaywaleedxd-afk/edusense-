@@ -76,5 +76,17 @@ async def add_announcement(
 
 @router.delete("/{ann_id}")
 async def delete_announcement(ann_id: str, payload: dict = Depends(require_role("doctor", "admin")), db=Depends(get_db)):
+    role = payload.get("role")
+    uid  = int(payload.get("sub"))
+
+    if role == "doctor":
+        # Doctors may only delete their own announcements
+        doc_row = await db.fetchrow("SELECT doctor_id FROM doctors WHERE user_id=$1", uid)
+        if doc_row:
+            ann_row = await db.fetchrow("SELECT doctor_id FROM announcements WHERE id=$1", ann_id)
+            if ann_row and str(ann_row["doctor_id"]) != str(doc_row["doctor_id"]):
+                from fastapi import HTTPException
+                raise HTTPException(status_code=403, detail="You can only delete your own announcements")
+
     await db.execute("DELETE FROM announcements WHERE id=$1", ann_id)
     return {"ok": True}

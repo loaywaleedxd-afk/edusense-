@@ -175,8 +175,9 @@ async def reset_password(request: Request, db=Depends(get_db)):
 
 
 @router.post("/change-password")
-async def change_password(data: dict, payload: dict = Depends(require_auth), db=Depends(get_db)):
+async def change_password(data: dict, request: Request, payload: dict = Depends(require_auth), db=Depends(get_db)):
     """Allow authenticated users to change their own password."""
+    _check_rate_limit(request.client.host if request.client else "unknown")
     user_id  = int(payload["sub"])
     old_pwd  = (data.get("old_password") or "").strip()
     new_pwd  = (data.get("new_password") or "").strip()

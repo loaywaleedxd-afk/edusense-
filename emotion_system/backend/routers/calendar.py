@@ -23,6 +23,12 @@ async def add_event(
     db=Depends(get_db),
 ):
     uid = int(payload.get("sub"))
+    title = data.get("title", "").strip()
+    date  = data.get("date", "").strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Event title is required")
+    if not date:
+        raise HTTPException(status_code=400, detail="Event date is required")
     event_id = data.get("id") or str(uuid.uuid4())
     await db.execute(
         """INSERT INTO calendar_events (id, date, title, type, description, created_by)
@@ -30,10 +36,10 @@ async def add_event(
            ON CONFLICT (id) DO UPDATE SET
              date=$2, title=$3, type=$4, description=$5""",
         event_id,
-        data.get("date", ""),
-        data.get("title", "").strip(),
+        date,
+        title[:200],  # cap title length
         data.get("type", "exam"),
-        data.get("description", ""),
+        str(data.get("description", ""))[:500],
         uid,
     )
     return {"id": event_id, "ok": True}

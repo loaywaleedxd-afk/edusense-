@@ -12,6 +12,12 @@ class Message(BaseModel):
     course_code: str
     text: str
 
+    def validate_text(self) -> str:
+        t = self.text.strip()
+        if not t:
+            raise ValueError("Message cannot be empty")
+        return t[:2000]  # cap at 2000 chars
+
 
 @router.get("/")
 async def get_messages(
@@ -40,8 +46,12 @@ async def send_message(
     )
     sender_name = user_row["full_name"] if user_row else "Unknown"
 
+    text = msg.text.strip()[:2000]
+    if not text:
+        from fastapi import HTTPException as _HTTPException
+        raise _HTTPException(status_code=400, detail="Message cannot be empty")
     await db.execute(
         "INSERT INTO messages (course_code,sender_id,sender_name,sender_role,text) VALUES ($1,$2,$3,$4,$5)",
-        msg.course_code, caller_id, sender_name, caller_role, msg.text,
+        msg.course_code, caller_id, sender_name, caller_role, text,
     )
     return {"message": "Sent"}
