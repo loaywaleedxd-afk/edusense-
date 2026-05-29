@@ -1,10 +1,16 @@
 """Students router — protected by JWT auth."""
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime
 
 from database import get_db
 from auth_utils import require_auth, require_role, hash_password
+
+def _current_semester() -> str:
+    month = datetime.utcnow().month
+    year  = datetime.utcnow().year
+    return f"{year}-S1" if month >= 9 else f"{year}-S2"
 
 router = APIRouter()
 
@@ -18,8 +24,16 @@ class StudentCreate(BaseModel):
 
 
 @router.get("/")
-async def list_students(payload: dict = Depends(require_role("doctor", "admin")), db=Depends(get_db)):
-    """Full student list — doctors and admins only."""
+async def list_students(
+    semester: Optional[str] = Query(None),
+    payload: dict = Depends(require_role("doctor", "admin")),
+    db=Depends(get_db),
+):
+    """Full student list — doctors and admins only.
+       Optional ?semester=2025-S1 to filter GPA by semester.
+       Defaults to current semester; falls back to all-time average if no semester grades exist.
+    """
+    sem = semester or _current_semester()
     rows = await db.fetch(
         """SELECT
              s.student_id                              AS id,
@@ -34,13 +48,19 @@ async def list_students(payload: dict = Depends(require_role("doctor", "admin"))
              )                                         AS attendance_rate,
              COUNT(a.id)                               AS total_lectures,
              SUM(CASE WHEN a.status='present' THEN 1 ELSE 0 END) AS attended,
-             ROUND(AVG(g.grade)::numeric, 1)            AS gpa
+             COALESCE(
+               (SELECT ROUND(AVG(g2.grade)::numeric,1) FROM grades g2
+                WHERE g2.student_id=s.student_id AND g2.semester=$1),
+               ROUND(AVG(g.grade)::numeric, 1)
+             )                                         AS gpa,
+             $1                                        AS gpa_semester
            FROM students s
            JOIN users u ON s.user_id = u.id
            LEFT JOIN attendance a ON s.student_id = a.student_id
            LEFT JOIN grades g ON g.student_id = s.student_id
            GROUP BY s.student_id, u.full_name, u.email, s.department, s.year, s.photo_path
-           ORDER BY u.full_name"""
+           ORDER BY u.full_name""",
+        sem,
     )
     return [dict(r) for r in rows]
 

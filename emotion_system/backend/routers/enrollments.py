@@ -50,6 +50,13 @@ def _schedules_overlap(c1: dict, c2: dict) -> bool:
     e2 = s2 + (c2.get('duration_min') or 90)
     return s1 < e2 and s2 < e1
 
+from datetime import datetime
+
+def _current_semester() -> str:
+    month = datetime.utcnow().month
+    year  = datetime.utcnow().year
+    return f"{year}-S1" if month >= 9 else f"{year}-S2"
+
 router = APIRouter()
 
 
@@ -73,14 +80,20 @@ async def get_enrollments(payload: dict = Depends(require_auth), db=Depends(get_
 @router.get("/students/{course_code}")
 async def get_course_students(
     course_code: str,
+    semester: str = None,
     payload: dict = Depends(require_role("doctor", "admin")),
     db=Depends(get_db),
 ):
     """Return enrolled and available students for a given course_code."""
+    sem = semester or _current_semester()
     enrolled_rows = await db.fetch(
         """SELECT s.student_id, u.full_name AS name, u.photo,
                   s.photo_path, s.department, u.email, s.year,
-                  ROUND(AVG(g.grade)::numeric, 1) AS gpa,
+                  COALESCE(
+                    (SELECT ROUND(AVG(g2.grade)::numeric,1) FROM grades g2
+                     WHERE g2.student_id=s.student_id AND g2.semester=$2),
+                    ROUND(AVG(g.grade)::numeric, 1)
+                  ) AS gpa,
                   ROUND(
                     CAST(100.0 * SUM(CASE WHEN a.status='present' THEN 1 ELSE 0 END) AS numeric) /
                     GREATEST(1, COUNT(a.id)), 1
@@ -93,7 +106,7 @@ async def get_course_students(
            WHERE ce.course_id = $1
            GROUP BY s.student_id, u.full_name, u.photo, s.photo_path, s.department, u.email, s.year
            ORDER BY u.full_name""",
-        course_code,
+        course_code, sem,
     )
     available_rows = await db.fetch(
         """SELECT s.student_id, u.full_name AS name, u.photo,

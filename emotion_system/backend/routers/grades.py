@@ -2,12 +2,19 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime
 
 from database import get_db
 from auth_utils import require_auth, require_role
 from notifier import manager
 
 router = APIRouter()
+
+def _current_semester() -> str:
+    """Auto-detect current semester: S1 = Sep–Jan, S2 = Feb–Aug."""
+    month = datetime.utcnow().month
+    year  = datetime.utcnow().year
+    return f"{year}-S1" if month >= 9 else f"{year}-S2"
 
 
 class GradeEntry(BaseModel):
@@ -16,15 +23,19 @@ class GradeEntry(BaseModel):
     course_name: str
     grade: float
     doctor_id: Optional[str] = None
+    semester: Optional[str] = None   # e.g. "2025-S1" — defaults to current semester
 
 
 @router.get("/student/{student_id}")
 async def get_student_grades(
     student_id: str,
+    semester: Optional[str] = None,
     payload: dict = Depends(require_auth),
     db=Depends(get_db),
 ):
-    """Students can only read their own grades; doctors/admins can read any."""
+    """Students can only read their own grades; doctors/admins can read any.
+       Optional ?semester=2025-S1 to filter by semester.
+    """
     caller_role = payload.get("role")
     caller_id   = payload.get("sub")
 
@@ -35,10 +46,16 @@ async def get_student_grades(
         if not row or row["student_id"].upper() != student_id.upper():
             raise HTTPException(status_code=403, detail="Access denied")
 
-    rows = await db.fetch(
-        "SELECT * FROM grades WHERE student_id=$1 ORDER BY created_at DESC",
-        student_id,
-    )
+    if semester:
+        rows = await db.fetch(
+            "SELECT * FROM grades WHERE student_id=$1 AND semester=$2 ORDER BY created_at DESC",
+            student_id, semester,
+        )
+    else:
+        rows = await db.fetch(
+            "SELECT * FROM grades WHERE student_id=$1 ORDER BY semester DESC, created_at DESC",
+            student_id,
+        )
     return [dict(r) for r in rows]
 
 
@@ -76,11 +93,13 @@ async def save_grade(
         if row:
             doctor_id = row["doctor_id"]
 
+    semester = entry.semester or _current_semester()
+
     await db.execute(
-        """INSERT INTO grades (student_id, course_code, course_name, grade, doctor_id)
-           VALUES ($1,$2,$3,$4,$5)
-           ON CONFLICT(student_id, course_code) DO UPDATE SET grade=EXCLUDED.grade""",
-        entry.student_id, entry.course_code, entry.course_name, entry.grade, doctor_id,
+        """INSERT INTO grades (student_id, course_code, course_name, grade, doctor_id, semester)
+           VALUES ($1,$2,$3,$4,$5,$6)
+           ON CONFLICT(student_id, course_code, semester) DO UPDATE SET grade=EXCLUDED.grade""",
+        entry.student_id, entry.course_code, entry.course_name, entry.grade, doctor_id, semester,
     )
     # Notify the student in real-time
     try:
@@ -100,3 +119,104 @@ async def save_grade(
     except Exception:
         pass  # WS failure must not break the grade endpoint
     return {"message": "Grade saved"}
+
+
+# ── Semester GPA endpoints ────────────────────────────────────────────────────
+
+@router.get("/semesters")
+async def list_semesters(
+    payload: dict = Depends(require_role("doctor", "admin")),
+    db=Depends(get_db),
+):
+    """Return all distinct semesters that have grades recorded."""
+    rows = await db.fetch(
+        "SELECT DISTINCT semester FROM grades ORDER BY semester DESC"
+    )
+    return [r["semester"] for r in rows]
+
+
+@router.post("/calculate-semester-gpa")
+async def calculate_semester_gpa(
+    data: dict,
+    payload: dict = Depends(require_role("doctor", "admin")),
+    db=Depends(get_db),
+):
+    """Calculate GPA for all students in a semester and save to semester_gpa table.
+       Body: { "semester": "2025-S1" }  — defaults to current semester.
+    """
+    semester = data.get("semester") or _current_semester()
+
+    # Get all students who have grades in this semester
+    rows = await db.fetch(
+        """SELECT student_id, ROUND(AVG(grade)::numeric, 2) as gpa, COUNT(*) as total_courses
+           FROM grades WHERE semester=$1 GROUP BY student_id""",
+        semester,
+    )
+    if not rows:
+        return {"message": f"No grades found for semester {semester}", "updated": 0}
+
+    updated = 0
+    for r in rows:
+        await db.execute(
+            """INSERT INTO semester_gpa (student_id, semester, gpa, total_courses, calculated_at)
+               VALUES ($1,$2,$3,$4,NOW())
+               ON CONFLICT(student_id, semester) DO UPDATE SET
+                 gpa=EXCLUDED.gpa,
+                 total_courses=EXCLUDED.total_courses,
+                 calculated_at=EXCLUDED.calculated_at""",
+            r["student_id"], semester, r["gpa"], r["total_courses"],
+        )
+        updated += 1
+
+    return {"message": f"GPA calculated for {updated} students", "semester": semester, "updated": updated}
+
+
+@router.get("/semester-gpa/{student_id}")
+async def get_student_semester_gpas(
+    student_id: str,
+    payload: dict = Depends(require_auth),
+    db=Depends(get_db),
+):
+    """Return all semester GPAs for a student (GPA history across semesters)."""
+    caller_role = payload.get("role")
+    caller_id   = payload.get("sub")
+
+    if caller_role == "student":
+        row = await db.fetchrow(
+            "SELECT student_id FROM students WHERE user_id=$1", int(caller_id)
+        )
+        if not row or row["student_id"].upper() != student_id.upper():
+            raise HTTPException(status_code=403, detail="Access denied")
+
+    rows = await db.fetch(
+        "SELECT * FROM semester_gpa WHERE student_id=$1 ORDER BY semester DESC",
+        student_id,
+    )
+    return [dict(r) for r in rows]
+
+
+@router.get("/all-semester-gpa")
+async def get_all_semester_gpas(
+    semester: Optional[str] = None,
+    payload: dict = Depends(require_role("doctor", "admin")),
+    db=Depends(get_db),
+):
+    """Return GPA for all students, optionally filtered by semester."""
+    if semester:
+        rows = await db.fetch(
+            """SELECT sg.*, u.full_name as student_name, s.department
+               FROM semester_gpa sg
+               JOIN students s ON sg.student_id = s.student_id
+               JOIN users u ON s.user_id = u.id
+               WHERE sg.semester=$1 ORDER BY sg.gpa DESC""",
+            semester,
+        )
+    else:
+        rows = await db.fetch(
+            """SELECT sg.*, u.full_name as student_name, s.department
+               FROM semester_gpa sg
+               JOIN students s ON sg.student_id = s.student_id
+               JOIN users u ON s.user_id = u.id
+               ORDER BY sg.semester DESC, sg.gpa DESC"""
+        )
+    return [dict(r) for r in rows]
