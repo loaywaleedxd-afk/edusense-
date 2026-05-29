@@ -207,9 +207,39 @@ async def init_tenant_schema(pool, schema: str):
                 course_name TEXT,
                 grade       REAL NOT NULL,
                 doctor_id   TEXT,
+                semester    TEXT DEFAULT '2024-S1',
                 added_by    TEXT DEFAULT 'doctor',
                 created_at  TIMESTAMPTZ DEFAULT NOW(),
-                UNIQUE(student_id, course_code)
+                UNIQUE(student_id, course_code, semester)
+            )
+        """)
+        # Safe migrations for existing installs
+        await conn.execute(
+            f"ALTER TABLE \"{schema}\".grades ADD COLUMN IF NOT EXISTS semester TEXT DEFAULT '2024-S1'"
+        )
+        try:
+            await conn.execute(
+                f'ALTER TABLE "{schema}".grades DROP CONSTRAINT IF EXISTS grades_student_id_course_code_key'
+            )
+        except Exception:
+            pass
+        try:
+            await conn.execute(
+                f'ALTER TABLE "{schema}".grades ADD CONSTRAINT grades_student_course_semester_key UNIQUE (student_id, course_code, semester)'
+            )
+        except Exception:
+            pass
+
+        # ── Semester GPA archive ──────────────────────────────────────────────
+        await conn.execute(f"""
+            CREATE TABLE IF NOT EXISTS "{schema}".semester_gpa (
+                id             SERIAL PRIMARY KEY,
+                student_id     TEXT REFERENCES "{schema}".students(student_id) ON DELETE CASCADE,
+                semester       TEXT NOT NULL,
+                gpa            NUMERIC(4,2),
+                total_courses  INT,
+                calculated_at  TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(student_id, semester)
             )
         """)
 
