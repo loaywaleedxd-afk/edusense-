@@ -254,6 +254,7 @@ class DataStore {
     // IMPORTANT: change these passwords before deploying to production.
     // Use environment variables or a secure vault — never commit real credentials.
     const users = [
+      {username:'loay1612122005',password:'01005229619',role:'superadmin',name:'Super Admin',email:'superadmin@university.edu'},
       {username:'admin',password:'Admin@EduSense2025!',role:'admin',name:'System Administrator',email:'admin@university.edu'},
       {username:'parent',password:'Parent@EduSense2025!',role:'parent',name:'Parent User',email:'parent@university.edu',studentId:this.students[0]?.id||'S001'},
     ];
