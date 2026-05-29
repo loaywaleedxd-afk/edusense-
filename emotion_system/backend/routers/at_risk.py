@@ -247,6 +247,13 @@ async def at_risk_list(
 
 @router.get("/student/{student_id}")
 async def student_risk(student_id: str, payload: dict = Depends(require_auth), db=Depends(get_db)):
+    # Students may only view their own risk assessment
+    if payload.get("role") == "student":
+        stu_row = await db.fetchrow(
+            "SELECT student_id FROM students WHERE user_id=$1", int(payload["sub"])
+        )
+        if not stu_row or stu_row["student_id"] != student_id:
+            raise HTTPException(status_code=403, detail="Access denied")
     row = await db.fetchrow(
         "SELECT * FROM at_risk_assessments WHERE student_id=$1", student_id
     )

@@ -34,8 +34,8 @@ async def create_user(
 ):
     """Create any user — admin only. Password is bcrypt-hashed on creation."""
     plain_pwd = (data.get("password") or data.get("username", "")).strip()
-    if len(plain_pwd) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    if len(plain_pwd) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
 
     try:
         await db.execute(

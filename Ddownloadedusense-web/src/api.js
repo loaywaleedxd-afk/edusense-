@@ -51,8 +51,8 @@ export const api = {
   me:             ()                   => get('/api/auth/me'),
   changePassword: (old_password, new_password) =>
                     post('/api/auth/change-password', { old_password, new_password }),
-  resetPassword:  (username, newPassword) =>
-                    post('/api/auth/reset-password', { username, new_password: newPassword }),
+  resetPassword:  (resetToken, newPassword) =>
+                    post('/api/auth/reset-password', { reset_token: resetToken, new_password: newPassword }),
 
   // Init — bulk data load after login
   init: () => get('/api/init/'),

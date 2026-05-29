@@ -211,11 +211,17 @@ async def init_data(payload: dict = Depends(require_auth), db=Depends(get_db)):
         my_excuses = [e for e in excuse_rows if e["student_id"] == stu_id]
         my_fees = student_fees.get(stu_id, {"paid": True, "amount": 1500, "dueDate": "2024-12-01"})
 
+        # Scope exam results and students list — never send other students' grades
+        my_exam_results = {stu_id: exam_results.get(stu_id, {})}
+        # Scrub other students' names/emails from the list for privacy
+        my_students = [{"id": s["id"], "name": s["name"], "dept": s.get("dept",""), "year": s.get("year",1)}
+                       for s in all_students]
+
         return {
             "role": "student", "studentId": stu_id,
             "courses": all_courses,
             "courseEnrollments": course_enrollments,
-            "students": all_students,
+            "students": my_students,
             "announcements": my_announcements,
             "examSchedule": my_exams,
             "courseResources": my_resources,
@@ -224,7 +230,7 @@ async def init_data(payload: dict = Depends(require_auth), db=Depends(get_db)):
             "complaints": my_complaints,
             "systemAlerts": my_alerts,
             "excuses": my_excuses,
-            "examResults": exam_results,
+            "examResults": my_exam_results,
             "attendance": attendance,
             "chatMessages": chat_messages,
             "registrationStatus": reg,

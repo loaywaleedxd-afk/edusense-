@@ -1,6 +1,6 @@
 """QR attendance sessions router."""
 from fastapi import APIRouter, Depends, HTTPException
-import os, json, random, string, time
+import os, json, secrets, string, time
 from collections import defaultdict
 from datetime import datetime, timezone, date as date_type
 from database import get_db
@@ -24,7 +24,7 @@ def _check_qr_rate(ip: str):
 
 @router.post("/create")
 async def create_qr(data: dict, payload: dict = Depends(require_role("doctor","admin")), db=Depends(get_db)):
-    token = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    token = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
     try:
         # Don't insert created_at — let the DB DEFAULT NOW() handle it
         await db.execute(

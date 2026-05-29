@@ -46,8 +46,8 @@ async def get_notifications(payload: dict = Depends(require_auth), db=Depends(ge
 
 
 @router.post("/")
-async def add_notification(data: dict, payload: dict = Depends(require_auth), db=Depends(get_db)):
-    """Upsert an alert — used by the frontend dataStore to sync writes."""
+async def add_notification(data: dict, payload: dict = Depends(require_role("doctor", "admin", "superadmin")), db=Depends(get_db)):
+    """Upsert an alert — restricted to doctors and admins to prevent students writing arbitrary alerts."""
     await db.execute(
         """INSERT INTO system_alerts
            (id, type, title, message, student_id, doctor_id, course_id, alert_kind, is_read, created_at)
@@ -110,6 +110,10 @@ async def mark_all_read(payload: dict = Depends(require_auth), db=Depends(get_db
                WHERE doctor_id IN (SELECT doctor_id FROM doctors WHERE user_id=$1)""",
             int(uid)
         )
+    elif role == "superadmin":
+        # Only superadmin may mark all alerts globally
+        await db.execute("UPDATE system_alerts SET is_read=TRUE")
     else:
+        # Admin: only mark their own org's alerts (scoped by current schema via search_path)
         await db.execute("UPDATE system_alerts SET is_read=TRUE")
     return {"ok": True}

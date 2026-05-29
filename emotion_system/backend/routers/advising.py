@@ -100,6 +100,14 @@ async def list_appointments(payload: dict = Depends(require_auth), db=Depends(ge
 
 @router.post("/appointments")
 async def book_appointment(body: AppointmentCreate, payload: dict = Depends(require_auth), db=Depends(get_db)):
+    # Students may only book appointments for themselves
+    if payload.get("role") == "student":
+        stu_row = await db.fetchrow(
+            "SELECT student_id FROM students WHERE user_id=$1", int(payload["sub"])
+        )
+        if not stu_row or stu_row["student_id"] != body.student_id:
+            raise HTTPException(status_code=403, detail="You can only book appointments for yourself")
+
     row = await db.fetchrow(
         """INSERT INTO advisor_appointments
            (student_id, advisor_id, scheduled_date, scheduled_time,

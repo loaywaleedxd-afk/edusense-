@@ -141,8 +141,9 @@ async def request_reset(request: Request, db=Depends(get_db)):
         return {"ok": True, "message": "If that account exists, a reset token has been issued."}
     token = secrets.token_urlsafe(32)
     _reset_tokens[token] = {"username": username, "expires": time.time() + _RESET_TOKEN_TTL}
-    # In production: send token via email. For now return it so the frontend can display it.
-    return {"ok": True, "reset_token": token, "expires_in": _RESET_TOKEN_TTL}
+    # NOTE: In production this token must be emailed to the user — never returned in the response.
+    # The frontend's "forgot password" flow should direct the user to check their email.
+    return {"ok": True, "message": "If that account exists, a reset link has been sent to the registered email."}
 
 
 @router.post("/reset-password")

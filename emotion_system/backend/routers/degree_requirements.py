@@ -62,9 +62,10 @@ async def bulk_add_requirements(
     """Add many requirements at once. Skips duplicates by course_code+department."""
     items = body.get("requirements", [])
     created = 0
+    skipped = 0
     for r in items:
         try:
-            await db.execute(
+            result = await db.execute(
                 """INSERT INTO degree_requirements
                    (program, course_code, course_name, credits, category, semester_order, is_required, department)
                    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
@@ -75,10 +76,13 @@ async def bulk_add_requirements(
                 int(r.get("semester_order", 1)), bool(r.get("is_required", True)),
                 r.get("department"),
             )
-            created += 1
+            if result == "INSERT 0 0":
+                skipped += 1
+            else:
+                created += 1
         except Exception:
             pass
-    return {"created": created}
+    return {"created": created, "skipped": skipped}
 
 
 @router.delete("/{req_id}")

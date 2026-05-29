@@ -297,9 +297,13 @@ async def cancel_request(
     """Student cancels their own pending request."""
     uid = int(payload.get("sub"))
     stu_row = await db.fetchrow("SELECT student_id FROM students WHERE user_id=$1", uid)
-    stu_id  = stu_row["student_id"] if stu_row else ""
-    await db.execute(
+    if not stu_row:
+        raise HTTPException(status_code=403, detail="Student record not found")
+    stu_id = stu_row["student_id"]
+    result = await db.execute(
         "DELETE FROM enrollment_requests WHERE id=$1 AND student_id=$2 AND status='pending'",
         req_id, stu_id,
     )
+    if result == "DELETE 0":
+        raise HTTPException(status_code=404, detail="Request not found or already processed")
     return {"ok": True}

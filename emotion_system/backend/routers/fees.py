@@ -25,7 +25,9 @@ async def get_fee_status(student_id: str, payload: dict = Depends(require_auth),
     if row:
         return dict(row)
     # No record found → default to UNPAID so the student sees a fee reminder
-    return {"student_id": student_id, "paid": False, "amount": 1500, "due_date": "2024-12-01"}
+    from datetime import date, timedelta
+    due = (date.today() + timedelta(days=30)).isoformat()
+    return {"student_id": student_id, "paid": False, "amount": 1500, "due_date": due}
 
 
 @router.put("/{student_id}")

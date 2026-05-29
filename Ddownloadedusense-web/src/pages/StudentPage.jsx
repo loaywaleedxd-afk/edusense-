@@ -472,19 +472,7 @@ function StudentDashboard({ theme: C, user, stu }) {
   const { t: dashT, isRTL: dashRTL } = useLang();
   const isMobile = useMobile();
 
-  // Demo push notifications on first mount
-  useEffect(() => {
-    const SHOWN_KEY = `es_dash_notif_${stu.id}`;
-    if (sessionStorage.getItem(SHOWN_KEY)) return;
-    sessionStorage.setItem(SHOWN_KEY, '1');
-    const demos = [
-      { delay: 1200, title: 'Grade Posted', message: 'Your AI grade is now available — check Exam Results.', icon: '📝', color: '#3b82f6' },
-      { delay: 3500, title: 'Attendance Warning', message: 'Your attendance in Data Science dropped below 80%.', icon: '⚠️', color: '#f59e0b' },
-      { delay: 6000, title: 'Advising Confirmed', message: 'Your appointment with Dr. Ahmed is confirmed for Mon 10:00.', icon: '✅', color: '#10b981' },
-    ];
-    const timers = demos.map(d => setTimeout(() => pushToast(d), d.delay));
-    return () => timers.forEach(clearTimeout);
-  }, [stu.id]);
+  // (demo notifications removed — toasts are now driven by real WebSocket events only)
 
   return (
     <div style={{ padding:'8px 20px 20px' }}>

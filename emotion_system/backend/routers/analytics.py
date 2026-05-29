@@ -27,14 +27,23 @@ async def engagement_overview(
     """Overall platform engagement metrics."""
     role = payload.get("role")
 
-    # Students always see only their own data; resolve their student_id from
-    # the users table via the students join since the JWT only carries the user id.
+    # Students always see only their own data
     if role == "student":
         row = await db.fetchrow(
             "SELECT student_id FROM students WHERE user_id=$1",
             int(payload["sub"]),
         )
         student_id = row["student_id"] if row else None
+
+    # Parents may only query their linked children
+    elif role == "parent" and student_id:
+        uid = int(payload["sub"])
+        link = await db.fetchrow(
+            "SELECT 1 FROM parent_students WHERE parent_id=$1 AND student_id=$2",
+            uid, student_id,
+        )
+        if not link:
+            raise HTTPException(status_code=403, detail="Access denied")
 
     if student_id:
         overview = await db.fetchrow(

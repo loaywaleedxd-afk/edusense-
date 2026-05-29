@@ -132,8 +132,16 @@ async def toggle_slot(slot_id: str, body: dict, _: dict = Depends(require_role("
 
 # ── POST /book ─────────────────────────────────────────────────────────────────
 @router.post("/book")
-async def book_slot(booking: BookingModel, _: dict = Depends(require_auth), db=Depends(get_db)):
+async def book_slot(booking: BookingModel, payload: dict = Depends(require_auth), db=Depends(get_db)):
     try:
+        # Students may only book for themselves
+        if payload.get("role") == "student":
+            stu_row = await db.fetchrow(
+                "SELECT student_id FROM students WHERE user_id=$1", int(payload["sub"])
+            )
+            if not stu_row or stu_row["student_id"] != booking.studentId:
+                raise HTTPException(status_code=403, detail="You can only book slots for yourself")
+
         # Resolve doctor_id from slot if not provided or empty
         doctor_id = booking.doctorId or ''
         if not doctor_id:
@@ -169,7 +177,14 @@ async def book_slot(booking: BookingModel, _: dict = Depends(require_auth), db=D
 
 # ── GET /bookings/student/{student_id} ────────────────────────────────────────
 @router.get("/bookings/student/{student_id}")
-async def get_student_bookings(student_id: str, _: dict = Depends(require_auth), db=Depends(get_db)):
+async def get_student_bookings(student_id: str, payload: dict = Depends(require_auth), db=Depends(get_db)):
+    # Students may only view their own bookings
+    if payload.get("role") == "student":
+        stu_row = await db.fetchrow(
+            "SELECT student_id FROM students WHERE user_id=$1", int(payload["sub"])
+        )
+        if not stu_row or stu_row["student_id"] != student_id:
+            raise HTTPException(status_code=403, detail="Access denied")
     try:
         rows = await db.fetch(
             "SELECT * FROM office_hours_bookings WHERE student_id = $1 ORDER BY created_at DESC",

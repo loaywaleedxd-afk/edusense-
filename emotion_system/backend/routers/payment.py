@@ -49,12 +49,13 @@ async def confirm_payment(data: dict, payload: dict = Depends(require_auth), db=
     if not success:
         return {"confirmed": False, "reason": "payment_not_successful"}
 
-    # 3. Extract student info
-    student_id = data.get("student_id")
+    # 3. Derive student_id from the authenticated JWT — never trust the body
+    uid = int(payload.get("sub"))
+    stu_row = await db.fetchrow("SELECT student_id FROM students WHERE user_id=$1", uid)
+    if not stu_row:
+        raise HTTPException(status_code=403, detail="Student record not found for authenticated user")
+    student_id = stu_row["student_id"]
     amount     = data.get("amount")
-
-    if not student_id:
-        raise HTTPException(status_code=400, detail="Missing student_id in payment data")
 
     # 4. Write to DB
     await db.execute(

@@ -86,8 +86,8 @@ async def create_student(
         raise HTTPException(status_code=400, detail="student_id and name are required")
     if not plain:
         raise HTTPException(status_code=400, detail="Password is required when creating a student account")
-    if len(plain) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    if len(plain) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
 
     hashed = hash_password(plain)
 
