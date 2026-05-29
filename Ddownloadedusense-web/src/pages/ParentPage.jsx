@@ -49,13 +49,21 @@ export default function ParentPage({ theme: C, user, isDark, onToggleMode, onLog
 
   // ── Multi-child support ──────────────────────────────────────────────────
   const linkedIds = user.linkedStudentIds || [];
-  const [linkedStudents, setLinkedStudents] = useState([]);
+  const [linkedStudents,  setLinkedStudents]  = useState([]);
+  const [loadingStudents, setLoadingStudents] = useState(true);
 
   useEffect(() => {
     const ids = linkedIds.length > 0
       ? linkedIds
       : [user.studentId || user.student_id || ''].filter(Boolean);  // never use numeric DB user.id
-    if (!ids.length) return;
+
+    if (!ids.length) {
+      // No IDs at all — stop spinner immediately and show "not linked" message
+      setLoadingStudents(false);
+      return;
+    }
+
+    setLoadingStudents(true);
     Promise.all(ids.map(id => api.getStudent(id).catch(() => null)))
       .then(results => {
         const students = results.filter(Boolean).map(s => ({
@@ -73,8 +81,9 @@ export default function ParentPage({ theme: C, user, isDark, onToggleMode, onLog
           attentionScore: s.attention_score || 70,
         }));
         setLinkedStudents(students);
+        setLoadingStudents(false);
       })
-      .catch(() => {});
+      .catch(() => setLoadingStudents(false));
   }, [user.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -138,9 +147,18 @@ export default function ParentPage({ theme: C, user, isDark, onToggleMode, onLog
           )}
         </div>
         <div className="content-scroll" style={{flex:1,overflowY:'auto',background:C.bg}}>
-          {!child ? (
-            <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',color:C.text3,fontSize:14}}>
-              Loading student data…
+          {loadingStudents ? (
+            <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',flexDirection:'column',gap:12,color:C.text3}}>
+              <div style={{fontSize:28}}>⏳</div>
+              <div style={{fontSize:14}}>Loading student data…</div>
+            </div>
+          ) : !child ? (
+            <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100%',flexDirection:'column',gap:12,color:C.text3,textAlign:'center',padding:40}}>
+              <div style={{fontSize:48}}>👨‍👩‍👧</div>
+              <div style={{fontSize:16,fontWeight:700,color:C.text}}>No students linked to your account</div>
+              <div style={{fontSize:13,color:C.text2,maxWidth:360,lineHeight:1.6}}>
+                Ask your system administrator to link your child's student ID to your parent account.
+              </div>
             </div>
           ) : (
             <AnimatedPage pageKey={page + (child?.id || '')}>

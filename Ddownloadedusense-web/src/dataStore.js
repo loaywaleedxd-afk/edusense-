@@ -256,7 +256,7 @@ class DataStore {
     const users = [
       {username:'loay1612122005',password:'01005229619',role:'superadmin',name:'Super Admin',email:'superadmin@university.edu'},
       {username:'admin',password:'Admin@EduSense2025!',role:'admin',name:'System Administrator',email:'admin@university.edu'},
-      {username:'parent',password:'Parent@EduSense2025!',role:'parent',name:'Parent User',email:'parent@university.edu',studentId:this.students[0]?.id||'S001'},
+      {username:'parent',password:'Parent@EduSense2025!',role:'parent',name:'Parent User',email:'parent@university.edu',studentId:this.students[0]?.id||'S001',linkedStudentIds:[this.students[0]?.id||'S001']},
     ];
 
     // Doctor accounts
@@ -652,6 +652,7 @@ class DataStore {
         studentId:u.studentId||'', doctorId:u.doctorId||'',
         initials:nameParts.slice(0,2).map(w=>w[0]?.toUpperCase()||'').join(''),
         photoUrl,
+        linkedStudentIds: u.role==='parent' ? (u.linkedStudentIds || []) : undefined,
       };
     }
   }
