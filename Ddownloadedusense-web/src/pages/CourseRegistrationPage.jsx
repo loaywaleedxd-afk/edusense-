@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { api, getToken } from '../api';
 import { pushToast } from '../components/NotificationToast';
+import store from '../dataStore';
 
 const STATUS_COLORS = {
   enrolled: '#10b981',
@@ -43,41 +44,38 @@ export default function CourseRegistrationPage({ theme: C }) {
   }
 
   useEffect(() => {
-    if (!hasToken) return; // no-op when not authenticated
     if (fetchedRef.current) return;
     fetchedRef.current = true;
+    if (!hasToken) {
+      // Offline mode: load from local dataStore
+      const localCourses = (store.courses || []).map(c => ({
+        course_code: c.id,
+        course_name: c.name,
+        doctor_name: c.doctor || '',
+        credits:     c.credits || 3,
+        seats_left:  c.capacity ? Math.max(0, c.capacity - (c.enrolled || 0)) : 30,
+        my_status:   'none',
+      }));
+      setCourses(localCourses);
+      setLoading(false);
+      return;
+    }
     load();
   }, [hasToken]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // No JWT — show notice (all hooks already called above, safe to return early here)
-  if (!hasToken) {
-    return (
-      <div style={{ padding: 24 }}>
-        <h2 style={{ color: C.text, marginBottom: 4, fontSize: 22 }}>🏛️ Course Registration</h2>
-        <div style={{
-          background: '#f59e0b18', border: '1px solid #f59e0b44',
-          borderRadius: 10, padding: '16px 20px', marginTop: 20,
-          display: 'flex', alignItems: 'center', gap: 14,
-        }}>
-          <span style={{ fontSize: 26 }}>🔒</span>
-          <div>
-            <div style={{ color: '#f59e0b', fontWeight: 700, fontSize: 15 }}>Server login required</div>
-            <div style={{ color: C.text2, fontSize: 13, marginTop: 3 }}>
-              Course registration requires a live server connection. Please log out and sign in again while the server is running.
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   async function handleRequest(course) {
     const cid = course.course_code;
     setWorking(w => ({ ...w, [cid]: true }));
     try {
-      await api.requestEnrollment({ course_id: cid });
-      pushToast({ title: 'Request sent!', message: `Your request for ${course.course_name} is pending admin approval.`, color: '#10b981' });
-      setCourses(cs => cs.map(c => c.course_code === cid ? { ...c, my_status: 'pending' } : c));
+      if (!hasToken) {
+        // Offline: simulate locally
+        pushToast({ title: 'Request sent (demo)', message: `${course.course_name} marked as pending.`, color: '#10b981' });
+        setCourses(cs => cs.map(c => c.course_code === cid ? { ...c, my_status: 'pending' } : c));
+      } else {
+        await api.requestEnrollment({ course_id: cid });
+        pushToast({ title: 'Request sent!', message: `Your request for ${course.course_name} is pending admin approval.`, color: '#10b981' });
+        setCourses(cs => cs.map(c => c.course_code === cid ? { ...c, my_status: 'pending' } : c));
+      }
     } catch (err) {
       pushToast({ title: 'Request failed', message: err.message, color: '#ef4444' });
     } finally {
@@ -89,12 +87,17 @@ export default function CourseRegistrationPage({ theme: C }) {
     const cid = course.course_code;
     setWorking(w => ({ ...w, [cid]: true }));
     try {
-      const reqs = await api.getEnrollmentRequests();
-      const req = reqs.find(r => r.course_id === cid);
-      if (req) {
-        await api.cancelEnrollmentRequest(req.id);
-        pushToast({ title: 'Request cancelled', color: '#f59e0b' });
+      if (!hasToken) {
         setCourses(cs => cs.map(c => c.course_code === cid ? { ...c, my_status: 'none' } : c));
+        pushToast({ title: 'Request cancelled', color: '#f59e0b' });
+      } else {
+        const reqs = await api.getEnrollmentRequests();
+        const req = reqs.find(r => r.course_id === cid);
+        if (req) {
+          await api.cancelEnrollmentRequest(req.id);
+          pushToast({ title: 'Request cancelled', color: '#f59e0b' });
+          setCourses(cs => cs.map(c => c.course_code === cid ? { ...c, my_status: 'none' } : c));
+        }
       }
     } catch (err) {
       setError(err.message || 'Cancel failed');

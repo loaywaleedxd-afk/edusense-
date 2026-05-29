@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { api, getToken } from '../api';
 import { pushToast } from '../components/NotificationToast';
 import useMobile from '../hooks/useMobile';
+import store from '../dataStore';
 
 function Avatar({ name, photo, size = 36 }) {
   if (photo) {
@@ -52,8 +53,18 @@ export default function DirectMessagePage({ theme: C, user }) {
   useEffect(() => {
     if (initFetched.current) return;
     initFetched.current = true;
-    // Messaging requires a valid JWT (server login). If no token, show auth error.
-    if (!getToken()) { setAuthError(true); return; }
+    if (!getToken()) {
+      // Offline: build contacts from local doctors list
+      const localContacts = (store.doctors || []).map(d => ({
+        id:    d.id,
+        name:  d.name,
+        role:  'doctor',
+        photo: null,
+      }));
+      setContacts(localContacts);
+      setConvos([]);
+      return;
+    }
     api.getDMContacts()
       .then(setContacts)
       .catch(err => { if (err.message?.includes('401') || err.message?.includes('Unauthorized')) setAuthError(true); });
@@ -152,20 +163,15 @@ export default function DirectMessagePage({ theme: C, user }) {
         >✏️ New Message</button>
       </div>
 
-      {/* Auth error — user is in local/offline mode without a JWT */}
+      {/* Offline notice — only when JWT auth fails (not local-auth mode) */}
       {authError && (
         <div style={{
-          background: '#f59e0b18', border: '1px solid #f59e0b44',
-          borderRadius: 10, padding: '14px 18px', marginBottom: 12,
-          display: 'flex', alignItems: 'center', gap: 12,
+          background: '#3b82f618', border: '1px solid #3b82f633',
+          borderRadius: 10, padding: '10px 16px', marginBottom: 12,
+          display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: C.text2,
         }}>
-          <span style={{ fontSize: 22 }}>🔒</span>
-          <div>
-            <div style={{ color: '#f59e0b', fontWeight: 700, fontSize: 14 }}>Server login required</div>
-            <div style={{ color: C.text2, fontSize: 12, marginTop: 2 }}>
-              Messaging requires a live server connection. Please log out and sign in again while the server is running.
-            </div>
-          </div>
+          <span>📡</span>
+          <span>Offline mode — contacts shown from local data. Sending messages requires a server connection.</span>
         </div>
       )}
 

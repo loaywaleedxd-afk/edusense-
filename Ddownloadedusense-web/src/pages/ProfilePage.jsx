@@ -64,8 +64,15 @@ export default function ProfilePage({ theme: C, user }) {
   async function handleSave() {
     setSaving(true);
     try {
-      await api.updateMyProfile(form);
-      pushToast({ title: 'Profile saved', message: 'Your profile has been updated.', color: C.green });
+      if (!getToken()) {
+        // Offline / local-auth mode — persist display name to sessionStorage so
+        // the header reflects the change for this session
+        sessionStorage.setItem('es_local_profile', JSON.stringify(form));
+        pushToast({ title: 'Profile saved (local)', message: 'Changes saved for this session.', color: C.green });
+      } else {
+        await api.updateMyProfile(form);
+        pushToast({ title: 'Profile saved', message: 'Your profile has been updated.', color: C.green });
+      }
     } catch (err) {
       pushToast({ title: 'Save failed', message: err.message, color: C.red });
     } finally {
@@ -126,20 +133,15 @@ export default function ProfilePage({ theme: C, user }) {
         Manage your account information and security settings.
       </p>
 
-      {/* Auth notice — shown when user is in local/offline mode */}
+      {/* Offline mode — soft note only, form still works */}
       {!getToken() && (
         <div style={{
-          background: '#f59e0b18', border: '1px solid #f59e0b44',
-          borderRadius: 10, padding: '14px 18px', marginBottom: 20,
-          display: 'flex', alignItems: 'center', gap: 12,
+          background: '#3b82f618', border: '1px solid #3b82f633',
+          borderRadius: 10, padding: '10px 16px', marginBottom: 20,
+          display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: C.text2,
         }}>
-          <span style={{ fontSize: 22 }}>🔒</span>
-          <div>
-            <div style={{ color: '#f59e0b', fontWeight: 700, fontSize: 14 }}>Server login required</div>
-            <div style={{ color: C.text2, fontSize: 12, marginTop: 2 }}>
-              Profile editing requires a live server connection. You can view your info below but changes won't be saved until you log in via the server.
-            </div>
-          </div>
+          <span>📝</span>
+          <span>Offline mode — changes save locally for this session.</span>
         </div>
       )}
 
