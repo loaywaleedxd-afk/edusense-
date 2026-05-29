@@ -25,7 +25,7 @@ import ScheduleItem from '../components/ScheduleItem';
 import WebcamFeed, { buildFaceMatcher, prewarmRecognitionModels } from '../components/WebcamFeed';
 import QRCodeComp from '../components/QRCode';
 import store from '../dataStore';
-import api, { get } from '../api';
+import api, { get, getToken } from '../api';
 import { EMOTION_ICONS } from '../theme';
 
 const NAV = [
@@ -192,7 +192,7 @@ export default function DoctorPage({ theme: C, user, isDark, onToggleMode, onLog
     // Only connect when user.id is a numeric DB id (API login); local-auth IDs like 'D001' are skipped.
     if (!user?.id || !/^\d+$/.test(String(user.id))) return;
     const BASE_WS = (import.meta.env.VITE_API_URL || '').replace(/^http/, 'ws') || `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
-    const ws = new WebSocket(`${BASE_WS}/ws/notifications/${user.id}`);
+    const ws = new WebSocket(`${BASE_WS}/ws/notifications/${user.id}?token=${encodeURIComponent(getToken() || '')}`);
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);

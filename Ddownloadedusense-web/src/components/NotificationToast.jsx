@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getToken } from '../api';
 
 /* ── Shared toast queue (module-level so any component can push) ── */
 let _listeners = [];
@@ -29,7 +30,7 @@ function connectWS(userId, onMessage) {
   if (_ws) return;
   try {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const url = `${proto}//${location.host}/ws/notifications/${userId}`;
+    const url = `${proto}//${location.host}/ws/notifications/${userId}?token=${encodeURIComponent(getToken() || '')}`;
     _ws = new WebSocket(url);
     _ws.onmessage = e => {
       try {

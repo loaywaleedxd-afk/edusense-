@@ -11,7 +11,7 @@ import EmotionBarsWidget from '../components/EmotionBars';
 import ScheduleItem from '../components/ScheduleItem';
 import WebcamFeed from '../components/WebcamFeed';
 import store from '../dataStore';
-import api from '../api';
+import api, { getToken } from '../api';
 import { EMOTION_ICONS } from '../theme';
 import GPACalculatorPage from './GPACalculatorPage';
 import TimetablePage from './TimetablePage';
@@ -311,7 +311,7 @@ export default function StudentPage({ theme: C, user, isDark, onToggleMode, onLo
     // Only connect when user.id is a numeric DB id (API login); local-auth IDs like 'S019' are skipped.
     if (!user?.id || !/^\d+$/.test(String(user.id))) return;
     const BASE_WS = (import.meta.env.VITE_API_URL || '').replace(/^http/, 'ws') || `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
-    const ws = new WebSocket(`${BASE_WS}/ws/notifications/${user.id}`);
+    const ws = new WebSocket(`${BASE_WS}/ws/notifications/${user.id}?token=${encodeURIComponent(getToken() || '')}`);
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
@@ -420,8 +420,8 @@ function StudentDashboard({ theme: C, user, stu }) {
       .then(rows => {
         if (!rows || !rows.length) return;
         setTrendSeries({
-          engagement: rows.map(r => Math.round((r.avg_engagement ?? 0) * 100)),
-          attention:  rows.map(r => Math.round((r.avg_attention  ?? 0) * 100)),
+          engagement: rows.map(r => Math.round(r.avg_engagement ?? 0)),
+          attention:  rows.map(r => Math.round(r.avg_attention  ?? 0)),
           labels:     rows.map(r => r.date ? r.date.slice(5) : ''),
         });
       })
@@ -614,6 +614,7 @@ function StudentAttendance({ theme: C, stu, pendingQR, onClearPendingQR }) {
       .then(rows => setMyExcuses(rows.map(r => ({
         id: r.id, courseId: r.course_code, week: r.week, reason: r.reason,
         status: r.status, createdAt: r.created_at,
+        courseName: r.course_name || r.course_code,
       }))))
       .catch(() => {});
   }, [stu.id]);
@@ -931,7 +932,7 @@ function StudentEmotions({ theme: C, stu }) {
           {emotionData && (
             <div style={{ display:'flex', gap:12, marginBottom:12, flexWrap:'wrap' }}>
               <div style={{ background:C.card, borderRadius:12, border:`1px solid ${C.border}`, padding:'12px 18px', flex:1, textAlign:'center' }}>
-                <div style={{ fontSize:22, fontWeight:700, color:C.blue }}>{emotionData.avg_engagement_rate != null ? `${(emotionData.avg_engagement_rate * 100).toFixed(1)}%` : '—'}</div>
+                <div style={{ fontSize:22, fontWeight:700, color:C.blue }}>{emotionData.avg_engagement != null ? `${Number(emotionData.avg_engagement).toFixed(1)}%` : '—'}</div>
                 <div style={{ fontSize:11, color:C.text3, marginTop:2 }}>Avg Engagement Rate</div>
               </div>
               <div style={{ background:C.card, borderRadius:12, border:`1px solid ${C.border}`, padding:'12px 18px', flex:1, textAlign:'center' }}>

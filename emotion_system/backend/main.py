@@ -156,7 +156,13 @@ app.include_router(tenants.router, prefix="/api/super/tenants", include_in_schem
 # ── Per-user WebSocket notification endpoint ───────────────────────────────────
 @app.websocket("/ws/notifications/{user_id}")
 async def ws_notifications(websocket: WebSocket, user_id: str):
-    """Real-time notification channel per user."""
+    """Real-time notification channel per user — token verified via query param."""
+    from auth_utils import decode_token
+    token = websocket.query_params.get("token", "")
+    jwt_payload = decode_token(token) if token else None
+    if not jwt_payload or str(jwt_payload.get("sub")) != str(user_id):
+        await websocket.close(code=4001)
+        return
     await manager.connect_user(websocket, user_id)
     try:
         await websocket.send_text(json.dumps({
@@ -262,7 +268,10 @@ async def websocket_endpoint(websocket: WebSocket, lecture_id: str):
     try:
         while True:
             data = await websocket.receive_text()
-            payload = json.loads(data)
+            try:
+                payload = json.loads(data)
+            except json.JSONDecodeError:
+                continue  # ignore malformed frames
             await manager.broadcast(lecture_id, json.dumps({
                 "type": "emotion_update",
                 "lecture_id": lecture_id,

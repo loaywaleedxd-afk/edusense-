@@ -37,6 +37,7 @@ async def set_fee_status(student_id: str, data: dict,
            ON CONFLICT(student_id) DO UPDATE SET paid=EXCLUDED.paid,
            amount=EXCLUDED.amount, due_date=EXCLUDED.due_date""",
         student_id, bool(data.get("paid")),
-        data.get("amount", 1500), data.get("dueDate","2024-12-01")
+        data.get("amount", 1500),
+        data.get("due_date") or data.get("dueDate", "2024-12-01")
     )
     return {"ok": True}

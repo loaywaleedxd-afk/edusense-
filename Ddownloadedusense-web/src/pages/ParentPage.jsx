@@ -11,7 +11,7 @@ import { BarChart, LineChart, DonutChart } from '../components/Charts';
 import EmotionBarsWidget from '../components/EmotionBars';
 import store from '../dataStore';          // kept for store.emotionDist / store.trendData (demo charts)
 import { EMOTION_ICONS } from '../theme';
-import { get, api } from '../api.js';
+import { get, api, getToken } from '../api.js';
 import { pushToast } from '../components/NotificationToast';
 
 const NAV = [
@@ -84,7 +84,7 @@ export default function ParentPage({ theme: C, user, isDark, onToggleMode, onLog
   useEffect(() => {
     if (!user?.id || !/^\d+$/.test(String(user.id))) return;
     const BASE_WS = (import.meta.env.VITE_API_URL || '').replace(/^http/, 'ws') || `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
-    const ws = new WebSocket(`${BASE_WS}/ws/notifications/${user.id}`);
+    const ws = new WebSocket(`${BASE_WS}/ws/notifications/${user.id}?token=${encodeURIComponent(getToken() || '')}`);
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);

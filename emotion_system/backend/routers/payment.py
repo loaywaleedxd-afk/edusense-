@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Depends
 import os, hmac, hashlib
 
 from database import get_db
+from auth_utils import require_auth
 
 router = APIRouter()
 HMAC_SECRET   = os.getenv("PAYMOB_HMAC_SECRET", "")
@@ -24,7 +25,7 @@ _HMAC_FIELDS = [
 def _verify_hmac(params: dict) -> bool:
     """Return True if the Paymob HMAC in *params* is valid."""
     if not HMAC_SECRET:
-        return True   # secret not configured — skip verification (dev mode)
+        return False  # no secret configured — reject all unverifiable payments
     received = params.get("hmac", "")
     payload  = "".join(str(params.get(f, "")) for f in _HMAC_FIELDS)
     expected = hmac.new(
@@ -34,7 +35,7 @@ def _verify_hmac(params: dict) -> bool:
 
 
 @router.post("/confirm")
-async def confirm_payment(data: dict, db=Depends(get_db)):
+async def confirm_payment(data: dict, payload: dict = Depends(require_auth), db=Depends(get_db)):
     """
     Called by the frontend with all Paymob redirect URL parameters.
     Verifies HMAC, then marks the fee as paid in the database.

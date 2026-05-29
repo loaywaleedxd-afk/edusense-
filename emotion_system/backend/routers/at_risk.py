@@ -20,8 +20,8 @@ from database import get_db
 from auth_utils import require_auth, require_role
 
 router  = APIRouter()
-SMTP_USER = os.getenv("SMTP_USER", os.getenv("VITE_SMTP_USER", ""))
-SMTP_PASS = os.getenv("SMTP_PASS", os.getenv("VITE_SMTP_PASS", ""))
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASS = os.getenv("SMTP_PASS", "")
 
 
 # ── Risk calculation ──────────────────────────────────────────────────────────
@@ -287,7 +287,7 @@ async def notify_at_risk(
 
     parent = await db.fetchrow("""
         SELECT u.email FROM users u
-        JOIN parent_students ps ON ps.parent_user_id = u.id
+        JOIN parent_students ps ON ps.parent_id = u.id
         WHERE ps.student_id = $1 AND u.role = 'parent'
         LIMIT 1
     """, student_id)

@@ -64,6 +64,12 @@ async def add_notification(data: dict, payload: dict = Depends(require_auth), db
     return {"ok": True}
 
 
+@router.put("/{alert_id}/read")
+async def mark_read(alert_id: str, payload: dict = Depends(require_auth), db=Depends(get_db)):
+    await db.execute("UPDATE system_alerts SET is_read=TRUE WHERE id=$1", alert_id)
+    return {"ok": True}
+
+
 @router.post("/bulk")
 async def bulk_upsert_notifications(items: list[dict], payload: dict = Depends(require_auth), db=Depends(get_db)):
     """Sync a batch of alert objects in one call."""
@@ -85,12 +91,6 @@ async def bulk_upsert_notifications(items: list[dict], payload: dict = Depends(r
                 _parse_dt(data.get("createdAt"))
             )
     return {"ok": True, "count": len(items)}
-
-
-@router.put("/{alert_id}/read")
-async def mark_read(alert_id: str, payload: dict = Depends(require_auth), db=Depends(get_db)):
-    await db.execute("UPDATE system_alerts SET is_read=TRUE WHERE id=$1", alert_id)
-    return {"ok": True}
 
 
 @router.put("/read-all")

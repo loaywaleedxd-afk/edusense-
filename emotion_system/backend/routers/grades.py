@@ -15,7 +15,7 @@ class GradeEntry(BaseModel):
     course_code: str
     course_name: str
     grade: float
-    doctor_id: Optional[str] = "D001"
+    doctor_id: Optional[str] = None
 
 
 @router.get("/student/{student_id}")
@@ -67,11 +67,20 @@ async def save_grade(
     db=Depends(get_db),
 ):
     """Only doctors and admins can post/update grades."""
+    # Resolve doctor_id from JWT if not supplied in body
+    doctor_id = entry.doctor_id
+    if not doctor_id and payload.get("role") == "doctor":
+        row = await db.fetchrow(
+            "SELECT doctor_id FROM doctors WHERE user_id=$1", int(payload["sub"])
+        )
+        if row:
+            doctor_id = row["doctor_id"]
+
     await db.execute(
         """INSERT INTO grades (student_id, course_code, course_name, grade, doctor_id)
            VALUES ($1,$2,$3,$4,$5)
            ON CONFLICT(student_id, course_code) DO UPDATE SET grade=EXCLUDED.grade""",
-        entry.student_id, entry.course_code, entry.course_name, entry.grade, entry.doctor_id,
+        entry.student_id, entry.course_code, entry.course_name, entry.grade, doctor_id,
     )
     # Notify the student in real-time
     try:

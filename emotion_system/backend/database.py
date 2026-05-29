@@ -644,15 +644,12 @@ async def init_tenant_schema(pool, schema: str):
         """)
 
     # ── Resync all sequences to max existing IDs (fixes desync from bulk inserts) ──
+    # Only SERIAL/BIGSERIAL primary key tables — TEXT PKs have no sequence
     for tbl, col in [
         ('users', 'id'), ('students', 'id'), ('doctors', 'id'),
-        ('lectures', 'id'), ('course_enrollments', 'id'),
-        ('attendance', 'id'), ('emotion_records', 'id'),
+        ('lectures', 'id'), ('attendance', 'id'), ('emotion_records', 'id'),
         ('grades', 'id'), ('messages', 'id'), ('excuses', 'id'),
-        ('system_alerts', 'id'), ('announcements', 'id'),
-        ('exam_schedule', 'id'), ('course_resources', 'id'),
-        ('assignments', 'id'), ('submissions', 'id'),
-        ('complaints', 'id'), ('audit_log', 'id'),
+        ('audit_log', 'id'),
     ]:
         try:
             await conn.execute(f"""

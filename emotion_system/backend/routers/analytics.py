@@ -4,7 +4,7 @@ Integrates with R via subprocess or rpy2
 """
 from fastapi import APIRouter, Depends, Query
 from typing import List, Dict, Any, Optional
-import os, json, subprocess, tempfile
+import os, json, subprocess, tempfile, csv
 
 from database import get_db
 from auth_utils import require_role
@@ -236,15 +236,16 @@ async def run_r_analysis(lecture_id: str = None, payload: dict = Depends(require
     if not rows:
         return {"message": "No data to analyze", "results": {}}
 
-    csv_path = tempfile.mktemp(suffix=".csv")
-    with open(csv_path, "w") as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, newline="") as tmp_csv:
+        csv_path = tmp_csv.name
         if rows:
-            f.write(",".join(rows[0].keys()) + "\n")
-            for r in rows:
-                f.write(",".join(str(v) for v in r.values()) + "\n")
+            writer = csv.DictWriter(tmp_csv, fieldnames=rows[0].keys())
+            writer.writeheader()
+            writer.writerows(rows)
 
     r_script = os.path.join(R_SCRIPTS, "analysis.R")
-    result_path = tempfile.mktemp(suffix=".json")
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp_json:
+        result_path = tmp_json.name
     try:
         proc = subprocess.run(
             ["Rscript", r_script, csv_path, result_path],

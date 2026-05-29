@@ -151,8 +151,9 @@ async def list_requests(
                LEFT JOIN lectures l ON l.course_code = er.course_id
                LEFT JOIN students s ON s.student_id = er.student_id
                LEFT JOIN users u ON u.id = s.user_id
-               WHERE er.status='pending'
-               ORDER BY er.created_at DESC"""
+               ORDER BY
+                 CASE er.status WHEN 'pending' THEN 0 ELSE 1 END,
+                 er.created_at DESC"""
         )
     return [dict(r) for r in rows]
 

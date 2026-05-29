@@ -18,7 +18,7 @@ import EmotionBarsWidget from '../components/EmotionBars';
 import AlertItem from '../components/AlertItem';
 import WebcamFeed from '../components/WebcamFeed';
 import store from '../dataStore';
-import api, { get, post } from '../api';
+import api, { get, post, getToken } from '../api';
 import { pushToast } from '../components/NotificationToast';
 import { DEPARTMENTS, TITLES } from '../theme';
 import AuditLogPage from './AuditLogPage';
@@ -79,7 +79,7 @@ export default function AdminPage({ theme: C, user, isDark, onToggleMode, onLogo
   useEffect(() => {
     if (!user?.id || !/^\d+$/.test(String(user.id))) return;
     const BASE_WS = (import.meta.env.VITE_API_URL || '').replace(/^http/, 'ws') || `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
-    const ws = new WebSocket(`${BASE_WS}/ws/notifications/${user.id}`);
+    const ws = new WebSocket(`${BASE_WS}/ws/notifications/${user.id}?token=${encodeURIComponent(getToken() || '')}`);
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
@@ -298,8 +298,8 @@ function AdminDashboard({ theme: C, onNav }) {
               <div key={i} style={{background:C.bg3,borderRadius:8,display:'flex',overflow:'hidden'}}>
                 <div style={{width:4,background:lec.color||colors[i%colors.length],flexShrink:0}}/>
                 <div style={{padding:'8px 12px',flex:1}}>
-                  <div style={{fontSize:11,fontWeight:700,color:C.text}}>{lec.name}</div>
-                  <div style={{fontSize:10,color:C.text3}}>{lec.room||'—'} · {lec.time||'—'}</div>
+                  <div style={{fontSize:11,fontWeight:700,color:C.text}}>{lec.course_name||lec.name||'—'}</div>
+                  <div style={{fontSize:10,color:C.text3}}>{lec.room||'—'} · {lec.scheduled_at||lec.time||'—'}</div>
                 </div>
                 <div style={{padding:'8px 12px',display:'flex',alignItems:'center'}}>
                   <Badge text={lec.status === 'active' ? t('session_active') : lec.status === 'scheduled' ? t('confirmed') : (lec.status||'—')} color={{active:'green',scheduled:'amber',ended:'gray'}[lec.status]||'gray'}/>
@@ -2516,18 +2516,29 @@ function AdminEnrollmentRequests({ theme: C }) {
         <div style={{ color: C.text2 }}>Loading…</div>
       ) : requests.length === 0 ? (
         <div style={{ color: C.text2, textAlign: 'center', padding: 40 }}>
-          No pending enrollment requests.
+          No enrollment requests found.
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {requests.map(r => (
+          {requests.map(r => {
+            const isPending = r.status === 'pending';
+            const statusColor = r.status === 'approved' ? '#10b981' : r.status === 'rejected' ? '#ef4444' : '#f59e0b';
+            return (
             <div key={r.id} style={{
-              background: C.card, border: `1px solid ${C.border}`,
+              background: C.card, border: `1px solid ${isPending ? C.border : statusColor + '44'}`,
               borderRadius: 12, padding: 16, display: 'flex',
               alignItems: 'center', gap: 16, flexWrap: 'wrap',
+              opacity: isPending ? 1 : 0.75,
             }}>
               <div style={{ flex: 1, minWidth: 200 }}>
-                <div style={{ fontWeight: 700, color: C.text }}>{r.student_name || r.student_id}</div>
+                <div style={{ fontWeight: 700, color: C.text, display:'flex', alignItems:'center', gap:8 }}>
+                  {r.student_name || r.student_id}
+                  {!isPending && (
+                    <span style={{ fontSize:10, fontWeight:700, color: statusColor, background: statusColor+'22', border:`1px solid ${statusColor}44`, borderRadius:6, padding:'1px 7px' }}>
+                      {r.status?.toUpperCase()}
+                    </span>
+                  )}
+                </div>
                 <div style={{ color: C.text2, fontSize: 13 }}>
                   → {r.course_name || r.course_id}
                   {r.note ? ` · "${r.note}"` : ''}
@@ -2536,6 +2547,7 @@ function AdminEnrollmentRequests({ theme: C }) {
                   {r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}
                 </div>
               </div>
+              {isPending && (
               <div style={{ display: 'flex', gap: 8 }}>
                 <button
                   onClick={() => decide(r.id, 'approved')}
@@ -2556,8 +2568,10 @@ function AdminEnrollmentRequests({ theme: C }) {
                   }}
                 >❌ Reject</button>
               </div>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

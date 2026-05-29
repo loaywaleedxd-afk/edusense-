@@ -53,7 +53,10 @@ async def get_student_excuses(
             raise HTTPException(status_code=403, detail="Access denied")
 
     rows = await db.fetch(
-        "SELECT * FROM excuses WHERE student_id=$1 ORDER BY created_at DESC",
+        """SELECT e.*, l.course_name
+           FROM excuses e
+           LEFT JOIN lectures l ON l.course_code = e.course_code
+           WHERE e.student_id=$1 ORDER BY e.created_at DESC""",
         student_id,
     )
     return [dict(r) for r in rows]
