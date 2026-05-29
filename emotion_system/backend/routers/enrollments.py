@@ -79,17 +79,25 @@ async def get_course_students(
     """Return enrolled and available students for a given course_code."""
     enrolled_rows = await db.fetch(
         """SELECT s.student_id, u.full_name AS name, u.photo,
-                  s.photo_path, s.department, u.email
+                  s.photo_path, s.department, u.email, s.year,
+                  ROUND(AVG(g.grade)::numeric, 1) AS gpa,
+                  ROUND(
+                    CAST(100.0 * SUM(CASE WHEN a.status='present' THEN 1 ELSE 0 END) AS numeric) /
+                    GREATEST(1, COUNT(a.id)), 1
+                  ) AS attendance_rate
            FROM course_enrollments ce
            JOIN students s ON s.student_id = ce.student_id
            JOIN users u ON u.id = s.user_id
+           LEFT JOIN grades g ON g.student_id = s.student_id
+           LEFT JOIN attendance a ON a.student_id = s.student_id
            WHERE ce.course_id = $1
+           GROUP BY s.student_id, u.full_name, u.photo, s.photo_path, s.department, u.email, s.year
            ORDER BY u.full_name""",
         course_code,
     )
     available_rows = await db.fetch(
         """SELECT s.student_id, u.full_name AS name, u.photo,
-                  s.photo_path, s.department, u.email
+                  s.photo_path, s.department, u.email, s.year
            FROM students s
            JOIN users u ON u.id = s.user_id
            WHERE s.student_id NOT IN (

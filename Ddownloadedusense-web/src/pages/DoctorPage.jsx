@@ -1098,17 +1098,17 @@ function DocStudents({ theme: C, myCourses, doctor }) {
           students.push({
             id: s.student_id,
             name: s.name,
-            photo: s.photo,
+            photo: s.photo_path || s.photo,
             email: s.email || '',
             dept: s.department || '',
-            year: 1,
+            year: s.year || 1,
             emoji: '👤',
             color: '#3b82f6',
-            attendanceRate: 75,
-            engagement: 75,
-            gpa: 3.0,
+            attendanceRate: s.attendance_rate != null ? Number(s.attendance_rate) : 0,
+            engagement: 0,
+            gpa: s.gpa != null ? Number(s.gpa) : null,
             emotion: 'neutral',
-            attentionScore: 75,
+            attentionScore: 0,
           });
         }
       }
@@ -1269,7 +1269,9 @@ function DocStudents({ theme: C, myCourses, doctor }) {
             })(),
             dept:s.dept, year:`Year ${s.year}`,
             emotion:`${EMOTION_ICONS[s.emotion]||'😐'} ${s.emotion}`,
-            engagement:`${s.engagement}%`, attendance:`${s.attendanceRate}%`, gpa:s.gpa,
+            engagement: s.engagement ? `${s.engagement}%` : '—',
+            attendance:`${s.attendanceRate}%`,
+            gpa: s.gpa != null ? s.gpa : '—',
             action:(
               <button onClick={e=>{e.stopPropagation();setWithdrawTarget(s);setWithdrawCourse(myCourses[0]?.id||'');}}
                 style={{background:'rgba(239,68,68,0.15)',border:'1px solid rgba(239,68,68,0.4)',borderRadius:6,padding:'4px 10px',fontSize:11,fontWeight:700,color:'#ef4444',cursor:'pointer',whiteSpace:'nowrap'}}>
