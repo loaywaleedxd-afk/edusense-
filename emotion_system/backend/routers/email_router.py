@@ -28,6 +28,18 @@ class AttendanceEmailRequest(BaseModel):
 
 
 def _load_cfg():
+    # Prefer environment variables — never stores password on disk that way
+    env_user = os.getenv("SMTP_USER") or os.getenv("SMTP_EMAIL")
+    env_pass = os.getenv("SMTP_PASS") or os.getenv("SMTP_PASSWORD")
+    if env_user and env_pass:
+        return {
+            "smtp_host":       os.getenv("SMTP_HOST", "smtp.gmail.com"),
+            "smtp_port":       int(os.getenv("SMTP_PORT", "587")),
+            "sender_email":    env_user,
+            "sender_password": env_pass,
+            "sender_name":     os.getenv("SMTP_NAME", "EduSense"),
+        }
+    # Fall back to config file (legacy)
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE) as f:
             return json.load(f)

@@ -47,10 +47,10 @@ function maskEmail(email) {
 }
 
 const ROLES = [
-  { role: 'student', emoji: '🎓', label: 'Student',            desc: 'View attendance & emotions',       color: '#3b82f6', user: '231014184.0', pass: 'pass123' },
-  { role: 'doctor',  emoji: '👨‍🏫', label: 'Doctor / Lecturer', desc: 'Manage lectures & live sessions',  color: '#8b5cf6', user: 'dr.ahmed',    pass: 'Ahmed@2024' },
-  { role: 'admin',   emoji: '🏛️', label: 'Admin',              desc: 'System management & reports',      color: '#10b981', user: 'admin',        pass: 'Admin@EduSense2025!' },
-  { role: 'parent',  emoji: '👨‍👩‍👧', label: 'Parent',            desc: 'Monitor child performance',        color: '#f59e0b', user: 'parent',       pass: 'Parent@EduSense2025!' },
+  { role: 'student', emoji: '🎓', label: 'Student',            desc: 'View attendance & emotions',       color: '#3b82f6' },
+  { role: 'doctor',  emoji: '👨‍🏫', label: 'Doctor / Lecturer', desc: 'Manage lectures & live sessions',  color: '#8b5cf6' },
+  { role: 'admin',   emoji: '🏛️', label: 'Admin',              desc: 'System management & reports',      color: '#10b981' },
+  { role: 'parent',  emoji: '👨‍👩‍👧', label: 'Parent',            desc: 'Monitor child performance',        color: '#f59e0b' },
 ];
 
 const FEATURES = [
@@ -104,8 +104,6 @@ export default function LoginPage({ theme: C, onLogin, branding }) {
 
   function selectRole(r) {
     setSelected(r);
-    setUsername(r.user);
-    setPassword(r.pass);
     setError('');
     setForgotOpen(false);
   }
@@ -113,19 +111,22 @@ export default function LoginPage({ theme: C, onLogin, branding }) {
   async function handleRequestReset() {
     if (!forgotUser.trim()) { setForgotErr('Please enter your username.'); return; }
     setForgotLoading(true); setForgotErr('');
-    const result = store.requestPasswordReset(forgotUser.trim());
-    if (!result.ok) { setForgotErr(result.error); setForgotLoading(false); return; }
-    const sent = await sendResetEmail(result.email, result.name, result.token);
-    setForgotEmail(maskEmail(result.email));
-    setForgotDemoCode(sent ? '' : result.token); // show on-screen if email not configured
-    setForgotLoading(false);
-    setForgotStep(1);
+    try {
+      const res = await post('/api/auth/request-reset', { username: forgotUser.trim() });
+      // Server issues the token; in production it emails it. Show on-screen as fallback.
+      setForgotDemoCode(res.reset_token || '');
+      setForgotEmail('your registered email');
+      setForgotLoading(false);
+      setForgotStep(1);
+    } catch (e) {
+      setForgotErr(e.message || 'Failed to request reset. Try again.');
+      setForgotLoading(false);
+    }
   }
 
   function handleVerifyCode() {
+    if (!forgotCode.trim()) { setForgotErr('Enter the reset code.'); return; }
     setForgotErr('');
-    const r = store.verifyResetToken(forgotUser.trim(), forgotCode.trim());
-    if (!r.ok) { setForgotErr(r.error); return; }
     setForgotStep(2);
   }
 
@@ -134,20 +135,19 @@ export default function LoginPage({ theme: C, onLogin, branding }) {
     if (forgotPass.length < 6) { setForgotErr('Password must be at least 6 characters.'); return; }
     if (forgotPass !== forgotPass2) { setForgotErr('Passwords do not match.'); return; }
     setForgotErr('');
-    const r = store.resetPassword(forgotUser.trim(), forgotCode.trim(), forgotPass);
-    if (!r.ok) { setForgotErr(r.error); return; }
-    // Also reset on the backend (fire-and-forget — local reset always succeeds for offline mode)
     try {
-      await post('/api/auth/reset-password', { username: forgotUser.trim(), new_password: forgotPass });
+      await post('/api/auth/reset-password', {
+        reset_token:  forgotCode.trim(),
+        new_password: forgotPass,
+      });
+      setForgotDone(true);
+      setTimeout(() => {
+        setUsername(forgotUser.trim());
+        closeForgot();
+      }, 1800);
     } catch (e) {
-      console.warn('[LoginPage] Backend password reset failed (local reset still applied):', e.message);
+      setForgotErr(e.message || 'Reset failed. The code may have expired.');
     }
-    setForgotDone(true);
-    setTimeout(() => {
-      setPassword(forgotPass);
-      setUsername(forgotUser.trim());
-      closeForgot();
-    }, 1800);
   }
 
   async function doLogin() {

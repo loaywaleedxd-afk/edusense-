@@ -389,7 +389,7 @@ export function DoctorOfficeHours({ theme: C, doctor }) {
       await fetch(`/api/office-hours/slots/${slotId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('es_token')}` },
+          'Authorization': `Bearer ${localStorage.getItem('edusense_token')}` },
         body: JSON.stringify({ available: newVal, ...slot }),
       });
     } catch {}

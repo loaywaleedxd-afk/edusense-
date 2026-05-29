@@ -18,6 +18,12 @@ _login_attempts: dict = defaultdict(list)
 _MAX_ATTEMPTS = 10
 _WINDOW_SEC   = 300
 
+# In-memory reset tokens: {token: {username, expires}}
+# A real deployment should persist these in Redis or the DB
+import secrets
+_reset_tokens: dict = {}
+_RESET_TOKEN_TTL = 600  # 10 minutes
+
 def _check_rate_limit(ip: str):
     now  = time.time()
     hits = [t for t in _login_attempts[ip] if now - t < _WINDOW_SEC]
@@ -111,21 +117,50 @@ async def get_me(payload: dict = Depends(require_auth)):
     }
 
 
-@router.post("/reset-password")
-async def reset_password(request: Request, db=Depends(get_db)):
-    """Reset a user's password without authentication (forgot-password flow).
-    The client is responsible for verifying the user's identity (e.g. a 6-digit
-    OTP) before calling this endpoint."""
+@router.post("/request-reset")
+async def request_reset(request: Request, db=Depends(get_db)):
+    """Issue a short-lived reset token for the given username/email.
+    Returns the token — in production this should be emailed, not returned directly."""
     _check_rate_limit(request.client.host if request.client else "unknown")
     data = await request.json()
-    username = (data.get("username") or "").strip()
+    username = (data.get("username") or "").strip().lower()
+    if not username:
+        raise HTTPException(status_code=400, detail="Username or email required")
+    row = await db.fetchrow(
+        "SELECT id FROM users WHERE LOWER(username)=$1 OR LOWER(email)=$1", username
+    )
+    if not row:
+        # Don't reveal whether the user exists
+        return {"ok": True, "message": "If that account exists, a reset token has been issued."}
+    token = secrets.token_urlsafe(32)
+    _reset_tokens[token] = {"username": username, "expires": time.time() + _RESET_TOKEN_TTL}
+    # In production: send token via email. For now return it so the frontend can display it.
+    return {"ok": True, "reset_token": token, "expires_in": _RESET_TOKEN_TTL}
+
+
+@router.post("/reset-password")
+async def reset_password(request: Request, db=Depends(get_db)):
+    """Reset a user's password. Requires a valid reset_token from /request-reset."""
+    _check_rate_limit(request.client.host if request.client else "unknown")
+    data = await request.json()
+    reset_token  = (data.get("reset_token") or "").strip()
     new_password = (data.get("new_password") or "").strip()
-    if not username or not new_password or len(new_password) < 6:
+
+    if not reset_token or not new_password or len(new_password) < 6:
         raise HTTPException(status_code=400, detail="Invalid request")
+
+    entry = _reset_tokens.get(reset_token)
+    if not entry or time.time() > entry["expires"]:
+        _reset_tokens.pop(reset_token, None)
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    username = entry["username"]
+    _reset_tokens.pop(reset_token, None)  # one-time use
+
     hashed = hash_password(new_password)
     result = await db.execute(
         "UPDATE users SET password=$1 WHERE LOWER(username)=$2 OR LOWER(email)=$2",
-        hashed, username.lower(),
+        hashed, username,
     )
     if result == "UPDATE 0":
         raise HTTPException(status_code=404, detail="User not found")

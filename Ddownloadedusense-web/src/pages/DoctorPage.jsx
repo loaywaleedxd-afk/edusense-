@@ -1024,15 +1024,18 @@ function DocLectures({ theme: C, myCourses }) {
 }
 
 /* ── STUDENTS ── */
+const _EJS_SVC = import.meta.env.VITE_EMAILJS_SERVICE_ID || 'service_it50w6l';
+const _EJS_UID = import.meta.env.VITE_EMAILJS_USER_ID    || '3nrjXvpxGXf0G01Xj';
+
 async function sendEmailAlert(studentEmail, studentName, studentId, attendanceRate, doctorName) {
   try {
     const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        service_id:  'service_it50w6l',
-        template_id: 'template_dxys6ih',
-        user_id:     '3nrjXvpxGXf0G01Xj',
+        service_id:  _EJS_SVC,
+        template_id: import.meta.env.VITE_EMAILJS_TEMPLATE_ATTENDANCE || 'template_dxys6ih',
+        user_id:     _EJS_UID,
         template_params: {
           to_email:        studentEmail,
           to_name:         studentName,
@@ -1056,9 +1059,9 @@ async function sendWithdrawalEmail(studentEmail, studentName, studentId, courseN
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        service_id:  'service_it50w6l',
-        template_id: 'template_dxys6ih',
-        user_id:     '3nrjXvpxGXf0G01Xj',
+        service_id:  _EJS_SVC,
+        template_id: import.meta.env.VITE_EMAILJS_TEMPLATE_ATTENDANCE || 'template_dxys6ih',
+        user_id:     _EJS_UID,
         template_params: {
           to_email:        studentEmail,
           to_name:         studentName,

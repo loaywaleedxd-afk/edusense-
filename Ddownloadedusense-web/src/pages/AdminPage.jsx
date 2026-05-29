@@ -985,7 +985,8 @@ function AdminStudents({ theme: C }) {
                   forceUpdate(n=>n+1);
                   // Register face encoding with Python server
                   try {
-                    const res = await fetch('http://localhost:8765/register', {
+                    const FACE_SERVER = import.meta.env.VITE_FACE_SERVER_URL || 'http://localhost:8765';
+                    const res = await fetch(`${FACE_SERVER}/register`, {
                       method: 'POST',
                       headers: {'Content-Type':'application/json'},
                       body: JSON.stringify({ student_id: selected.id, frame: dataUrl }),
@@ -993,7 +994,7 @@ function AdminStudents({ theme: C }) {
                     const d = await res.json();
                     if (d.ok) alert(`✅ Face registered for ${selected.name} (${d.registered_total} total)`);
                     else alert(`⚠️ ${d.error}`);
-                  } catch { alert('⚠️ Python server not running — start face_server.py'); }
+                  } catch { alert('⚠️ Face server not reachable. Set VITE_FACE_SERVER_URL or start face_server.py'); }
                 }}
               />
             </div>
@@ -1981,9 +1982,9 @@ function CredentialsModal({ theme: C, account, onClose }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          service_id:  'service_it50w6l',
-          template_id: 'template_n1v9mtb',
-          user_id:     '3nrjXvpxGXf0G01Xj',
+          service_id:  import.meta.env.VITE_EMAILJS_SERVICE_ID  || 'service_it50w6l',
+          template_id: import.meta.env.VITE_EMAILJS_TEMPLATE_ID || 'template_n1v9mtb',
+          user_id:     import.meta.env.VITE_EMAILJS_USER_ID     || '3nrjXvpxGXf0G01Xj',
           template_params: {
             to_email:  account.email,
             to_name:   account.name,
