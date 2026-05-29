@@ -53,6 +53,9 @@ const ROLES = [
   { role: 'parent',  emoji: '👨‍👩‍👧', label: 'Parent',            desc: 'Monitor child performance',        color: '#f59e0b' },
 ];
 
+// Direct-login role: no role card needed — credentials determine access on the backend
+const DIRECT_LOGIN_ROLE = { role: null, emoji: '⚡', label: 'EduSense', desc: '', color: '#6366f1' };
+
 const FEATURES = [
   { icon: '✦', text: 'Real-time Emotion & Attention Detection' },
   { icon: '✦', text: 'QR-Based Smart Attendance' },
@@ -208,8 +211,11 @@ export default function LoginPage({ theme: C, onLogin, branding }) {
         >
           {branding?.logo ? (
             <>
-              <img src={branding.logo} alt={branding.name || 'University'}
-                style={{ maxHeight: 130, maxWidth: 320, objectFit: 'contain', marginBottom: 14 }} />
+              <img
+                src={branding.logo} alt={branding.name || 'University'}
+                onClick={() => selectRole(DIRECT_LOGIN_ROLE)}
+                style={{ maxHeight: 130, maxWidth: 320, objectFit: 'contain', marginBottom: 14, cursor: 'pointer' }}
+              />
               {branding.name && (
                 <div style={{ fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: '-0.3px' }}>
                   {branding.name}
@@ -218,7 +224,10 @@ export default function LoginPage({ theme: C, onLogin, branding }) {
             </>
           ) : (
             <>
-              <div style={{ fontSize: 42, fontWeight: 900, color: '#fff', letterSpacing: '-1px', marginBottom: 6 }}>
+              <div
+                onClick={() => selectRole(DIRECT_LOGIN_ROLE)}
+                style={{ fontSize: 42, fontWeight: 900, color: '#fff', letterSpacing: '-1px', marginBottom: 6, cursor: 'pointer', userSelect: 'none' }}
+              >
                 ⚡ {branding?.name || 'EduSense'}
               </div>
               <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', fontWeight: 500 }}>
@@ -289,17 +298,19 @@ export default function LoginPage({ theme: C, onLogin, branding }) {
                 padding: isMobile ? '24px 20px' : '32px 36px',
               }}
             >
-              {/* Role badge */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 22 }}>
-                <div style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 8,
-                  background: `${selected.color}28`, border: `1px solid ${selected.color}55`,
-                  borderRadius: 30, padding: '5px 16px 5px 10px',
-                }}>
-                  <span style={{ fontSize: 20 }}>{selected.emoji}</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: selected.color }}>{selected.label}</span>
+              {/* Role badge — hidden for direct login */}
+              {selected.role !== null && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 22 }}>
+                  <div style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 8,
+                    background: `${selected.color}28`, border: `1px solid ${selected.color}55`,
+                    borderRadius: 30, padding: '5px 16px 5px 10px',
+                  }}>
+                    <span style={{ fontSize: 20 }}>{selected.emoji}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: selected.color }}>{selected.label}</span>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', marginBottom: 4 }}>
                 {isRTL ? 'تسجيل الدخول' : 'Sign in'}
@@ -379,14 +390,16 @@ export default function LoginPage({ theme: C, onLogin, branding }) {
                 {busy ? (isRTL ? 'جارٍ تسجيل الدخول…' : 'Signing in…') : (isRTL ? `${t('sign_in')} ←` : `${t('sign_in')} →`)}
               </motion.button>
 
-              <div style={{
-                background: 'rgba(255,255,255,0.06)', borderRadius: 9, padding: '8px 12px',
-                marginTop: 14, fontSize: 10, color: 'rgba(255,255,255,0.45)',
-                display: 'flex', alignItems: 'center', gap: 6,
-              }}>
-                <span>🔑</span>
-                <span>Demo: <strong style={{ color: 'rgba(255,255,255,0.7)' }}>{selected.user}</strong></span>
-              </div>
+              {selected.role !== null && selected.user && (
+                <div style={{
+                  background: 'rgba(255,255,255,0.06)', borderRadius: 9, padding: '8px 12px',
+                  marginTop: 14, fontSize: 10, color: 'rgba(255,255,255,0.45)',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}>
+                  <span>🔑</span>
+                  <span>Demo: <strong style={{ color: 'rgba(255,255,255,0.7)' }}>{selected.user}</strong></span>
+                </div>
+              )}
 
               <button onClick={() => setSelected(null)} style={{
                 width: '100%', marginTop: 12, background: 'transparent', border: 'none',
