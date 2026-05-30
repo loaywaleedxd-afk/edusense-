@@ -1465,7 +1465,12 @@ function AdminEnrollments({ theme: C }) {
       api.getEnrollments(),
     ]).then(([courseList, studentList, enrollData]) => {
       setCourses(courseList);
-      setAllStudents(studentList);
+      // Normalize: backend returns student_id as 'id' — alias it back so all
+      // downstream code that uses s.student_id works correctly
+      setAllStudents(studentList.map(s => ({
+        ...s,
+        student_id: s.student_id || s.id || '',
+      })));
       // enrollData = [{course_id, student_id}, ...]
       const map = {};
       (Array.isArray(enrollData) ? enrollData : []).forEach(({course_id, student_id}) => {
