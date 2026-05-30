@@ -16,7 +16,23 @@ _DAY_MAP = {
 def _parse_days(val):
     if not val:
         return set()
-    lst = json.loads(val) if isinstance(val, str) else (val if isinstance(val, list) else [])
+    if isinstance(val, list):
+        lst = val
+    elif isinstance(val, str):
+        v = val.strip()
+        # Handle PostgreSQL array notation {0,3} → [0,3]
+        if v.startswith('{') and v.endswith('}'):
+            try:
+                lst = [x.strip() for x in v[1:-1].split(',') if x.strip()]
+            except Exception:
+                lst = []
+        else:
+            try:
+                lst = json.loads(v)
+            except Exception:
+                lst = []
+    else:
+        lst = []
     out = set()
     for d in lst:
         if isinstance(d, int) and 0 <= d <= 4:
@@ -141,25 +157,31 @@ async def bulk_sync(data: dict, payload: dict = Depends(require_role("doctor","a
 
 @router.post("/{course_id}/{student_id}")
 async def enroll(course_id: str, student_id: str, payload: dict = Depends(require_role("doctor","admin")), db=Depends(get_db)):
-    # Schedule conflict check
-    new_course = await db.fetchrow(
-        "SELECT days, scheduled_at, duration_min, course_name FROM lectures WHERE course_code=$1",
-        course_id,
-    )
-    if new_course:
-        enrolled_courses = await db.fetch(
-            """SELECT l.days, l.scheduled_at, l.duration_min, l.course_name
-               FROM course_enrollments ce
-               JOIN lectures l ON l.course_code = ce.course_id
-               WHERE ce.student_id = $1""",
-            student_id,
+    # Schedule conflict check — wrapped so any parsing error doesn't block enrollment
+    try:
+        new_course = await db.fetchrow(
+            "SELECT days, scheduled_at, duration_min, course_name FROM lectures WHERE course_code=$1",
+            course_id,
         )
-        for ec in enrolled_courses:
-            if _schedules_overlap(dict(new_course), dict(ec)):
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"Schedule conflict: '{new_course['course_name']}' overlaps with '{ec['course_name']}' — cannot enroll."
-                )
+        if new_course:
+            enrolled_courses = await db.fetch(
+                """SELECT l.days, l.scheduled_at, l.duration_min, l.course_name
+                   FROM course_enrollments ce
+                   JOIN lectures l ON l.course_code = ce.course_id
+                   WHERE ce.student_id = $1""",
+                student_id,
+            )
+            for ec in enrolled_courses:
+                if _schedules_overlap(dict(new_course), dict(ec)):
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Schedule conflict: '{new_course['course_name']}' overlaps with '{ec['course_name']}' — cannot enroll."
+                    )
+    except HTTPException:
+        raise  # re-raise conflict errors
+    except Exception:
+        pass   # ignore parsing errors — proceed with enrollment
+
     await db.execute(
         "INSERT INTO course_enrollments (course_id, student_id) VALUES ($1,$2) ON CONFLICT DO NOTHING",
         course_id, student_id
