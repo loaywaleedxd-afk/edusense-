@@ -1228,6 +1228,9 @@ function StudentPortfolio({ theme: C, user, stu }) {
 
   const gradeVals = gradeRows.map(r => r.grade);
   const avgG = gradeVals.length ? +(gradeVals.reduce((a,b)=>a+b,0)/gradeVals.length).toFixed(1) : 0;
+  const portfolioGPA = gradeVals.length > 0
+    ? (gradeVals.reduce((a,b)=>a+b,0) / gradeVals.length / 100 * 4).toFixed(2)
+    : (stu.gpa || '—');
   const present = attRecs.filter(r => r.status === 'present' || r.status === 'excused').length;
   const portfolioAttRate = attRecs.length > 0 ? Math.round(present / attRecs.length * 100) : (stu.attendanceRate || 0);
 
@@ -1247,7 +1250,7 @@ function StudentPortfolio({ theme: C, user, stu }) {
           <div>
             <div style={{ fontSize:20, fontWeight:700, color:'#fff' }}>{stu.name}</div>
             <div style={{ fontSize:12, color:'#bfdbfe' }}>{stu.id} · {stu.dept} · Year {stu.year}</div>
-            <div style={{ fontSize:11, color:'#bfdbfe' }}>GPA: {stu.gpa} · {stu.email}</div>
+            <div style={{ fontSize:11, color:'#bfdbfe' }}>GPA: {portfolioGPA} · {stu.email}</div>
           </div>
         </div>
 

@@ -88,6 +88,19 @@ export default function TimetablePage({ theme: C, stu, role = 'student', doctorI
   lectures.forEach(lec => {
     let days = lec.days || [];
     if (typeof days === 'string') { try { days = JSON.parse(days); } catch { days = []; } }
+    // Fallback: parse days_label string ("Sun & Wed" → [0,3]) when days array is empty
+    if (!Array.isArray(days) || days.length === 0) {
+      const label = (lec.days_label || lec.daysLabel || '').toLowerCase();
+      if (label) {
+        const MAP = { sun:0, mon:1, tue:2, wed:3, thu:4 };
+        days = Object.entries(MAP).filter(([k]) => label.includes(k)).map(([,v]) => v);
+      }
+    }
+    // Last resort: derive day from scheduled_at date
+    if ((!Array.isArray(days) || days.length === 0) && lec.scheduled_at) {
+      const d = new Date(lec.scheduled_at).getDay(); // 0=Sun,1=Mon...
+      if (d >= 0 && d <= 4) days = [d];
+    }
     if (!Array.isArray(days) || days.length === 0) return;
 
     // scheduled_at may be a full ISO datetime or just a time string (HH:MM)
