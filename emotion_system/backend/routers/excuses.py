@@ -56,10 +56,10 @@ async def get_student_excuses(
             raise HTTPException(status_code=403, detail="Access denied")
 
     rows = await db.fetch(
-        """SELECT e.*, l.course_name
+        """SELECT DISTINCT ON (e.id) e.*,
+                  (SELECT course_name FROM lectures WHERE course_code=e.course_code LIMIT 1) AS course_name
            FROM excuses e
-           LEFT JOIN lectures l ON l.course_code = e.course_code
-           WHERE e.student_id=$1 ORDER BY e.created_at DESC""",
+           WHERE e.student_id=$1 ORDER BY e.id, e.created_at DESC""",
         student_id,
     )
     return [dict(r) for r in rows]
@@ -68,7 +68,7 @@ async def get_student_excuses(
 @router.get("/")
 async def get_all_excuses(payload: dict = Depends(require_role("doctor", "admin")), db=Depends(get_db)):
     """All excuses — doctors and admins only."""
-    rows = await db.fetch("SELECT * FROM excuses ORDER BY created_at DESC")
+    rows = await db.fetch("SELECT * FROM excuses ORDER BY created_at DESC LIMIT 500")
     return [dict(r) for r in rows]
 
 

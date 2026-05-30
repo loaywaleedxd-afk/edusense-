@@ -72,7 +72,7 @@ async def mark_read(alert_id: str, payload: dict = Depends(require_auth), db=Dep
 
 
 @router.post("/bulk")
-async def bulk_upsert_notifications(items: list[dict], payload: dict = Depends(require_auth), db=Depends(get_db)):
+async def bulk_upsert_notifications(items: list[dict], payload: dict = Depends(require_role("doctor","admin","superadmin")), db=Depends(get_db)):
     """Sync a batch of alert objects in one call."""
     async with db.transaction():
         for data in items:

@@ -134,7 +134,7 @@ async def init_data(payload: dict = Depends(require_auth), db=Depends(get_db)):
     exam_schedule    = await _q(db, "SELECT * FROM exam_schedule ORDER BY date")
     course_resources = await _q(db, "SELECT * FROM course_resources ORDER BY created_at DESC")
     all_assignments  = await _q(db, "SELECT * FROM assignments ORDER BY created_at DESC")
-    all_submissions  = await _q(db, "SELECT * FROM submissions ORDER BY submitted_at DESC")
+    all_submissions  = await _q(db, "SELECT id, student_id, assignment_id, grade, feedback, submitted_at FROM submissions ORDER BY submitted_at DESC LIMIT 500")
     all_complaints   = await _q(db, "SELECT * FROM complaints ORDER BY created_at DESC")
     all_alerts       = await _q(db,
         "SELECT * FROM system_alerts ORDER BY created_at DESC LIMIT 200")

@@ -22,10 +22,10 @@ async def get_exams(payload: dict = Depends(require_auth), db=Depends(get_db)):
         )
     elif role == "doctor":
         rows = await db.fetch(
-            """SELECT e.* FROM exam_schedule e
+            """SELECT DISTINCT ON (e.id) e.* FROM exam_schedule e
                JOIN lectures l ON l.course_code = e.course_id
                JOIN doctors d ON d.doctor_id = l.doctor_id
-               WHERE d.user_id = $1 ORDER BY e.date""",
+               WHERE d.user_id = $1 ORDER BY e.id, e.date""",
             int(uid)
         )
     else:

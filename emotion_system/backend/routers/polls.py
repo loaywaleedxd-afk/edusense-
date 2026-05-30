@@ -18,11 +18,11 @@ async def get_active_poll(
         "SELECT * FROM polls WHERE active=TRUE ORDER BY created_at DESC LIMIT 1"
     )
     if not row:
-        return {}
+        return None
     try:
         return await _enrich(db, dict(row))
     except Exception:
-        return {}
+        return None
 
 
 @router.get("/")

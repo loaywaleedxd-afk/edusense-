@@ -2,7 +2,7 @@
 Analytics router — engagement scoring, clustering, trend analysis
 Integrates with R via subprocess or rpy2
 """
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from typing import List, Dict, Any, Optional
 import os, json, subprocess, tempfile, csv
 
@@ -99,6 +99,14 @@ async def lecture_comparison(
             int(payload["sub"]),
         )
         student_id = row["student_id"] if row else None
+    elif role == "parent" and student_id:
+        uid = int(payload["sub"])
+        link = await db.fetchrow(
+            "SELECT 1 FROM parent_students WHERE parent_id=$1 AND student_id=$2",
+            uid, student_id,
+        )
+        if not link:
+            raise HTTPException(status_code=403, detail="Access denied")
 
     if student_id:
         rows = await db.fetch(
@@ -178,6 +186,14 @@ async def time_trends(
             int(payload["sub"]),
         )
         student_id = row["student_id"] if row else None
+    elif role == "parent" and student_id:
+        uid = int(payload["sub"])
+        link = await db.fetchrow(
+            "SELECT 1 FROM parent_students WHERE parent_id=$1 AND student_id=$2",
+            uid, student_id,
+        )
+        if not link:
+            raise HTTPException(status_code=403, detail="Access denied")
 
     if student_id:
         rows = await db.fetch(

@@ -239,6 +239,12 @@ async def delete_note(note_id: int, payload: dict = Depends(require_role("doctor
 
 @router.get("/degree-audit/{student_id}")
 async def degree_audit(student_id: str, payload: dict = Depends(require_auth), db=Depends(get_db)):
+    # Students may only view their own degree audit
+    if payload.get("role") == "student":
+        row = await db.fetchrow("SELECT student_id FROM students WHERE user_id=$1", int(payload["sub"]))
+        if not row or row["student_id"] != student_id:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=403, detail="Access denied")
     # Courses student has passed
     passed_rows = await db.fetch(
         "SELECT course_code, course_name, grade FROM grades WHERE student_id=$1 AND grade >= 60",
