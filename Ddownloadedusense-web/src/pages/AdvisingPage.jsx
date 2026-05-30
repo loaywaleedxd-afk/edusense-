@@ -270,9 +270,16 @@ function BookForm({ theme: C, user, onBooked }) {
   const [msg,       setMsg]      = useState('');
 
   useEffect(() => {
-    get('/api/lectures/doctors').then(list => {
-      if (Array.isArray(list)) setAdvisors(list);
-    }).catch(() => {});
+    get('/api/lectures/doctors')
+      .then(list => {
+        if (Array.isArray(list) && list.length > 0) { setAdvisors(list); return; }
+        throw new Error('empty');
+      })
+      .catch(() => {
+        // Offline fallback: use local store doctors
+        const local = (store.doctors || []).map(d => ({ id: d.id, name: d.name, doctor_id: d.id }));
+        setAdvisors(local);
+      });
   }, []);
 
   async function submit() {

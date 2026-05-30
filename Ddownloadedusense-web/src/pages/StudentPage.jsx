@@ -29,6 +29,31 @@ import { useLang } from '../context/LanguageContext';
 import { pushToast } from '../components/NotificationToast';
 import useMobile from '../hooks/useMobile';
 
+/**
+ * getEnrolledCourses — wraps api.getAvailableCourses() with a local-store
+ * fallback so every component shows data even when the backend is offline.
+ */
+async function getEnrolledCourses() {
+  try {
+    const courses = await api.getAvailableCourses();
+    const enrolled = courses.filter(c => c.my_status === 'enrolled');
+    if (enrolled.length > 0) return enrolled;
+  } catch {}
+  // Offline / local-auth fallback
+  return store.courses.map(c => ({
+    course_code:  c.id,
+    course_name:  c.name,
+    doctor_name:  c.doctorName || '',
+    doctor_id:    c.doctorId   || '',
+    color:        c.color      || '#3b82f6',
+    room:         c.room       || 'TBA',
+    semester:     c.semester   || 'Fall 2024',
+    days_label:   c.daysLabel  || '',
+    scheduled_at: c.time       || '',
+    my_status:    'enrolled',
+  }));
+}
+
 const NAV_BASE = [
   { id:'dashboard',  icon:'📊', label:'Dashboard' },
   { id:'attendance', icon:'✅', label:'My Attendance' },
@@ -997,18 +1022,14 @@ function StudentSchedule({ theme: C, stu }) {
   const [myCourses, setMyCourses] = useState([]);
 
   useEffect(() => {
-    api.getAvailableCourses()
-      .then(courses => setMyCourses(
-        courses
-          .filter(c => c.my_status === 'enrolled')
-          .map(c => ({
-            id: c.course_code, name: c.course_name, code: c.course_code,
-            color: c.color, room: c.room || '—',
-            doctorName: c.doctor_name || '—', semester: c.semester || '',
-            daysLabel: c.days_label || '', scheduledAt: c.scheduled_at || '',
-          }))
-      ))
-      .catch(() => {});
+    getEnrolledCourses().then(courses => setMyCourses(
+      courses.map(c => ({
+        id: c.course_code, name: c.course_name, code: c.course_code,
+        color: c.color, room: c.room || '—',
+        doctorName: c.doctor_name || '—', semester: c.semester || '',
+        daysLabel: c.days_label || '', scheduledAt: c.scheduled_at || '',
+      }))
+    ));
   }, []);
 
   if (!myCourses.length) {
@@ -1053,14 +1074,15 @@ function StudentPerformance({ theme: C, stu }) {
   const [attRecs,   setAttRecs]   = useState([]);
 
   useEffect(() => {
-    api.getAvailableCourses()
-      .then(courses => setMyCourses(
-        courses.filter(c => c.my_status === 'enrolled')
-          .map(c => ({ id: c.course_code, name: c.course_name, code: c.course_code }))
-      )).catch(() => {});
+    getEnrolledCourses().then(courses => setMyCourses(
+      courses.map(c => ({ id: c.course_code, name: c.course_name, code: c.course_code }))
+    ));
     api.getStudentGrades(stu.id)
       .then(rows => setGradeRows(rows.map(r => ({ courseCode: r.course_code, grade: r.grade }))))
-      .catch(() => {});
+      .catch(() => {
+        const localGrades = store.examResults?.[stu.id] || {};
+        setGradeRows(Object.entries(localGrades).map(([courseCode, d]) => ({ courseCode, grade: d.grade })));
+      });
     api.getStudentAttendance(stu.id).then(setAttRecs).catch(() => {});
   }, [stu.id]);
 
@@ -1325,14 +1347,9 @@ function StudentChat({ theme: C, user, stu, isDark }) {
   const [msg, setMsg]             = useState('');
 
   useEffect(() => {
-    api.getAvailableCourses()
-      .then(courses => {
-        const enrolled = courses
-          .filter(c => c.my_status === 'enrolled')
-          .map(c => ({ id: c.course_code, name: c.course_name, code: c.course_code }));
-        setMyCourses(enrolled);
-      })
-      .catch(() => {});
+    getEnrolledCourses().then(courses => setMyCourses(
+      courses.map(c => ({ id: c.course_code, name: c.course_name, code: c.course_code }))
+    ));
   }, []);
 
   const course = myCourses[selIdx];
@@ -1475,13 +1492,10 @@ function StudentAppeals({ theme: C, user, stu }) {
   const [courseDocMap, setCourseDocMap] = useState({}); // courseCode → doctorId
 
   useEffect(() => {
-    api.getAvailableCourses()
+    getEnrolledCourses()
       .then(courses => {
-        const enrolled = courses
-          .filter(c => c.my_status === 'enrolled')
-          .map(c => ({ id: c.course_code, name: c.course_name, code: c.course_code, doctorId: c.doctor_id || '' }));
+        const enrolled = courses.map(c => ({ id: c.course_code, name: c.course_name, code: c.course_code, doctorId: c.doctor_id || c.doctorId || '' }));
         setMyCourses(enrolled);
-        // Build course→doctor map for auto-routing
         const map = {};
         enrolled.forEach(c => { if (c.doctorId) map[c.id] = c.doctorId; });
         setCourseDocMap(map);
@@ -1599,14 +1613,15 @@ function StudentTranscript({ theme: C, stu }) {
   const reg = { semester: 'Spring 2025' }; // static fallback
 
   useEffect(() => {
-    api.getAvailableCourses()
-      .then(courses => setMyCourses(
-        courses.filter(c => c.my_status === 'enrolled')
-          .map(c => ({ id: c.course_code, name: c.course_name, code: c.course_code }))
-      )).catch(() => {});
+    getEnrolledCourses().then(courses => setMyCourses(
+      courses.map(c => ({ id: c.course_code, name: c.course_name, code: c.course_code }))
+    ));
     api.getStudentGrades(stu.id)
       .then(rows => setGradeRows(rows.map(r => ({ courseCode: r.course_code, grade: r.grade, date: r.created_at }))))
-      .catch(() => {});
+      .catch(() => {
+        const localGrades = store.examResults?.[stu.id] || {};
+        setGradeRows(Object.entries(localGrades).map(([courseCode, d]) => ({ courseCode, grade: d.grade, date: d.date || '' })));
+      });
     api.getStudentAttendance(stu.id).then(setAttRecs).catch(() => {});
     api.getFeeStatus(stu.id).then(setFee).catch(() => {});
   }, [stu.id]);
@@ -1927,18 +1942,14 @@ function StudentResources({ theme: C, stu }) {
   const [selCourse, setSelCourse] = useState('all');
 
   useEffect(() => {
-    Promise.all([api.getResources(), api.getAvailableCourses()])
+    Promise.all([api.getResources().catch(() => []), getEnrolledCourses()])
       .then(([resList, courseList]) => {
         setResources(resList.map(r => ({
           id: r.id, courseId: r.course_id, week: r.week,
           title: r.title, url: r.url, type: r.type,
           description: r.description, createdAt: r.created_at,
         })));
-        setMyCourses(
-          courseList
-            .filter(c => c.my_status === 'enrolled')
-            .map(c => ({ id: c.course_code, name: c.course_name, code: c.course_code, color: c.color }))
-        );
+        setMyCourses(courseList.map(c => ({ id: c.course_code, name: c.course_name, code: c.course_code, color: c.color })));
       })
       .catch(() => {});
   }, []);
