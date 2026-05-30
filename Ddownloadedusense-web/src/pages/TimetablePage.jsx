@@ -41,17 +41,18 @@ export default function TimetablePage({ theme: C, stu, role = 'student', doctorI
       if (!Array.isArray(apiLectures) || apiLectures.length === 0) throw new Error('empty');
       const stuId = String(stu?.studentId || stu?.student_id || stu?.id || '');
       if (role === 'student' && stuId) {
-        // Filter to lectures where this student is enrolled
-        api.getStudentAttendance?.(stuId).catch(() => null); // warm-up; not used for filtering
-        // Get enrolled course_ids from API
         api.getEnrollmentRequests?.().then(reqs => {
           const enrolled = new Set(
             (Array.isArray(reqs) ? reqs : [])
               .filter(r => r.status === 'approved' || r.status === 'enrolled')
               .map(r => r.course_id)
           );
-          // Also check course_enrollments endpoint if available
-          setLectures(apiLectures.filter(l => enrolled.has(l.course_code) || enrolled.has(l.lecture_id)));
+          // If no formal enrollments found, show all lectures (student may be pre-enrolled)
+          if (enrolled.size === 0) {
+            setLectures(apiLectures);
+          } else {
+            setLectures(apiLectures.filter(l => enrolled.has(l.course_code) || enrolled.has(l.lecture_id)));
+          }
         }).catch(() => setLectures(apiLectures));
       } else if (role === 'doctor') {
         const dId = String(doctorId || '');
