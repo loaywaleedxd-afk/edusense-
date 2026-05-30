@@ -51,7 +51,7 @@ export default function CourseRegistrationPage({ theme: C }) {
       const localCourses = (store.courses || []).map(c => ({
         course_code: c.id,
         course_name: c.name,
-        doctor_name: c.doctor || '',
+        doctor_name: c.doctorName || c.doctor || '',
         credits:     c.credits || 3,
         seats_left:  c.capacity ? Math.max(0, c.capacity - (c.enrolled || 0)) : 30,
         my_status:   'none',

@@ -114,11 +114,6 @@ export default function DirectMessagePage({ theme: C, user }) {
 
   async function handleSend() {
     if (!text.trim() || !selected) return;
-    if (!getToken()) {
-      pushToast({ title: 'Not connected', message: 'Please log in via the server to send messages.', color: '#f59e0b' });
-      return;
-    }
-    setSending(true);
     const optimistic = {
       id: Date.now(), sender_id: myId, receiver_id: selected.id,
       text: text.trim(), created_at: new Date().toISOString(), is_read: false,
@@ -127,6 +122,11 @@ export default function DirectMessagePage({ theme: C, user }) {
     const t = text.trim();
     setText('');
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 30);
+    if (!getToken()) {
+      // Offline mode — message shows locally, not persisted
+      return;
+    }
+    setSending(true);
     try {
       await api.sendDM({ receiver_id: selected.id, text: t });
     } catch (err) {

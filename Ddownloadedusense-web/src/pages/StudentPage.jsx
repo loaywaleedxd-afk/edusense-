@@ -412,10 +412,26 @@ function StudentDashboard({ theme: C, user, stu }) {
 
   useEffect(() => {
     api.getAvailableCourses()
-      .then(courses => setMyCoursesEnrolled(courses.filter(c => c.my_status === 'enrolled')))
-      .catch(() => {});
+      .then(courses => {
+        const enrolled = courses.filter(c => c.my_status === 'enrolled');
+        if (enrolled.length > 0) { setMyCoursesEnrolled(enrolled); return; }
+        // fallback to local dataStore
+        const local = store.courses.map(c => ({ course_code: c.id, course_name: c.name, doctor_name: c.doctorName || '', my_status: 'enrolled' }));
+        setMyCoursesEnrolled(local);
+      })
+      .catch(() => {
+        const local = store.courses.map(c => ({ course_code: c.id, course_name: c.name, doctor_name: c.doctorName || '', my_status: 'enrolled' }));
+        setMyCoursesEnrolled(local);
+      });
     api.getStudentAttendance(stu.id).then(setAttRecs).catch(() => {});
-    api.getStudentGrades(stu.id).then(rows => setGradeRows(rows.map(r => ({ grade: r.grade })))).catch(() => {});
+    api.getStudentGrades(stu.id)
+      .then(rows => setGradeRows(rows.map(r => ({ grade: r.grade }))))
+      .catch(() => {
+        // local fallback: pull from store.examResults
+        const localGrades = store.examResults?.[stu.id] || {};
+        const rows = Object.entries(localGrades).map(([courseId, data]) => ({ grade: data.grade, course_id: courseId, course_name: store.getCourse?.(courseId)?.name || courseId }));
+        setGradeRows(rows);
+      });
     // Fetch real trend data
     api.getTimeTrends(stu.id)
       .then(rows => {
@@ -587,15 +603,27 @@ function StudentAttendance({ theme: C, stu, pendingQR, onClearPendingQR }) {
   const [, refresh] = useState(0);
 
   useEffect(() => {
-    api.getAvailableCourses()
-      .then(courses => {
-        const enrolled = courses
-          .filter(c => c.my_status === 'enrolled')
-          .map(c => ({ id: c.course_code, name: c.course_name, code: c.course_code, color: c.color }));
+    const applyEnrolled = (courses) => {
+      const enrolled = courses
+        .filter(c => c.my_status === 'enrolled')
+        .map(c => ({ id: c.course_code, name: c.course_name, code: c.course_code, color: c.color }));
+      if (enrolled.length > 0) {
         setMyCourses(enrolled);
-        if (enrolled.length > 0) setExcuseForm(f => f.courseId ? f : {...f, courseId: enrolled[0].id});
-      })
-      .catch(() => {});
+        setExcuseForm(f => f.courseId ? f : {...f, courseId: enrolled[0].id});
+      } else {
+        // local fallback
+        const local = store.courses.map(c => ({ id: c.id, name: c.name, code: c.id, color: c.color }));
+        setMyCourses(local);
+        if (local.length > 0) setExcuseForm(f => f.courseId ? f : {...f, courseId: local[0].id});
+      }
+    };
+    api.getAvailableCourses()
+      .then(applyEnrolled)
+      .catch(() => {
+        const local = store.courses.map(c => ({ id: c.id, name: c.name, code: c.id, color: c.color }));
+        setMyCourses(local);
+        if (local.length > 0) setExcuseForm(f => f.courseId ? f : {...f, courseId: local[0].id});
+      });
     api.getStudentAttendance(stu.id)
       .then(setAttRecs)
       .catch(() => {});
